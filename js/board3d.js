@@ -26,7 +26,7 @@ function Board3D(root, theme, settings) {
   // Brett
   var BT = 0.55; this.BT = BT;
   // Statuen-Look: helles Holzbrett (echte Textur) mit Tuschelinien; Kontrast kommt von den dunklen Steinsockeln
-  var statue = settings.figSet === 'statue', look = statue ? (settings.scene || 'buehne') : 'insel'; this.look = look;
+  var statue = settings.figSet === 'statue', look = statue ? (settings.army && settings.quality !== 'low' && settings.models !== false ? 'feld' : settings.scene || 'buehne') : 'insel'; this.look = look;
   var boardMat;
   if (statue) {
     var tone = Board3D.TONES[settings.boardTone] || Board3D.TONES.urushi;
@@ -48,8 +48,8 @@ function Board3D(root, theme, settings) {
       boardMat = [sideM, sideM, new T.MeshStandardMaterial({ map: lacquerTop(), normalMap: cw.normalMap, roughnessMap: cw.roughnessMap }), sideM, sideM, sideM];
     }
   } else boardMat = [woodMat(0x9a6a3a), woodMat(0x9a6a3a), new T.MeshStandardMaterial({ map: boardTopTexture(settings.skin), roughness: 0.6 }), woodMat(0x5a3a1c), woodMat(0x8a5a2e), woodMat(0x8a5a2e)];
-  var board = new T.Mesh(new T.BoxGeometry(9.8, BT, 10.4), boardMat); board.position.y = BT / 2; board.receiveShadow = true; board.castShadow = true; scene.add(board);
-  [[-4.3, -4.6], [4.3, -4.6], [-4.3, 4.6], [4.3, 4.6]].forEach(function (p) { var leg = new T.Mesh(new T.CylinderGeometry(0.35, 0.25, 0.5, 8), statue ? boardMat[0] : woodMat(0x4a2c14)); leg.position.set(p[0], -0.25, p[1]); leg.castShadow = true; scene.add(leg); });
+  var board = new T.Mesh(new T.BoxGeometry(9.8, BT, 10.4), boardMat); board.position.y = BT / 2; board.receiveShadow = true; board.castShadow = true; scene.add(board); this.boardMesh = board; var legs = this.boardLegs = [];
+  [[-4.3, -4.6], [4.3, -4.6], [-4.3, 4.6], [4.3, 4.6]].forEach(function (p) { var leg = new T.Mesh(new T.CylinderGeometry(0.35, 0.25, 0.5, 8), statue ? boardMat[0] : woodMat(0x4a2c14)); leg.position.set(p[0], -0.25, p[1]); leg.castShadow = true; scene.add(leg); legs.push(leg); });
   this.lanternObjs = []; this.sakuras = [];
   if (look === 'halle') this.buildHall(hi);
   else if (look === 'buehne') this.buildStage(hi);
@@ -64,6 +64,7 @@ function Board3D(root, theme, settings) {
   else if (look === 'park') this.buildPark(hi);
   else if (look === 'show') this.buildShow(hi);
   else if (look === 'strand') this.buildBeach(hi);
+  else if (look === 'feld') this.buildField(hi);
   else {
 
   // Insel
@@ -1077,24 +1078,28 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   g.add(m); g.userData.glb = m;
 };
 
-// ---------- Armee-Modus (Test): Trupps in Formation statt Einzelfigur, Regeln bleiben Shogi ----------
+// ---------- Armee-Modus (Test): Regimenter wie in Total War statt Einzelfigur, Regeln bleiben Shogi ----------
+// Soldaten sind unsichtbare Platzhalter im Szenengraph (für Animation und Kampf), gezeichnet wird per Instancing:
+// ein InstancedMesh je Modell und Farbe, Leerlauf und Kampfhaltung im Vertex-Shader (Werte je Soldat in iAnim)
 Board3D.ARMY_TIME = { value: 0 };
-// Formationen (lokal, vorne = -z): Plätze [x, z], Höhe und Grundfläche je Soldat
+// Regimenter: Spalten x Reihen, Abstand, Höhe und Grundfläche je Soldat (vorne = -z)
 Board3D.ARMY = {
-  5: { pos: [[0, -0.24], [-0.26, -0.17], [0.26, -0.17], [-0.13, 0.12], [0.13, 0.12]], h: 0.5, foot: 0.3 },
-  3: { pos: [[0, -0.2], [-0.23, 0.11], [0.23, 0.11]], h: 0.62, foot: 0.36 },
-  col: { pos: [[0.02, -0.27], [-0.07, 0], [0.05, 0.26]], h: 0.6, foot: 0.34 },
-  2: { pos: [[-0.18, -0.07], [0.19, 0.08]], h: 0.74, foot: 0.44 },
-  1: { pos: [[0, -0.02]], h: 1.05, foot: 0.85 }
+  inf: { cols: 4, rows: 4, sx: 0.2, sz: 0.19, h: 0.3, foot: 0.19 },
+  col: { cols: 3, rows: 5, sx: 0.2, sz: 0.165, h: 0.3, foot: 0.17 },
+  cav: { cols: 3, rows: 3, sx: 0.27, sz: 0.26, h: 0.38, foot: 0.26 },
+  line: { cols: 4, rows: 3, sx: 0.2, sz: 0.23, h: 0.33, foot: 0.2 },
+  elite: { cols: 3, rows: 3, sx: 0.25, sz: 0.25, h: 0.37, foot: 0.24 },
+  hero: { cols: 1, rows: 1, sx: 0, sz: 0, h: 0.72, foot: 0.8 }
 };
-// Fußsoldaten 5, Lanze als Kolonne, Reiter/Läufer/Turm zu zweit, König und Drachen allein (Helden)
-Board3D.ARMY_TYPE = { 1: 5, 2: 'col', 3: 2, 4: 3, 5: 3, 6: 2, 7: 2, 8: 1, 13: 1, 14: 1 };
+// Bauer 16, Lanze 15 in Kolonne, Springer 9 Reiter, Silber/Gold 12 in Linie, Läufer/Turm 9 Elite, König und Drachen als Held
+Board3D.ARMY_TYPE = { 1: 'inf', 2: 'col', 3: 'cav', 4: 'line', 5: 'line', 6: 'elite', 7: 'elite', 8: 'hero', 13: 'hero', 14: 'hero' };
+Board3D.armyHero = function (t) { var bt = t >= 9 && t <= 12 ? t - 8 : t; return Board3D.ARMY_TYPE[bt] === 'hero'; };
 Board3D.rnd = function (seed) { var s = seed * 9301 + 49297; return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; };
-// Leerlauf + Kampfhaltung im Vertex-Shader (kein Skelett nötig): Atmen, Umschauen, Gewicht verlagern, Ausholen/Zuschlagen
+// Leerlauf + Kampfhaltung (kein Skelett nötig): Atmen, Oberkörper schaut sich um, Gewicht verlagern, Gehen, Ausholen/Zuschlagen
 Board3D.ARMY_VS = [
   '#include <begin_vertex>',
   '{',
-  '  float h = aIdle.x, H = aIdle.y, ph = uPhase, tt = uTime; vec2 c = aIdle.zw, d = transformed.xz - c;',
+  '  float h = aIdle.x, H = abs(aIdle.y), ws = sign(aIdle.y), ph = iAnim.x, uAct = iAnim.y, uWalk = iAnim.z, tt = uTime; vec2 c = aIdle.zw, d = transformed.xz - c;',
   '  d *= 1.0 + sin(tt * 2.2 + ph) * 0.024 * smoothstep(0.35, 0.6, h) * (1.0 - smoothstep(0.78, 0.95, h));',
   '  float lk = (sin(tt * 0.43 + ph * 1.7) * 0.6 + sin(tt * 0.17 + ph) * 0.4) * 0.32 * smoothstep(0.55, 0.9, h) * (1.0 - abs(uAct));',
   '  float cs = cos(lk), sn = sin(lk); d = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs);',
@@ -1103,6 +1108,12 @@ Board3D.ARMY_VS = [
   '  transformed.x += (sin(tt * 0.9 + ph) * 0.03 + sin(tt * 10.0 + ph) * 0.06 * uWalk) * H * w;',
   '  transformed.z += sin(tt * 0.61 + ph * 1.3) * 0.02 * H * w;',
   '  transformed.y += (sin(tt * 2.2 + ph) * 0.009 * smoothstep(0.4, 0.8, h) + abs(sin(tt * 10.0 + ph)) * 0.03 * uWalk * h) * H;',
+  '  float ls = sign(position.x - c.x), leg = 1.0 - smoothstep(0.12, 0.32, h), stp = sin(tt * 10.0 + ph) * ls;',
+  '  transformed.z += stp * 0.08 * H * leg * uWalk; transformed.y += max(0.0, stp) * 0.035 * H * leg * uWalk;',
+  '  float arm = smoothstep(0.05, 0.13, (position.x - c.x) * ws / H) * smoothstep(0.28, 0.5, h);',
+  '  float sw = clamp(uAct * 1.7, -2.3, 1.6) * arm, py = position.y - h * H + 0.74 * H;',
+  '  vec2 q = vec2(transformed.y - py, transformed.z - c.y); float ca = cos(sw), sa = sin(sw);',
+  '  q = vec2(q.x * ca - q.y * sa, q.x * sa + q.y * ca); transformed.y = py + q.x; transformed.z = c.y + q.y;',
   '  float up = max(h - 0.38, 0.0) / 0.62; up *= up;',
   '  transformed.z += uAct * 0.34 * H * up;',
   '  transformed.y -= abs(uAct) * 0.09 * H * up;',
@@ -1113,21 +1124,58 @@ Board3D.prototype.idleAttr = function (geo) {
   if (geo.getAttribute('aIdle')) return;
   geo.computeBoundingBox(); var b = geo.boundingBox, H = b.max.y - b.min.y || 1, cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
   var p = geo.getAttribute('position'), a = new Float32Array(p.count * 4);
-  for (var i = 0; i < p.count; i++) { a[i * 4] = (p.getY(i) - b.min.y) / H; a[i * 4 + 1] = H; a[i * 4 + 2] = cx; a[i * 4 + 3] = cz; }
+  // Waffenseite: die Waffe ragt meist am höchsten seitlich heraus (Speerspitze, Schwert über der Schulter)
+  var sum = 0, n = 0, i;
+  for (i = 0; i < p.count; i++) { var hy = (p.getY(i) - b.min.y) / H, sx = (p.getX(i) - cx) / H; if (hy > 0.72 && Math.abs(sx) > 0.08) { sum += sx * hy * hy; n++; } }
+  var ws = n && sum < 0 ? -1 : 1;
+  for (i = 0; i < p.count; i++) { a[i * 4] = (p.getY(i) - b.min.y) / H; a[i * 4 + 1] = H * ws; a[i * 4 + 2] = cx; a[i * 4 + 3] = cz; }
   geo.setAttribute('aIdle', new THREE.BufferAttribute(a, 4));
 };
-// Eigenes Material je Soldat (eigene Phase, Kampfhaltung), das Shader-Programm teilen sich alle
-Board3D.prototype.armyMat = function (col, rim, tint, phase) {
-  var mat = this.statueMat(col, null, false).clone(), u = { uTime: Board3D.ARMY_TIME, uPhase: { value: phase }, uAct: { value: 0 }, uWalk: { value: 0 } };
-  mat.color.offsetHSL(tint * 0.012, 0, tint * 0.04);
+Board3D.prototype.armyMatI = function (col, rim) {
+  var key = 'armyI' + col + (rim ? 'r' : ''); this.statueCache = this.statueCache || {};
+  if (this.statueCache[key]) return this.statueCache[key];
+  var mat = this.statueMat(col, null, false).clone();
   mat.onBeforeCompile = function (sh) {
-    for (var k in u) sh.uniforms[k] = u[k];
-    sh.vertexShader = 'uniform float uTime, uPhase, uAct, uWalk;\nattribute vec4 aIdle;\n' + sh.vertexShader.replace('#include <begin_vertex>', Board3D.ARMY_VS);
+    sh.uniforms.uTime = Board3D.ARMY_TIME;
+    sh.vertexShader = 'uniform float uTime;\nattribute vec4 aIdle;\nattribute vec3 iAnim;\n' + sh.vertexShader.replace('#include <begin_vertex>', Board3D.ARMY_VS);
     if (rim) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.12, 0.05) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2) * 1.6;');
   };
-  mat.customProgramCacheKey = function () { return rim ? 'army-rim' : 'army'; };
-  mat.userData.u = u;
-  return mat;
+  mat.customProgramCacheKey = function () { return rim ? 'armyI-rim' : 'armyI'; };
+  return (this.statueCache[key] = mat);
+};
+// Instanzen-Topf je Modell + Farbe (wächst bei Bedarf)
+Board3D.prototype.armyPool = function (key, geo, col, rim) {
+  var pools = this.armyPools = this.armyPools || {}, P = pools[key], T = THREE;
+  if (P && !P.grow) return P;
+  var cap = P ? P.cap * 2 : 64;
+  if (P) { this.scene.remove(P.im); P.im.dispose(); }
+  var g2 = geo.clone(), anim = new T.InstancedBufferAttribute(new Float32Array(cap * 3), 3); anim.setUsage(T.DynamicDrawUsage); g2.setAttribute('iAnim', anim);
+  var im = new T.InstancedMesh(g2, this.armyMatI(col, rim), cap); im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  im.setColorAt(0, new T.Color(1, 1, 1)); im.count = 0; im.frustumCulled = false; im.castShadow = this.quality === 'high'; im.raycast = function () { };
+  this.scene.add(im);
+  return (pools[key] = { im: im, anim: anim, cap: cap, n: 0, grow: false, geo: geo, col: col, rim: rim });
+};
+// jedes Bild: Platzhalter-Matrizen und Animationswerte in die Instanzen kopieren
+Board3D.prototype.armyDraw = function () {
+  var pools = this.armyPools, k, self = this; if (!pools) return;
+  for (k in pools) pools[k].n = 0;
+  this.pieceGroup.updateMatrixWorld(true);
+  this.pieceGroup.children.forEach(function (g) {
+    if (!g.visible || !g.userData.troops) return;
+    g.userData.troops.forEach(function (tr) {
+      if (!tr.visible) return;
+      var u = tr.userData, P = pools[u.pk] || self.armyPool(u.pk, u.geo, u.col, u.rim);
+      if (P.n >= P.cap) { P.grow = true; return; }
+      var i = P.n++;
+      P.im.setMatrixAt(i, u.mesh.matrixWorld); P.im.setColorAt(i, u.tint);
+      P.anim.setXYZ(i, u.u.uPhase.value, u.u.uAct.value, u.u.uWalk.value);
+    });
+  });
+  for (k in pools) {
+    var P = pools[k];
+    if (P.grow) { this.armyPool(k, P.geo, P.col, P.rim); continue; }
+    P.im.count = P.n; P.im.instanceMatrix.needsUpdate = true; P.anim.needsUpdate = true; if (P.im.instanceColor) P.im.instanceColor.needsUpdate = true;
+  }
 };
 // Feldzeichen mit Kanji: Sente schwarzes Tuch, Gote weißes (wie die 2D-Steine), befördert rotes Kanji
 Board3D.prototype.armyBanner = function (t, col) {
@@ -1147,27 +1195,34 @@ Board3D.prototype.armyBanner = function (t, col) {
     draw(); if (document.fonts) document.fonts.ready.then(draw);
   }
   var g = new T.Group(), dark = this._poleMat || (this._poleMat = new T.MeshStandardMaterial({ color: 0x1a1010, roughness: 0.4 }));
-  var pole = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, 0.9, 6), dark); pole.position.y = 0.45; g.add(pole);
-  var top = new T.Mesh(new T.ConeGeometry(0.025, 0.07, 6), this.statueMat(col, null, false)); top.position.y = 0.93; g.add(top);
-  var piv = new T.Group(); piv.position.y = 0.66; g.add(piv);
-  var flag = new T.Mesh(new T.PlaneGeometry(0.22, 0.38), new T.MeshStandardMaterial({ map: tex, roughness: 0.75, side: T.DoubleSide })); flag.position.x = 0.115; piv.add(flag);
+  var pole = new T.Mesh(this._poleGeo || (this._poleGeo = new T.CylinderGeometry(0.012, 0.012, 1.12, 6)), dark); pole.position.y = 0.56; g.add(pole);
+  var top = new T.Mesh(this._tipGeo || (this._tipGeo = new T.ConeGeometry(0.022, 0.06, 6)), this.statueMat(col, null, false)); top.position.y = 1.15; g.add(top);
+  var piv = new T.Group(); piv.position.y = 0.84; g.add(piv);
+  // Vorder- und Rückseite einzeln, damit das Kanji von beiden Seiten richtig herum steht
+  var fm = new T.MeshStandardMaterial({ map: tex, roughness: 0.75 }), fg = this._flagGeo || (this._flagGeo = new T.PlaneGeometry(0.3, 0.52));
+  var flag = new T.Mesh(fg, fm); flag.position.x = 0.155; piv.add(flag);
+  var back = new T.Mesh(fg, fm); back.position.x = 0.155; back.rotation.y = Math.PI; piv.add(back);
   g.userData.piv = piv;
   return g;
 };
 Board3D.prototype.buildSquad = function (g, src, t, col) {
-  var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[bt] || 3];
+  var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[bt] || 'line'];
   if (!src.userData.idle) { src.traverse(function (o) { if (o.isMesh) self.idleAttr(o.geometry); }); src.userData.idle = true; }
-  var rim = t >= 9 && this.settings.promoStyle === 'glanz', troops = [];
-  F.pos.forEach(function (p, i) {
-    var r = Board3D.rnd(bt * 31 + i * 7 + col * 101), s = (i === 0 && F.pos.length > 1 ? 1.08 : 1) * (0.93 + 0.12 * r()) * (t >= 9 ? 1.06 : 1);
-    var m = Models.fit(src, F.h * s, F.foot * s), tr = new T.Group(), mat = self.armyMat(col, rim, (i % 3) - 1, Math.random() * 6.283);
-    m.traverse(function (o) { if (o.isMesh) { o.material = mat; o.castShadow = true; } });
-    if (i % 2 === 1) m.scale.x *= -1; // gespiegelt: wirkt wie ein anderer Soldat
-    m.userData.ry0 = Math.PI + (r() - 0.5) * 0.35; m.rotation.y = m.userData.ry0;
-    tr.add(m); tr.position.set(p[0], 0.066, p[1]);
-    tr.userData = { glb: m, mat: mat, home: { x: p[0], z: p[1] }, hh: F.h * s * 0.8, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 4 };
+  var mesh0 = null; src.traverse(function (o) { if (o.isMesh && !mesh0) mesh0 = o; }); if (!mesh0) return;
+  var rim = t >= 9 && this.settings.promoStyle === 'glanz', pk = mesh0.geometry.uuid + ':' + col + (rim ? 'r' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101);
+  this.armyPool(pk, mesh0.geometry, col, rim);
+  function noop() { }
+  for (var r = 0; r < F.rows; r++) for (var c = 0; c < F.cols; c++) {
+    var x = (c - (F.cols - 1) / 2) * F.sx + (rnd() - .5) * 0.03, z = (r - (F.rows - 1) / 2) * F.sz + (rnd() - .5) * 0.025;
+    var officer = F.cols > 1 && r === 0 && c === (F.cols >> 1), s = (officer ? 1.14 : 1) * (0.92 + 0.14 * rnd()) * (t >= 9 ? 1.06 : 1);
+    var m = Models.fit(src, F.h * s, F.foot * s), tr = new T.Group(), mesh = null;
+    m.traverse(function (o) { if (o.isMesh) { o.visible = false; o.raycast = noop; if (!mesh) mesh = o; } });
+    m.userData.ry0 = Math.PI + (rnd() - 0.5) * 0.3; m.rotation.y = m.userData.ry0;
+    tr.add(m); tr.position.set(x, 0, z);
+    var br = 0.88 + rnd() * 0.2, hue = (rnd() - 0.5) * 0.1;
+    tr.userData = { glb: m, mesh: mesh, pk: pk, geo: mesh0.geometry, col: col, rim: rim, tint: new T.Color(br * (1 + hue), br, br * (1 - hue)), u: { uPhase: { value: Math.random() * 6.283 }, uAct: { value: 0 }, uWalk: { value: 0 } }, home: { x: x, z: z }, hh: F.h * s * 0.8, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 5 };
     g.add(tr); troops.push(tr);
-  });
+  }
   g.userData.troops = troops;
 };
 // Leerlauf: kleine Schritte in der Formation, umschauen, Fahne weht
@@ -1176,10 +1231,10 @@ Board3D.prototype.armyIdle = function (g, t, dt) {
   g.userData.troops.forEach(function (tr) {
     var u = tr.userData, m = u.glb;
     if (!fighting) {
-      if (t > u.next) { u.next = t + 3 + Math.random() * 6; u.tx = (Math.random() - .5) * 0.06; u.tz = (Math.random() - .5) * 0.05; u.look = Math.random() < .45 ? 0 : (Math.random() - .5) * 1.1; }
+      if (t > u.next) { u.next = t + 3 + Math.random() * 7; u.tx = (Math.random() - .5) * 0.035; u.tz = (Math.random() - .5) * 0.03; u.look = Math.random() < .5 ? 0 : (Math.random() - .5) * 1.1; }
       var ox = u.ox, oz = u.oz; u.ox += (u.tx - u.ox) * k; u.oz += (u.tz - u.oz) * k;
       tr.position.x = u.home.x + u.ox; tr.position.z = u.home.z + u.oz;
-      u.mat.userData.u.uWalk.value = Math.min(0.6, Math.hypot(u.ox - ox, u.oz - oz) / Math.max(dt, 1) * 2500);
+      u.u.uWalk.value = Math.min(0.6, Math.hypot(u.ox - ox, u.oz - oz) / Math.max(dt, 1) * 2500);
     } else u.look = 0;
     u.lk += (u.look - u.lk) * k;
     m.rotation.y = m.userData.ry0 + (m.userData.face || 0) + u.lk;
@@ -1187,18 +1242,67 @@ Board3D.prototype.armyIdle = function (g, t, dt) {
   var b = g.userData.banner; if (b) b.userData.piv.rotation.y = Math.sin(t * 1.7 + g.position.x * 2.1 + g.position.z) * 0.3 + Math.sin(t * 4.1 + g.position.z) * 0.06;
 };
 
-// Trupp-Schlacht: Soldaten paarweise im Zweikampf, Verteidiger fallen einer nach dem anderen, Angreifer formieren sich neu
+// Schlachtfeld: Wiese bis zum Horizont, zertrampelte Erde, dezentes Raster, Felsen, Bäume, Feldlager beider Armeen
+Board3D.prototype.buildField = function (hi) {
+  var T = THREE, scene = this.scene, self = this, Y = this.BT;
+  scene.background = new T.Color(0x8d9aa4); scene.fog = new T.FogExp2(0x9aa4aa, 0.02);
+  this.hemi.color.set(0xdfe6ee); this.hemi.groundColor.set(0x3a3a2a); this.hemi.intensity = 0.75;
+  this.sun.color.set(0xffe2b8); this.sun.intensity = 2.4; this.sun.position.set(-9, 15, 7);
+  this.useHdr('studio_kontrast_01.hdr'); this.addCamLight(0.45); this.skyBackground('sky_kloofendal_38d_partly_cloudy_puresky.webp', 0.8);
+  if (this.boardMesh) this.boardMesh.visible = false; (this.boardLegs || []).forEach(function (l) { l.visible = false; });
+  var grass = new T.Mesh(new T.CircleGeometry(70, 48), this.texMat('leafy_grass', 26, 0x9aac78)); grass.rotation.x = -Math.PI / 2; grass.position.y = Y - 0.006; grass.receiveShadow = true; scene.add(grass);
+  // Erde, die an den Rändern in die Wiese ausläuft
+  var ac = document.createElement('canvas'); ac.width = ac.height = 256; var ag = ac.getContext('2d'); ag.fillStyle = '#000'; ag.fillRect(0, 0, 256, 256);
+  ag.filter = 'blur(14px)'; ag.fillStyle = '#fff'; ag.fillRect(34, 32, 188, 192);
+  ag.filter = 'blur(6px)'; ag.fillStyle = '#000'; var rr = Board3D.rnd(7); for (var i = 0; i < 26; i++) { ag.globalAlpha = 0.25 + rr() * 0.35; ag.beginPath(); ag.arc(rr() * 256, rr() * 256, 6 + rr() * 16, 0, 7); ag.fill(); }
+  var amap = new T.CanvasTexture(ac), mud = this.texMat('forest_ground_04', 5, 0xb4a488); mud.alphaMap = amap; mud.transparent = true; mud.depthWrite = false;
+  var field = new T.Mesh(new T.PlaneGeometry(13, 13.6), mud); field.rotation.x = -Math.PI / 2; field.position.y = Y - 0.003; field.receiveShadow = true; scene.add(field);
+  // Raster nur angedeutet (Spielfelder bleiben erkennbar)
+  var gc = document.createElement('canvas'); gc.width = gc.height = 1024; var gg = gc.getContext('2d'), q = 1024 / 9;
+  gg.strokeStyle = 'rgba(30,22,10,0.8)'; gg.lineWidth = 4; gg.setLineDash([22, 9]);
+  for (var k = 1; k < 9; k++) { gg.beginPath(); gg.moveTo(k * q, 0); gg.lineTo(k * q, 1024); gg.stroke(); gg.beginPath(); gg.moveTo(0, k * q); gg.lineTo(1024, k * q); gg.stroke(); }
+  gg.setLineDash([]); gg.lineWidth = 7; gg.strokeStyle = 'rgba(30,22,10,0.8)'; gg.strokeRect(3, 3, 1018, 1018);
+  var gt = new T.CanvasTexture(gc); gt.anisotropy = 8;
+  var grid = new T.Mesh(new T.PlaneGeometry(9, 9), new T.MeshBasicMaterial({ map: gt, transparent: true, depthWrite: false })); grid.rotation.x = -Math.PI / 2; grid.position.y = Y + 0.002; scene.add(grid);
+  // Felsen und Bäume rund ums Schlachtfeld
+  var rockM = this.texMat('mossy_rock', 1, 0x8a8a7a), rnd = Board3D.rnd(11), geoR = new T.IcosahedronGeometry(1, 1);
+  for (i = 0; i < 34; i++) {
+    var a = rnd() * Math.PI * 2, d = 7.2 + rnd() * 16, rx = Math.cos(a) * d, rz = Math.sin(a) * d * 0.9;
+    if (rz > 5 && Math.abs(rx) < 7) continue; // freie Sicht von der Kamera
+    var s = 0.25 + rnd() * (d > 12 ? 1.2 : 0.5), rk = new T.Mesh(geoR, rockM); rk.scale.set(s * (1 + rnd()), s * (0.5 + rnd() * 0.5), s * (1 + rnd())); rk.rotation.y = rnd() * 6; rk.position.set(rx, Y - s * 0.2, rz); rk.castShadow = hi; rk.receiveShadow = true; scene.add(rk);
+  }
+  [[-9, -8, 1], [10, -9, 1.2], [-12, 1, 1.1], [12, 3, 0.95], [-7, -13, 0.9], [4, -14, 1.3], [-15, -6, 1.4], [16, -3, 1.2], [-14, 9, 1], [15, 11, 1.1]].forEach(function (p) { self.parkTree(p[0], p[1], Y, p[2]); });
+  // Feldlager: Zelte und Nobori-Fahnen hinter den eigenen Linien (Sente schwarz/gold, Gote weiß)
+  [0, 1].forEach(function (col) {
+    var zs = col === 0 ? 1 : -1, cloth = new T.MeshStandardMaterial({ color: col === 0 ? 0x1c1916 : 0xe8e2d6, roughness: 0.9 }), trim = self.statueMat(col, null, false);
+    [[-5.6, 7.4], [5.8, 7.6], [-7.6, 6.2], [7.8, 6.4]].forEach(function (p, j) {
+      if (col === 0 && Math.abs(p[0]) < 6.5) return; // vorn bei der Kamera nur seitlich
+      var tent = new T.Group(), body = new T.Mesh(new T.ConeGeometry(0.9, 1.1, 4), cloth); body.rotation.y = Math.PI / 4; body.position.y = 0.55; tent.add(body);
+      var tip = new T.Mesh(new T.SphereGeometry(0.06, 8, 6), trim); tip.position.y = 1.12; tent.add(tip);
+      tent.position.set(p[0], Y, p[1] * zs); tent.rotation.y = j; tent.traverse(function (o) { o.castShadow = hi; }); scene.add(tent);
+    });
+    for (var n = 0; n < 6; n++) {
+      var nx = (n < 3 ? -1 : 1) * (5.6 + (n % 3) * 0.9), nz = (6.2 - (n % 3) * 0.5) * zs;
+      var nb = new T.Group(), pole = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 1.8, 6), self._poleMat || (self._poleMat = new T.MeshStandardMaterial({ color: 0x1a1010, roughness: 0.4 }))); pole.position.y = 0.9; nb.add(pole);
+      var cl = new T.Mesh(new T.PlaneGeometry(0.32, 1.1), new T.MeshStandardMaterial({ color: col === 0 ? 0x16130f : 0xf1ede4, side: T.DoubleSide, roughness: 0.8 })); cl.position.set(0.17, 1.15, 0); nb.add(cl);
+      nb.position.set(nx, Y, nz); scene.add(nb);
+    }
+  });
+};
+
+// Trupp-Schlacht: Soldaten im Zweikampf mit dem nächsten Gegner, vordere Reihen zuerst, Verteidiger fallen einzeln, Angreifer formieren sich neu
 Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.65 : 1;
   var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
-  var BT = this.BT, colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
-  var at = A.userData.troops || [A], dt = D.userData.troops || [D];
+  var BT = this.BT, colA = new T.Color(this.theme.factions[info.col].color).getHex(), colD = new T.Color(this.theme.factions[1 - info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
+  var at = A.userData.troops || [A], dt = D.userData.troops || [D], many = at.length + dt.length > 10, pf = many ? 0.45 : 1;
+  var st = Math.min(110, 900 / at.length);
   A.userData.fighting = D.userData.fighting = true;
   function snd(n, a) { if (typeof Sfx !== 'undefined') Sfx.play(n, a); }
   function wait(ms) { return self.tween(ms * sp, function () { }); }
   function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
   var o = this.orbit, cam0 = { x: o.target.x, z: o.target.z, r: o.radius }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
-  if (!short) this.tween(450, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e * 0.85; o.target.z = cam0.z + (mz - cam0.z) * e * 0.85; o.radius = cam0.r * (1 - 0.34 * e); });
+  if (!short) this.tween(450, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e * 0.85; o.target.z = cam0.z + (mz - cam0.z) * e * 0.85; o.radius = cam0.r * (1 - 0.4 * e); });
   function camBack() { if (short) return; var c1 = { x: o.target.x, z: o.target.z, r: o.radius }; self.tween(650, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; }); }
   function wp(s) { var v = new T.Vector3(); s.getWorldPosition(v); return v; }
   function toLocal(s, x, z) { var v = new T.Vector3(x, BT, z); if (s.parent) { s.parent.updateWorldMatrix(true, false); s.parent.worldToLocal(v); } return v; }
@@ -1211,7 +1315,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
     while (goal - a0 > Math.PI) goal -= Math.PI * 2; while (goal - a0 < -Math.PI) goal += Math.PI * 2;
     return self.tween((dur || 160) * sp, function (k) { m.userData.face = a0 + (goal - a0) * (1 - Math.pow(1 - k, 3)); });
   }
-  function U(s) { return s.userData.mat ? s.userData.mat.userData.u : null; }
+  function U(s) { return s.userData.u || null; }
   function walk(s, v) { var u = U(s); if (u) u.uWalk.value = v; }
   // Haltung: Oberkörper (Shader) + ganzer Körper kippt in Richtung ld
   function act(s, v, dur, ld, ang) {
@@ -1219,99 +1323,132 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
     return self.tween(dur * sp, function (k) { var e = ease(k); if (u) u.uAct.value = a0 + (v - a0) * e; if (ld) { s.userData.ang = g0 + ((ang || 0) - g0) * e; self.lean(s, ld.x, ld.z, s.userData.ang); } });
   }
   function head(s) { var p = wp(s); p.y += s.userData.hh || 0.8; return p; }
-  function sparks(x, y, z, c, n, sh) { self.emit(x, y, z, c, n, 3.5, 0.9); self.emit(x, y, z, 0xffffff, n / 3, 2.2, 1.1); self.shakeAmt = Math.max(self.shakeAmt || 0, sh); }
+  function sparks(x, y, z, c, n, sh) { n = Math.max(4, Math.round(n * pf)); self.emit(x, y, z, c, n, 3.2, 0.9); self.emit(x, y, z, 0xffffff, n / 3, 2, 1.1); self.shakeAmt = Math.max(self.shakeAmt || 0, sh); }
   var killed = 0, total = dt.length;
-  function dieT(d, nx, nz) {
-    if (info.onHit) info.onHit();
-    var ld = ldir(d, nx, nz), p0 = d.position.clone(), fall = 1.3 + Math.random() * 0.35, hp = head(d), u = U(d);
-    sparks(hp.x, hp.y - 0.1, hp.z, colA, big ? 36 : 22, big ? 0.3 : 0.18);
-    return self.tween((360 + Math.random() * 120) * sp, function (k) { var e = k * k; self.lean(d, ld.x, ld.z, e * fall); d.position.x = p0.x + ld.x * e * 0.16; d.position.z = p0.z + ld.z * e * 0.16; if (u) u.uAct.value = -0.5 * k; }).then(function () {
-      var w = wp(d); for (var i = 0; i < 3; i++) self.emit(w.x + nx * i * 0.1, BT + 0.1 + i * 0.05, w.z + nz * i * 0.1, dust, 14, 1.3, 0.7);
-      if (++killed === total) { snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.12); }
-      return self.tween(280 * sp, function (k) { d.scale.setScalar(1 - k); d.position.y = p0.y - k * 0.12; });
+  function dieT(d, nx, nz, att) {
+    if (!att && info.onHit) info.onHit();
+    var ld = ldir(d, nx, nz), p0 = d.position.clone(), fall = 1.3 + Math.random() * 0.35, hp = head(d), u = U(d), kb = 0.14 + Math.random() * 0.12;
+    sparks(hp.x, hp.y - 0.06, hp.z, att ? colD : colA, big ? 30 : 20, big ? 0.25 : 0.14);
+    // Rückstoß: kurz nach hinten geschleudert, dreht sich, kippt um
+    var spin = (Math.random() - 0.5) * 1.2, m = d.userData.glb, f0 = m ? m.userData.face || 0 : 0;
+    return self.tween((380 + Math.random() * 140) * sp, function (k) {
+      var e = 1 - Math.pow(1 - k, 2), tp = k * k;
+      self.lean(d, ld.x, ld.z, tp * fall); d.position.x = p0.x + ld.x * e * kb; d.position.z = p0.z + ld.z * e * kb; d.position.y = p0.y + Math.sin(k * Math.PI) * 0.05;
+      if (m) m.userData.face = f0 + spin * e; if (u) u.uAct.value = -0.9 * (1 - k) + 0.4 * k;
+    }).then(function () {
+      var w = wp(d); self.emit(w.x + nx * 0.08, BT + 0.06, w.z + nz * 0.08, dust, many ? 6 : 14, 1.1, 0.6);
+      if (!att && ++killed === total) {
+        snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.12);
+        // Feldzeichen fällt mit dem letzten Mann
+        var ban = D.userData.banner; if (ban) { var bl = ldir(D, nx, nz); self.tween(520 * sp, function (k) { self.lean(ban, bl.x, bl.z, k * k * 1.5); }); }
+      }
+      return self.tween(260 * sp, function (k) { d.scale.setScalar(1 - k); d.position.y = p0.y - k * 0.08; });
     }).then(function () { d.visible = false; });
   }
-  // Ziele verteilen: Soldat j kämpft gegen die Verteidiger i mit i % Angreiferzahl = j
-  var groups = at.map(function () { return []; });
-  dt.forEach(function (d, i) { groups[i % at.length].push(d); });
+  // Ziele verteilen: Angreifer von vorne nach hinten nehmen den nächsten freien Gegner, übrige Gegner gehen an den nächsten Angreifer
+  var groups = at.map(function () { return []; }), ap = at.map(wp), dp = dt.map(wp), dc = new T.Vector3(), ac = new T.Vector3();
+  dp.forEach(function (p) { dc.add(p); }); dc.multiplyScalar(1 / dp.length); ap.forEach(function (p) { ac.add(p); }); ac.multiplyScalar(1 / ap.length);
+  var order = at.map(function (a, j) { return j; }).sort(function (i, j) { return ap[i].distanceTo(dc) - ap[j].distanceTo(dc); }), free = dt.map(function (d, i) { return i; });
+  order.forEach(function (j, rank) {
+    at[j].userData.ord = rank; if (!free.length) return;
+    var best = 0; free.forEach(function (i, q) { if (dp[i].distanceTo(ap[j]) < dp[free[best]].distanceTo(ap[j])) best = q; });
+    groups[j].push(dt[free[best]]); free.splice(best, 1);
+  });
+  free.forEach(function (i) { var bj = 0; at.forEach(function (a, j) { if (ap[j].distanceTo(dp[i]) < ap[bj].distanceTo(dp[i])) bj = j; }); groups[bj].push(dt[i]); });
   function centroid(list) { var c = new T.Vector3(); list.forEach(function (d) { c.add(wp(d)); }); return c.multiplyScalar(1 / list.length); }
-  function cheer(a, j) { var ld = ldir(a, ux, uz); return wait(j * 120).then(function () { return act(a, -0.7, 220, ld, -0.1); }).then(function () { return act(a, 0.3, 160, ld, 0.05); }); }
+  function cheer(a) { var ld = ldir(a, ux, uz), r = a.userData.ord || 0; return wait(r * st).then(function () { return act(a, -0.7, 220, ld, -0.1); }).then(function () { return act(a, 0.3, 160, ld, 0.05); }).then(function () { return act(a, 0, 200, ld, 0); }); }
   function killAll(defs, nx, nz) { return Promise.all(defs.map(function (d, k) { return wait(k * 70).then(function () { return dieT(d, nx, nz); }); })); }
-  // Zweikampf: hingehen, ausholen, zuschlagen, evtl. Gegenschlag, Todesstoß
-  function duel(a, defs, j) {
-    if (!defs.length) return cheer(a, j);
-    var pa, c, nx, nz, ld;
-    return wait(j * 110).then(function () {
-      pa = wp(a); c = centroid(defs); var ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz);
-      var stop = Math.max(0, dl - 0.27), l0 = a.position.clone(), l1 = toLocal(a, pa.x + nx * stop, pa.z + nz * stop), y0 = a.position.y;
-      return Promise.all([tFace(a, c.x, c.z, 120)].concat(defs.map(function (d) { return tFace(d, pa.x, pa.z, 160); }))).then(function () {
-        walk(a, 1);
-        return self.tween((140 + stop * 300) * sp, function (k) { var e = ease(k); a.position.x = l0.x + (l1.x - l0.x) * e; a.position.z = l0.z + (l1.z - l0.z) * e; a.position.y = y0 + Math.abs(Math.sin(k * Math.PI * 2)) * 0.035; });
+  // Zweikampf: anrennen, Schlagabtausch (Waffenarm holt aus und schlägt), Paraden, Todesstoß; manche Angreifer fallen auch
+  function swing(s, dur, ld, back) { return act(s, back ? -1.25 : 1.15, dur, ld, back ? -0.16 : 0.24); }
+  function block(s, ld) { return act(s, -0.55, 110, ld, -0.1); }
+  function push(s, nx, nz, d, dur) { var p0 = s.position.clone(), l = ldir(s, nx, nz); return self.tween(dur * sp, function (k) { var e = 1 - Math.pow(1 - k, 3); s.position.x = p0.x + l.x * d * e; s.position.z = p0.z + l.z * d * e; }); }
+  function duel(a, defs) {
+    if (!defs.length) return cheer(a);
+    var pa, c, nx, nz, ld, dl2, r = a.userData.ord || 0, loud = !many || r % 3 === 0, dd = defs[0], falls = !short && at.length > 4 && r % 5 === 2;
+    function clash(x, y, z, col, n) { if (loud) snd('clash', 0.55); sparks(x, y, z, col, n, 0.12); }
+    function mid() { var h = head(a), q = head(dd); return [(h.x + q.x) / 2, Math.min(h.y, q.y) - 0.05, (h.z + q.z) / 2]; }
+    return wait(r * st).then(function () {
+      pa = wp(a); c = centroid(defs); var ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz); dl2 = ldir(dd, -nx, -nz);
+      var stop = Math.max(0, dl - 0.19), l0 = a.position.clone(), l1 = toLocal(a, pa.x + nx * stop, pa.z + nz * stop), y0 = a.position.y;
+      return Promise.all([tFace(a, c.x, c.z, 100)].concat(defs.map(function (d) { return tFace(d, pa.x, pa.z, 140); }))).then(function () {
+        walk(a, 1); var u = U(a); if (u) u.uAct.value = -0.5;
+        return self.tween((110 + stop * 280) * sp, function (k) { var e = k * k * (3 - 2 * k); a.position.x = l0.x + (l1.x - l0.x) * e; a.position.z = l0.z + (l1.z - l0.z) * e; a.position.y = y0 + Math.abs(Math.sin(k * Math.PI * 2)) * 0.025; });
       });
-    }).then(function () { walk(a, 0); snd('whoosh', 0.6); return Promise.all([act(a, -0.85, 200, ld, -0.14)].concat(defs.map(function (d) { return act(d, -0.4, 200); }))); })
-      .then(function () { return act(a, 1, 90, ld, 0.22); })
+    })
+      // 1. Hieb: Verteidiger pariert, wird zurückgedrängt
+      .then(function () { walk(a, 0); if (loud) snd('whoosh', 0.45); return Promise.all([swing(a, 170, ld, true), block(dd, dl2)]); })
+      .then(function () { return swing(a, 75, ld); })
+      .then(function () { var p = mid(); clash(p[0], p[1], p[2], 0xffffff, 12); return Promise.all([push(dd, nx, nz, 0.05, 140), act(dd, -0.3, 140, dl2, -0.14)]); })
       .then(function () {
-        snd('clash', 0.7); var h = head(a), q = centroid(defs); sparks((h.x + q.x) / 2, h.y - 0.05, (h.z + q.z) / 2, colA, 18, 0.14);
-        if (short || j % 2) return;
-        // Gegenschlag: Verteidiger schlägt zurück, Angreifer pariert
-        var dd = defs[0], dl = ldir(dd, -nx, -nz);
-        return Promise.all([act(a, -0.3, 160, ld, -0.12), act(dd, -0.7, 160, dl, -0.1)])
-          .then(function () { snd('whoosh', 0.5); return act(dd, 0.9, 100, dl, 0.18); })
-          .then(function () { snd('clash', 0.6); var h2 = head(dd); sparks(h2.x - nx * 0.15, h2.y - 0.05, h2.z - nz * 0.15, 0xffffff, 16, 0.1); return Promise.all([act(dd, -0.2, 160, dl, 0), act(a, -0.9, 180, ld, -0.16)]); })
-          .then(function () { snd('whoosh', 0.6); return act(a, 1, 90, ld, 0.25); });
+        if (short) return;
+        // 2. Gegenschlag: Verteidiger holt aus, Angreifer blockt und weicht einen Schritt
+        return Promise.all([act(a, -0.2, 120, ld, 0), swing(dd, 170, dl2, true)])
+          .then(function () { return Promise.all([swing(dd, 75, dl2), block(a, ld)]); })
+          .then(function () {
+            var p = mid(); clash(p[0], p[1], p[2], colD, 12);
+            if (falls) return dieT(a, -nx, -nz, true); // dieser Angreifer fällt
+            return Promise.all([push(a, -nx, -nz, 0.05, 140), act(dd, 0, 140, dl2, 0)]);
+          });
       })
-      .then(function () { return killAll(defs, nx, nz); })
-      .then(function () { return act(a, 0, 260, ld, 0); });
+      .then(function () {
+        // gefallener Angreifer: sein Gegner fällt kurz danach durch den Nachbarn
+        if (falls) return wait(160).then(function () { return killAll(defs, nx, nz); });
+        // 3. Todesstoß: weit ausholen, wuchtig durchziehen
+        if (loud) snd('whoosh', 0.55);
+        return swing(a, 190, ld, true).then(function () { return Promise.all([swing(a, 70, ld), push(a, nx, nz, 0.06, 70)]); })
+          .then(function () { var p = mid(); clash(p[0], p[1], p[2], colA, 18); return killAll(defs, nx, nz); })
+          .then(function () { return act(a, 0, 260, ld, 0); });
+      });
   }
   // Fernkampf (Schuss, Magie, Feueratem): jeder Soldat feuert auf seine Ziele
-  function volley(a, defs, j) {
-    if (!defs.length) return cheer(a, j);
-    var pa, nx, nz, ld;
-    return wait(j * 170).then(function () {
+  function volley(a, defs) {
+    if (!defs.length) return cheer(a);
+    var pa, nx, nz, ld, r = a.userData.ord || 0, loud = !many || r % 3 === 0;
+    return wait(r * st).then(function () {
       pa = head(a); var c = centroid(defs), ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz);
       return tFace(a, c.x, c.z, 140);
     }).then(function () { return act(a, -0.5, 200, ld, -0.1); }).then(function () {
-      var tgt = centroid(defs); tgt.y = BT + 0.35;
+      var tgt = centroid(defs); tgt.y = BT + 0.2;
       if (style === 'breath') {
         snd('fire');
-        return Promise.all([act(a, 0.7, 120, ld, 0.15), self.tween(650 * sp, function (k) { self.emitDir(pa.x + nx * 0.25, pa.y, pa.z + nz * 0.25, k < .5 ? 0xffb030 : 0xff5a20, 5, nx * 6, -1.2, nz * 6, 1.3); })]);
+        return Promise.all([act(a, 0.7, 120, ld, 0.15), self.tween(650 * sp, function (k) { self.emitDir(pa.x + nx * 0.2, pa.y, pa.z + nz * 0.2, k < .5 ? 0xffb030 : 0xff5a20, 5, nx * 5, -1.2, nz * 5, 1.2); })]);
       }
       if (style === 'shoot') {
         var chain = Promise.resolve();
         for (var s = 0; s < (short ? 1 : 2); s++) chain = chain.then(function () {
-          snd('zap', 0.6);
-          for (var q = 0; q < 6; q++) { var f = q / 6; self.emitDir(pa.x + (tgt.x - pa.x) * f, pa.y + (tgt.y - pa.y) * f, pa.z + (tgt.z - pa.z) * f, 0xfff0a0, 2, nx * 2, -1, nz * 2, 0.25); }
-          sparks(tgt.x, tgt.y, tgt.z, 0xffe08a, 12, 0.08);
+          if (loud) snd('zap', 0.5);
+          for (var q = 0; q < 5; q++) { var f = q / 5; self.emitDir(pa.x + (tgt.x - pa.x) * f, pa.y + (tgt.y - pa.y) * f, pa.z + (tgt.z - pa.z) * f, 0xfff0a0, 1, nx * 2, -1, nz * 2, 0.2); }
+          sparks(tgt.x, tgt.y, tgt.z, 0xffe08a, 10, 0.06);
           return act(a, -0.3, 70, ld, -0.12).then(function () { return act(a, 0.2, 90, ld, 0); });
         });
         return chain;
       }
-      snd('zap', 0.7);
-      var bolt = new T.Mesh(new T.SphereGeometry(0.09, 10, 6), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
+      if (loud) snd('zap', 0.6);
+      var bolt = new T.Mesh(self._boltGeo || (self._boltGeo = new T.SphereGeometry(0.06, 10, 6)), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
       self.scene.add(bolt);
       return Promise.all([act(a, 0.8, 140, ld, 0.12), self.tween(380 * sp, function (k) {
-        var x = pa.x + (tgt.x - pa.x) * k, y = pa.y + (tgt.y - pa.y) * k + Math.sin(k * Math.PI) * 0.4, z = pa.z + (tgt.z - pa.z) * k;
-        bolt.position.set(x, y, z); self.emitDir(x, y, z, colA, 2, 0, 0, 0, 0.4);
-      })]).then(function () { self.scene.remove(bolt); });
+        var x = pa.x + (tgt.x - pa.x) * k, y = pa.y + (tgt.y - pa.y) * k + Math.sin(k * Math.PI) * 0.3, z = pa.z + (tgt.z - pa.z) * k;
+        bolt.position.set(x, y, z); self.emitDir(x, y, z, colA, 1, 0, 0, 0, 0.3);
+      })]).then(function () { self.scene.remove(bolt); bolt.material.dispose(); });
     }).then(function () { return killAll(defs, nx, nz); })
       .then(function () { return act(a, 0, 240, ld, 0); });
   }
   // Sprung auf die Gegner
-  function leapAt(a, defs, j) {
-    if (!defs.length) return cheer(a, j);
-    var nx, nz, ld;
-    return wait(j * 160).then(function () {
+  function leapAt(a, defs) {
+    if (!defs.length) return cheer(a);
+    var nx, nz, ld, r = a.userData.ord || 0, loud = !many || r % 3 === 0;
+    return wait(r * st).then(function () {
       var pa = wp(a), c = centroid(defs), ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz);
-      var l0 = a.position.clone(), l1 = toLocal(a, c.x - nx * 0.18, c.z - nz * 0.18), y0 = a.position.y;
+      var l0 = a.position.clone(), l1 = toLocal(a, c.x - nx * 0.14, c.z - nz * 0.14), y0 = a.position.y;
       return tFace(a, c.x, c.z, 120).then(function () { return act(a, -0.6, 160, ld, -0.2); }).then(function () {
-        snd('whoosh', 0.6);
-        return self.tween((300 + dl * 120) * sp, function (k) { a.position.x = l0.x + (l1.x - l0.x) * k; a.position.z = l0.z + (l1.z - l0.z) * k; a.position.y = y0 + Math.sin(k * Math.PI) * (0.6 + dl * 0.25); a.userData.ang = -0.2 + k * 0.55; self.lean(a, ld.x, ld.z, a.userData.ang); var u = U(a); if (u) u.uAct.value = -0.6 + k * 1.6; });
+        if (loud) snd('whoosh', 0.5);
+        return self.tween((280 + dl * 120) * sp, function (k) { a.position.x = l0.x + (l1.x - l0.x) * k; a.position.z = l0.z + (l1.z - l0.z) * k; a.position.y = y0 + Math.sin(k * Math.PI) * (0.45 + dl * 0.2); a.userData.ang = -0.2 + k * 0.55; self.lean(a, ld.x, ld.z, a.userData.ang); var u = U(a); if (u) u.uAct.value = -0.6 + k * 1.6; });
       });
     }).then(function () {
-      snd('clash', 0.7); var w = wp(a); self.emit(w.x, BT + 0.05, w.z, 0xd8c8a0, 24, 2.5, 0.35);
-      var ring = new T.Mesh(new T.RingGeometry(0.12, 0.2, 24), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+      if (loud) snd('clash', 0.6); var w = wp(a); self.emit(w.x, BT + 0.05, w.z, 0xd8c8a0, many ? 8 : 20, 2.2, 0.35);
+      var ring = new T.Mesh(new T.RingGeometry(0.1, 0.16, 24), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
       ring.rotation.x = -Math.PI / 2; ring.position.set(w.x, BT + 0.05, w.z); self.scene.add(ring);
-      self.tween(450, function (k) { ring.scale.setScalar(1 + k * 4); ring.material.opacity = 0.8 * (1 - k); }).then(function () { self.scene.remove(ring); });
+      self.tween(450, function (k) { ring.scale.setScalar(1 + k * 3); ring.material.opacity = 0.8 * (1 - k); }).then(function () { self.scene.remove(ring); ring.geometry.dispose(); ring.material.dispose(); });
       return killAll(defs, nx, nz);
     }).then(function () { return act(a, 0, 240, ld, 0); });
   }
@@ -1326,25 +1463,26 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
     var tw = at.map(function (a) {
       if (a === A || !a.userData.home) return Promise.resolve();
       var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0;
-      a.userData.ox = a.userData.oz = 0;
-      return self.tween(420 * sp, function (k) { var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y + (0.066 - p0.y) * e; if (m) m.userData.face = f0 * (1 - e); });
+      a.userData.ox = a.userData.oz = 0; walk(a, 0.7);
+      return self.tween(480 * sp, function (k) { var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y * (1 - e); if (m) m.userData.face = f0 * (1 - e); }).then(function () { walk(a, 0); });
     });
     var x0 = A.position.x, z0 = A.position.z;
     tw.push(march(x0, z0, to.x, to.z, 260 + Math.hypot(to.x - x0, to.z - z0) * 200));
     return Promise.all(tw).then(function () { A.userData.fighting = false; self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); });
   }
   // Truppen drehen sich zueinander, dann je nach Kampfstil
-  var dc = centroid(dt), ac = centroid(at);
   var face = Promise.all(at.map(function (a) { return tFace(a, dc.x, dc.z, 200); }).concat(dt.map(function (d) { return tFace(d, ac.x, ac.z, 240); })));
   var x0 = A.position.x, z0 = A.position.z, stopD = dist > 1.6 ? dist - 1.15 : Math.max(0, dist - 0.85), battle;
-  if (style === 'magic' || style === 'shoot' || style === 'breath') battle = face.then(function () { return Promise.all(at.map(function (a, j) { return volley(a, groups[j], j); })); });
-  else if (style === 'leap') battle = face.then(function () { return Promise.all(at.map(function (a, j) { return leapAt(a, groups[j], j); })); });
+  function each(f) { return Promise.all(at.map(function (a, j) { return f(a, groups[j]); })); }
+  if (style === 'magic' || style === 'shoot' || style === 'breath') battle = face.then(function () { return each(volley); });
+  else if (style === 'leap') battle = face.then(function () { return each(leapAt); });
   else if (style === 'charge') battle = face.then(function () {
     snd('whoosh');
     return march(x0, z0, x0 - ux * 0.15, z0 - uz * 0.15, 200).then(function () { return march(x0 - ux * 0.15, z0 - uz * 0.15, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 120, true); });
-  }).then(function () { snd('clash'); return Promise.all(at.map(function (a, j) { return duel(a, groups[j], j * 0.3); })); });
-  else battle = Promise.all([face, march(x0, z0, x0 + ux * stopD, z0 + uz * stopD, 200 + stopD * 260)])
-    .then(function () { return Promise.all(at.map(function (a, j) { return duel(a, groups[j], j); })); });
+  }).then(function () { snd('clash'); st = st * 0.4; return each(duel); });
+  else battle = face.then(function () { if (!short) snd('whoosh', 0.7); return Promise.all(at.map(function (a, j) { return wait(j * 12).then(function () { return act(a, -1.1, 200, null); }); })); })
+    .then(function () { return march(x0, z0, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 200, true); })
+    .then(function () { return each(duel); });
   return battle.then(function () { if (D.parent) self.pieceGroup.remove(D); return reform(); });
 };
 
@@ -1388,9 +1526,10 @@ Board3D.prototype.makePiece = function (p) {
   var bodyMat = statue ? this.komaMats(ks, col, promoStatue) : new T.MeshStandardMaterial({ color: kanjiStyle ? 0xe8c48a : (col === 0 ? 0x1d5e7a : 0x7a1d24), roughness: kanjiStyle ? 0.7 : 0.35, metalness: kanjiStyle ? 0 : 0.2, map: kanjiStyle ? Board3D._grain : null });
   var body = new T.Mesh(this.komaGeo, bodyMat); body.castShadow = true; body.receiveShadow = true; g.add(body);
   if (army) {
-    // flache Plattform statt Stein, Kanji auf dem Feldzeichen hinten rechts
-    body.scale.set(1.1, 0.3, 1.1);
-    var ban = this.armyBanner(t, col); ban.position.set(0.36, 0.066, 0.3); if (col === 1) ban.rotation.y = Math.PI; g.add(ban); g.userData.banner = ban;
+    // kein Stein: Regiment steht im Gelände, Kanji auf dem Feldzeichen (Standartenträger hinten), unsichtbarer Klickbereich
+    g.remove(body);
+    var hero = Board3D.armyHero(t), ban = this.armyBanner(t, col); ban.position.set(hero ? 0.3 : 0.06, 0, hero ? 0.22 : 0.42); if (col === 1) ban.rotation.y = Math.PI; g.add(ban); g.userData.banner = ban;
+    var hb = new T.Mesh(this._hitGeo || (this._hitGeo = new T.BoxGeometry(0.9, 0.5, 0.9)), this._hitMat || (this._hitMat = new T.MeshBasicMaterial())); hb.visible = false; hb.position.y = 0.25; g.add(hb);
   }
   var face = new T.Mesh(new T.PlaneGeometry(0.66, 0.66), new T.MeshStandardMaterial({ map: this.faceTexture(t, col), transparent: true, roughness: statue ? 0.35 : 0.5, metalness: statue && ks === 'stein' ? 0.8 : 0, emissive: 0xffffff, emissiveMap: this.faceTexture(t, col), emissiveIntensity: kanjiStyle ? 0 : statue ? (ks === 'stein' ? 0.18 : 0) : 0.35, depthWrite: false }));
   face.rotation.x = -Math.PI / 2; face.position.set(0, 0.225, 0.04); if (!army) g.add(face);
@@ -1401,7 +1540,7 @@ Board3D.prototype.makePiece = function (p) {
   }
   if (promoStatue && ps === 'fahne' && !army) { var fl = this.promoFlag(); fl.position.set(0.3, 0.2, -0.28); if (col === 1) fl.rotation.y = Math.PI; g.add(fl); }
   if (this.settings.models !== false && this.quality === 'high') {
-    var url = this.figUrl(t, col); if (army) url = url.replace(/\.glb$/, '_lo.glb');
+    var url = this.figUrl(t, col); if (army) url = url.replace(/\.glb$/, Board3D.armyHero(t) ? '_lo.glb' : '_lo2.glb');
     var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, c) { this.attachGlb(g, s, c); }.bind(this);
     if (src) put(g, src, t, col);
     else if (!url && this.theme.id !== 'feudal') { /* Modell fehlt noch: nur Sockel mit Kanji */ }
@@ -1426,6 +1565,7 @@ Board3D.prototype.sync = function (state) {
 };
 Board3D.prototype.setHighlights = function (h) {
   this.hl = h || {}; h = this.hl;
+  if (this.look === 'feld') this.showTag(this.hoverSq != null ? this.hoverSq : h.selected);
   var col = new Array(81).fill(null), dots = new Array(81).fill(0);
   function set(sq, c) { if (sq >= 0 && sq < 81) col[sq] = c; }
   (h.threats || []).forEach(function (s) { set(s, 0xff2a2a); });
@@ -1460,18 +1600,19 @@ Board3D.prototype.initInput = function () {
   el.style.touchAction = 'none';
   el.addEventListener('pointerdown', function (e) { el.setPointerCapture(e.pointerId); ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; var ids = Object.keys(ptrs); if (ids.length === 1) { start = { x: e.clientX, y: e.clientY, th: self.orbit.thetaGoal, ph: self.orbit.phi }; moved = false; } else if (ids.length === 2) { var a = ptrs[ids[0]], b = ptrs[ids[1]]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); rad0 = self.orbit.radius; moved = true; } });
   el.addEventListener('pointermove', function (e) {
-    if (!ptrs[e.pointerId]) return; ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; var ids = Object.keys(ptrs);
+    if (!ptrs[e.pointerId]) { if (e.pointerType === 'mouse' && self.look === 'feld') self.hoverAt(e.clientX, e.clientY); return; } ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; var ids = Object.keys(ptrs);
     if (ids.length === 2) { var a = ptrs[ids[0]], b = ptrs[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) { self.orbit.radius = Math.max(8, Math.min(40, rad0 * pinch0 / d)); self.orbit.user = true; } return; }
     if (!start) return; var dx = e.clientX - start.x, dy = e.clientY - start.y;
     if (!moved && Math.hypot(dx, dy) > 10) moved = true;
     if (moved) { self.orbit.thetaGoal = start.th - dx * 0.008; self.orbit.theta = self.orbit.thetaGoal; self.orbit.phi = Math.max(0.12, Math.min(1.25, start.ph - dy * 0.006)); self.orbit.user = true; }
   });
   function up(e) { var was = ptrs[e.pointerId]; delete ptrs[e.pointerId]; if (!Object.keys(ptrs).length) { if (was && !moved && start) self.pick(e.clientX, e.clientY); start = null; pinch0 = 0; } }
-  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', function (e) { delete ptrs[e.pointerId]; start = null; });
+  el.addEventListener('pointerup', up); el.addEventListener('pointerleave', function () { if (self.look === 'feld') self.hoverAt(null); }); el.addEventListener('pointercancel', function (e) { delete ptrs[e.pointerId]; start = null; });
   el.addEventListener('wheel', function (e) { e.preventDefault(); self.orbit.radius = Math.max(8, Math.min(40, self.orbit.radius * (1 + e.deltaY * 0.001))); self.orbit.user = true; }, { passive: false });
   el.addEventListener('dblclick', function () { self.resetCamera(); });
 };
-Board3D.prototype.pick = function (cx, cy) {
+Board3D.prototype.pick = function (cx, cy) { var sq = this.pickSq(cx, cy); if (sq != null && this.onSquare) this.onSquare(sq); };
+Board3D.prototype.pickSq = function (cx, cy) {
   var rect = this.renderer.domElement.getBoundingClientRect(), T = THREE;
   var ndc = new T.Vector2((cx - rect.left) / rect.width * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
   var ray = new T.Raycaster(); ray.setFromCamera(ndc, this.camera);
@@ -1481,8 +1622,38 @@ Board3D.prototype.pick = function (cx, cy) {
   if (hits.length) { var o = hits[0].object; while (o.parent && o.parent !== this.pieceGroup) o = o.parent; x = o.position.x; z = o.position.z; }
   else { var pl = new T.Plane(new T.Vector3(0, 1, 0), -this.BT), pt = new T.Vector3(); if (!ray.ray.intersectPlane(pl, pt)) return; x = pt.x; z = pt.z; }
   var c = Math.round(x + 4), r = Math.round(z + 4);
-  if (c < 0 || c > 8 || r < 0 || r > 8) return;
-  if (this.onSquare) this.onSquare(r * 9 + c);
+  if (c < 0 || c > 8 || r < 0 || r > 8) return null;
+  return r * 9 + c;
+};
+// Armee-Modus: großes Schild über dem Regiment (Maus darüber oder ausgewählt): Kanji, Name, echter Name
+Board3D.prototype.showTag = function (sq) {
+  var T = THREE, p = sq != null && sq >= 0 && this.state ? this.state.board[sq] : 0;
+  if (!this.tag) { this.tag = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthTest: false })); this.tag.renderOrder = 999; this.tag.visible = false; this.scene.add(this.tag); this.tagTex = {}; }
+  if (!p) { this.tag.visible = false; return; }
+  var t = Math.abs(p), col = p > 0 ? 0 : 1, key = t + ':' + col, tex = this.tagTex[key];
+  if (!tex) {
+    var c = document.createElement('canvas'); c.width = 512; c.height = 224; var x = c.getContext('2d');
+    tex = this.tagTex[key] = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace;
+    var u = this.theme.units[t] || {}, kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji, ink = t >= 9 ? (col === 0 ? '#ff5a40' : '#c41e1e') : col === 0 ? '#ecd08a' : '#1b1b1b';
+    var draw = function () {
+      x.clearRect(0, 0, 512, 224); x.fillStyle = col === 0 ? 'rgba(22,19,15,.93)' : 'rgba(241,237,228,.95)';
+      x.beginPath(); x.roundRect(6, 6, 500, 212, 26); x.fill(); x.lineWidth = 6; x.strokeStyle = col === 0 ? '#c9a24a' : '#8a8f96'; x.stroke();
+      x.fillStyle = ink; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = 'bold ' + (kan && kan.length > 1 ? 92 : 150) + 'px "Noto Serif JP", serif';
+      if (kan && kan.length > 1) { x.fillText(kan[0], 112, 66); x.fillText(kan[1], 112, 160); } else x.fillText(kan || '?', 112, 118);
+      x.textAlign = 'left'; x.fillStyle = col === 0 ? '#f3e6c4' : '#1b1b1b'; x.font = 'bold 44px system-ui, sans-serif'; x.fillText(u.name || '', 214, 92);
+      x.fillStyle = col === 0 ? '#c9b88a' : '#55595e'; x.font = '30px system-ui, sans-serif'; x.fillText(u.real || '', 214, 146);
+      tex.needsUpdate = true;
+    };
+    draw(); if (document.fonts) document.fonts.ready.then(draw);
+  }
+  if (this.tag.material.map !== tex) { this.tag.material.map = tex; this.tag.material.needsUpdate = true; }
+  var q = this.sqPos(sq); this.tag.position.set(q.x, this.BT + 1.55, q.z); this.tag.scale.set(2.3, 1.0, 1); this.tag.visible = true;
+};
+Board3D.prototype.hoverAt = function (cx, cy) {
+  var sq = cx == null ? null : this.pickSq(cx, cy);
+  if (sq != null && !(this.state && this.state.board[sq])) sq = null;
+  if (sq === this.hoverSq) return; this.hoverSq = sq;
+  this.showTag(sq != null ? sq : this.hl && this.hl.selected);
 };
 Board3D.prototype.screenPos = function (sq) {
   var p = this.sqPos(sq), v = new THREE.Vector3(p.x, this.BT + 0.3, p.z).project(this.camera), rect = this.renderer.domElement;
@@ -1516,6 +1687,7 @@ Board3D.prototype.update = function (now, dt) {
     return true;
   });
   this.updateParticles(dt);
+  if (this.armyPools) this.armyDraw();
   if (this.petals) this.updatePetals(dt, now);
 };
 Board3D.prototype.tween = function (dur, f, delay) { var self = this; return new Promise(function (res) { self.tweens.push({ dur: dur, f: f, done: res, start: delay ? performance.now() + delay : null }); }); };
