@@ -1085,16 +1085,19 @@ Board3D.prototype.attachGlb = function (g, src, col) {
 Board3D.ARMY_TIME = { value: 0 };
 // Regimenter: Spalten x Reihen, Abstand, Höhe und Grundfläche je Soldat (vorne = -z)
 Board3D.ARMY = {
-  inf: { cols: 4, rows: 4, sx: 0.2, sz: 0.19, h: 0.3, foot: 0.19 },
-  col: { cols: 3, rows: 5, sx: 0.2, sz: 0.165, h: 0.3, foot: 0.17 },
-  cav: { cols: 3, rows: 3, sx: 0.27, sz: 0.26, h: 0.38, foot: 0.26 },
-  line: { cols: 4, rows: 3, sx: 0.2, sz: 0.23, h: 0.33, foot: 0.2 },
-  elite: { cols: 3, rows: 3, sx: 0.25, sz: 0.25, h: 0.37, foot: 0.24 },
+  inf: { cols: 6, rows: 4, sx: 0.155, sz: 0.2, h: 0.27, foot: 0.15 },     // Bauer: 24, dicht gedrängt
+  col: { cols: 3, rows: 5, sx: 0.2, sz: 0.165, h: 0.3, foot: 0.17 },     // Lanze: 15 in Kolonne
+  cav: { cols: 4, rows: 2, sx: 0.24, sz: 0.3, h: 0.38, foot: 0.26 },     // Springer: 8 Reiter
+  line: { cols: 4, rows: 3, sx: 0.2, sz: 0.23, h: 0.32, foot: 0.2 },     // Silber: 12
+  gold: { cols: 3, rows: 3, sx: 0.24, sz: 0.24, h: 0.34, foot: 0.22 },   // Gold: 9
+  vet: { cols: 3, rows: 3, sx: 0.24, sz: 0.24, h: 0.36, foot: 0.23 },    // befördert 9–12: 9 Veteranen
+  elite: { cols: 3, rows: 2, sx: 0.28, sz: 0.3, h: 0.4, foot: 0.27 },    // Läufer: 6
+  heavy: { cols: 2, rows: 2, sx: 0.34, sz: 0.32, h: 0.46, foot: 0.32 },  // Turm: 4 schwere Krieger
   hero: { cols: 1, rows: 1, sx: 0, sz: 0, h: 0.72, foot: 0.8 }
 };
-// Bauer 16, Lanze 15 in Kolonne, Springer 9 Reiter, Silber/Gold 12 in Linie, Läufer/Turm 9 Elite, König und Drachen als Held
-Board3D.ARMY_TYPE = { 1: 'inf', 2: 'col', 3: 'cav', 4: 'line', 5: 'line', 6: 'elite', 7: 'elite', 8: 'hero', 13: 'hero', 14: 'hero' };
-Board3D.armyHero = function (t) { var bt = t >= 9 && t <= 12 ? t - 8 : t; return Board3D.ARMY_TYPE[bt] === 'hero'; };
+// je stärker die Figur, desto weniger, aber größere Soldaten; König und Drachen als Held allein
+Board3D.ARMY_TYPE = { 1: 'inf', 2: 'col', 3: 'cav', 4: 'line', 5: 'gold', 6: 'elite', 7: 'heavy', 8: 'hero', 9: 'vet', 10: 'vet', 11: 'vet', 12: 'vet', 13: 'hero', 14: 'hero' };
+Board3D.armyHero = function (t) { return Board3D.ARMY_TYPE[t] === 'hero'; };
 Board3D.rnd = function (seed) { var s = seed * 9301 + 49297; return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; };
 // Leerlauf + Kampfhaltung (kein Skelett nötig): Atmen, Oberkörper schaut sich um, Gewicht verlagern, Gehen, Ausholen/Zuschlagen
 Board3D.ARMY_VS = [
@@ -1208,7 +1211,7 @@ Board3D.prototype.armyBanner = function (t, col) {
   return g;
 };
 Board3D.prototype.buildSquad = function (g, src, t, col) {
-  var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[bt] || 'line'];
+  var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[t] || 'line'];
   if (!src.userData.idle) { src.traverse(function (o) { if (o.isMesh) self.idleAttr(o.geometry); }); src.userData.idle = true; }
   var mesh0 = null; src.traverse(function (o) { if (o.isMesh && !mesh0) mesh0 = o; }); if (!mesh0) return;
   var rim = t >= 9 && this.settings.promoStyle === 'glanz', pk = mesh0.geometry.uuid + ':' + col + (rim ? 'r' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101 + (this._squadN = (this._squadN || 0) + 1) * 7919), fa = (rnd() - .5) * 0.12, fox = (rnd() - .5) * 0.07, foz = (rnd() - .5) * 0.06;
