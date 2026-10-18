@@ -1,0 +1,10 @@
+{
+  "name": "Shogi: Pfad des Shōgun",
+  "short_name": "Shogi",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#140f24",
+  "theme_color": "#140f24",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

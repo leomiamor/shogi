@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#140f24">
+<title>Shogi: Pfad des Shōgun</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;900&family=Cinzel:wght@700;900&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <canvas id="bgfx"></canvas>
+
+  <!-- Startbildschirm -->
+  <section id="scr-title" class="screen active">
+    <div class="title-sky"><div class="sun"></div><div class="mount m1"></div><div class="mount m2"></div><div class="mount m3"></div></div>
+    <div class="title-box">
+      <div class="logo-kanji">将棋</div>
+      <h1>SHOGI</h1>
+      <div class="logo-sub" id="theme-name">Pfad des Shōgun</div>
+      <div id="tap-start" class="tap-start">Tippen zum Beginnen</div>
+      <div id="main-menu" class="menu hidden">
+        <div id="profile-badge" class="profile-badge owner-only"></div>
+        <button class="btn big owner-only" data-go="map"><span>⛩</span> Kampagne</button>
+        <button class="btn owner-only" data-go="puzzles"><span>🧩</span> Rätsel</button>
+        <button class="btn owner-only" data-go="battle"><span>⚔</span> Gefecht gegen KI</button>
+        <button class="btn" data-go="duel"><span>🏯</span> Duell</button>
+        <button class="btn owner-only" data-go="rating"><span>📈</span> Wertung</button>
+        <button class="btn owner-only hidden" id="btn-resume"><span>↻</span> Fortsetzen</button>
+        <div class="menu-row">
+          <button class="btn small owner-only" data-go="codex">📜 Kodex</button>
+          <button class="btn small" data-go="settings">⚙ Einstellungen</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Kampagnenkarte -->
+  <section id="scr-map" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Pfad des Shōgun</h2><div class="xp-mini" id="xp-mini"></div></header>
+    <div class="map-wrap"><div id="map" class="map"></div></div>
+    <div id="chapter-panel" class="panel hidden"></div>
+  </section>
+
+  <!-- Rätsel -->
+  <section id="scr-puzzles" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Rätsel-Dojo</h2></header>
+    <div id="puzzle-list" class="cards"></div>
+  </section>
+
+  <!-- Gefecht -->
+  <section id="scr-battle" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Gefecht</h2></header>
+    <div id="opp-list" class="cards"></div>
+  </section>
+
+  <!-- Duell -->
+  <section id="scr-duel" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Duell</h2></header>
+    <div class="duel-box">
+      <div class="card wide">
+        <h3>🎌 Vorgabe (optional)</h3>
+        <p>Der Stärkere spielt Oni (oben), nimmt Figuren weg und zieht zuerst. So wird es fair.</p>
+        <div class="row"><select id="duel-hc"></select></div>
+        <small id="duel-hc-tip" class="owner-only" style="color:var(--gold)"></small>
+      </div>
+      <div class="card wide">
+        <h3>📱 Ein Handy, hin und her</h3>
+        <p>Ihr reicht das Gerät weiter. Das Brett dreht sich nach jedem Zug.</p>
+        <button class="btn" id="btn-hotseat">Hot-Seat starten</button>
+      </div>
+      <div class="card wide">
+        <h3>🌐 Jeder am eigenen Handy</h3>
+        <p>Erstelle eine Partie und schick den Link. Die Partie bleibt gespeichert, ihr könnt auch über Stunden Zug um Zug spielen.</p>
+        <div class="row"><label>Deine Farbe</label>
+          <select id="duel-color"><option value="0">Kitsune (zieht zuerst)</option><option value="1">Oni</option><option value="r">Zufall</option></select></div>
+        <button class="btn" id="btn-create">Partie erstellen</button>
+        <div class="row"><input id="duel-code" maxlength="6" placeholder="CODE" autocomplete="off"><button class="btn" id="btn-join">Beitreten</button></div>
+        <div id="duel-recent"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Wertung -->
+  <section id="scr-rating" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Wertung</h2></header>
+    <div id="rating" class="cards"></div>
+  </section>
+
+  <!-- Kodex -->
+  <section id="scr-codex" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Kodex der Einheiten</h2></header>
+    <div id="codex" class="cards"></div>
+  </section>
+
+  <!-- Einstellungen -->
+  <section id="scr-settings" class="screen">
+    <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Einstellungen</h2></header>
+    <div id="settings" class="settings"></div>
+  </section>
+
+  <!-- Spiel -->
+  <section id="scr-game" class="screen">
+    <div class="g-side g-top">
+      <div class="hud" id="hud-top"></div>
+      <div class="hand" id="hand-top"></div>
+    </div>
+    <div class="board-wrap" id="board-wrap"><div id="board" class="board"></div><div id="pops"></div><div id="banner" class="banner"></div></div>
+    <div class="g-side g-bot">
+      <div class="hand" id="hand-bot"></div>
+      <div class="hud" id="hud-bot"></div>
+    </div>
+    <div class="toolbar" id="toolbar"></div>
+    <div id="coach" class="coach hidden"></div>
+    <div id="goalbar" class="goalbar hidden"></div>
+    <div id="taunt" class="taunt"></div>
+  </section>
+
+  <div id="modal" class="modal hidden"><div class="modal-box" id="modal-box"></div></div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script type="importmap">{ "imports": { "three": "./js/vendor/three-shim.js" } }</script>
+<script>window.Models = { ready: function (cb) { (window.__modelsWaiting = window.__modelsWaiting || []).push(cb); } };</script>
+<script type="module" src="js/models.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/rating.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/theme.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/lessons.js"></script>
+<script src="js/puzzles.js"></script>
+<script src="js/board2d.js"></script>
+<script src="js/figures3d.js"></script>
+<script src="js/board3d.js"></script>
+<script src="js/net.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

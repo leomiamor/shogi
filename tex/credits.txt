@@ -1,0 +1,5 @@
+Texturen und HDRIs von Poly Haven (polyhaven.com), Lizenz CC0.
+tatami_mat, japanese_cedar_planks, lacquered_cherry_wood, ash_veneer, slate_floor; HDRI ferndale_studio_09, studio_kontrast_01.
+plywood, gravel_floor_02, mossy_rock, japanese_stone_wall, monastery_stone_floor; Himmel (Tonemapped JPG, verkleinert): rogland_clear_night, kloppenheim_02_puresky.
+Editionen: metal_plate, concrete_floor_painted, asphalt_02, castle_brick_07, cobblestone_floor_001, rock_face_03, forest_ground_04, bark_brown_02; Himmel: modern_buildings_night, qwantani_dusk_2_puresky.
+Hunde: leafy_grass, coast_sand_01, brown_planks_03, wood_floor; Himmel: kloofendal_38d_partly_cloudy_puresky, qwantani_sunset_puresky.
