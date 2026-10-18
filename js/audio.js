@@ -1,12 +1,17 @@
 // Sound komplett synthetisch (WebAudio), keine Dateien nötig.
 var Sfx = (function () {
   var ctx = null, master, sfxGain, musicGain, noiseBuf, musicOn = false, musicTimer = null, intensity = 0;
-  var vol = { sfx: 0.8, music: 0.35 };
+  var vol = { sfx: 0.8, music: 0.35, mute: false }, wantMusic = false;
+  // weich nachregeln statt springen (kein Knacksen beim Ziehen)
+  function ramp(g, v) { var t = ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(v, t, 0.04); }
+  function masterLevel() { return vol.mute || document.hidden ? 0 : 1; }
+  // Tab im Hintergrund oder Handy gesperrt: Ton aus
+  document.addEventListener('visibilitychange', function () { if (ctx) ramp(master, masterLevel()); });
   function ensure() {
     if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return true; }
     var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     ctx = new AC();
-    master = ctx.createGain(); master.gain.value = 1;
+    master = ctx.createGain(); master.gain.value = masterLevel();
     var comp = ctx.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 4;
     master.connect(comp); comp.connect(ctx.destination);
     sfxGain = ctx.createGain(); sfxGain.gain.value = vol.sfx; sfxGain.connect(master);
@@ -86,14 +91,19 @@ var Sfx = (function () {
   }
   return {
     unlock: ensure,
-    play: function (name, arg) { if (!ensure() || vol.sfx <= 0) return; try { S[name] && S[name](arg); } catch (e) { } },
+    play: function (name, arg) { if (vol.mute || vol.sfx <= 0 || !ensure()) return; try { S[name] && S[name](arg); } catch (e) { } },
     music: function (on) {
-      if (!ensure()) return; musicOn = on && vol.music > 0;
+      wantMusic = on; if (!ensure()) return; musicOn = on && vol.music > 0;
       clearTimeout(musicTimer);
       if (musicOn) { startDrone(); drone.g.gain.cancelScheduledValues(ctx.currentTime); drone.g.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 2); musicTick(); }
       else if (drone) { drone.g.gain.cancelScheduledValues(ctx.currentTime); drone.g.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); }
     },
     setIntensity: function (x) { intensity = Math.max(0, Math.min(1, x)); },
-    setVolume: function (sfx, music) { vol.sfx = sfx; vol.music = music; if (ctx) { sfxGain.gain.value = sfx; musicGain.gain.value = music; } }
+    setVolume: function (sfx, music, mute) {
+      var wasOn = vol.music > 0; vol.sfx = sfx; vol.music = music; vol.mute = !!mute;
+      if (!ctx) return;
+      ramp(sfxGain, sfx); ramp(musicGain, music); ramp(master, masterLevel());
+      if (wantMusic && wasOn !== music > 0) this.music(true); // Musik von 0 hochgezogen oder auf 0 gestellt
+    }
   };
 })();

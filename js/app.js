@@ -9,7 +9,7 @@
   function cyrb(str) { var h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (var i = 0; i < str.length; i++) { var ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (h2 >>> 0).toString(16) + (h1 >>> 0).toString(16); }
 
   // ---------- Profil ----------
-  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
+  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
   var P = load();
   function load() {
     var d = null; try { d = JSON.parse(localStorage.getItem(STORE)); } catch (e) { }
@@ -33,7 +33,40 @@
   var TH = THEMES[S.theme] && THEMES[S.theme].ready ? THEMES[S.theme] : THEMES.feudal;
   var HAS3D = typeof THREE !== 'undefined';
   if (!HAS3D && S.render === '3d') S.render = '2d';
-  Sfx.setVolume(S.sfx, S.music);
+  Sfx.setVolume(S.sfx, S.music, S.mute);
+
+  // ---------- Lautstärke ----------
+  // Regler 0–100 % fühlt sich linear an: Pegel = Max · (Regler)²
+  var VMAX = { sfx: 1, music: 0.7 };
+  function volPct(key) { return Math.round(Math.sqrt(Math.min(1, S[key] / VMAX[key])) * 100); }
+  function volIcon() { if (S.mute) return '🔇'; var p = Math.max(volPct('sfx'), volPct('music')); return p === 0 ? '🔇' : p < 34 ? '🔈' : p < 67 ? '🔉' : '🔊'; }
+  function volRefresh() { document.querySelectorAll('.vol-ico').forEach(function (b) { b.textContent = volIcon(); b.classList.toggle('muted', S.mute); }); }
+  function volApply() { Sfx.setVolume(S.sfx, S.music, S.mute); volRefresh(); }
+  function toggleMute() { S.mute = !S.mute; save(); Sfx.unlock(); volApply(); if (!S.mute) Sfx.play('ui'); }
+  function volControls() {
+    var box = h('div', 'vol-box');
+    var mb = h('button', 'btn vol-mute'); box.appendChild(mb);
+    function paintMute() { mb.innerHTML = S.mute ? '🔇 Stumm · tippen für Ton' : '🔊 Ton an · tippen für stumm'; mb.classList.toggle('on', S.mute); box.classList.toggle('is-muted', S.mute); }
+    mb.onclick = function () { toggleMute(); paintMute(); };
+    [['music', '🎵 Musik'], ['sfx', '🔔 Effekte']].forEach(function (o) {
+      var key = o[0], row = h('label', 'vol-row');
+      row.innerHTML = '<span class="vl">' + o[1] + '</span><input type="range" min="0" max="100" step="1"><b class="vp"></b>';
+      var r = row.querySelector('input'), vp = row.querySelector('.vp');
+      function show() { var p = +r.value; vp.textContent = p ? p + ' %' : 'aus'; r.style.setProperty('--p', p + '%'); }
+      r.value = volPct(key); show();
+      r.oninput = function () { var p = +r.value / 100; S[key] = Math.round(VMAX[key] * p * p * 1000) / 1000; if (S.mute && p > 0) { S.mute = false; paintMute(); } show(); volApply(); };
+      r.onchange = function () { save(); if (key === 'sfx') Sfx.play('ui'); };
+      box.appendChild(row);
+    });
+    paintMute(); return box;
+  }
+  function volPanel() {
+    Sfx.unlock();
+    var b = modal('<h2>Lautstärke</h2><div class="vol-slot"></div><p class="vol-tip">Tipp am PC: Taste <b>M</b> schaltet stumm.</p><div class="acts"><button class="btn" id="vol-ok">Fertig</button></div>', 'vol-modal');
+    b.querySelector('.vol-slot').appendChild(volControls());
+    $('#vol-ok').onclick = function () { closeModal(); };
+  }
+  addEventListener('keydown', function (e) { if ((e.key === 'm' || e.key === 'M') && !e.ctrlKey && !e.metaKey && !e.altKey && !/INPUT|TEXTAREA|SELECT/.test((e.target.tagName || ''))) { toggleMute(); } });
   function applyPalette() { document.documentElement.dataset.pal = S.palette; var m = document.querySelector('meta[name=theme-color]'); if (m) m.content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim(); }
   applyPalette();
 
@@ -85,6 +118,8 @@
 
   // Tippen zum Starten (nötig für Audio am Handy)
   $('#tap-start').addEventListener('click', start);
+  $('#vol-fab').addEventListener('click', function (e) { e.stopPropagation(); volPanel(); });
+  volRefresh();
   $('#scr-title').addEventListener('click', function (e) { if (!$('#main-menu').classList.contains('hidden')) return; start(); });
   function start() {
     if (!$('#main-menu').classList.contains('hidden')) return;
@@ -383,8 +418,7 @@
     seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']]);
     seg('models', '3D-Figuren', 'Kleine Einheiten-Modelle auf den Steinen', [[true, 'An'], [false, 'Aus']]);
     seg('pieceStyle', 'Steine', '„Kanji“ trainiert für das echte Holzbrett', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
-    seg('sfx', 'Effekte', '', [[0, 'Aus'], [0.5, 'Leise'], [0.8, 'Normal']]);
-    seg('music', 'Musik', '', [[0, 'Aus'], [0.2, 'Leise'], [0.35, 'Normal']]);
+    var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); box.appendChild(vs);
     if (OWNER && P.skins.length > 1) seg('skin', 'Brett', 'Freigespielt in der Kampagne', P.skins.map(function (k) { return [k, SKINS[k].name]; }));
     if (OWNER && P.titles.length) { var tt = h('div', 'set'); tt.innerHTML = '<div class="l"><b>Titel</b><small>Wird im Profil gezeigt</small></div>'; var tsg = h('div', 'seg'); P.titles.forEach(function (t) { var b = h('button', P.title === t ? 'on' : '', t); b.onclick = function () { P.title = t; save(); renderSettings(); }; tsg.appendChild(b); }); tt.appendChild(tsg); box.appendChild(tt); }
     seg('dots', 'Zugziele anzeigen', 'Grüne Punkte beim Auswählen', [[true, 'An'], [false, 'Aus']]);
@@ -546,6 +580,7 @@
     var tb = $('#toolbar'), self = this; tb.innerHTML = '';
     function btn(label, title, fn, on) { var b = h('button', 'btn' + (on ? ' on' : ''), label); b.title = title; b.onclick = function () { Sfx.play('ui'); fn(b); }; tb.appendChild(b); return b; }
     btn('☰', 'Menü', function () { self.menu(); });
+    btn(volIcon(), 'Lautstärke (M = stumm)', volPanel).classList.add('vol-ico');
     if (this.assist.hint) this.hintBtn = btn(this.boss ? '🦊' + P.charges : '💡', this.boss ? 'Fuchsgeist (kostet 1 Ladung)' : 'Hinweis', function () { self.hint(); });
     if (this.assist.undo) btn('↶', 'Zug zurück', function () { self.undo(); });
     if (OWNER && (this.mode === 'battle' || this.mode === 'lessonBattle')) btn('👁', 'Gefahren-Sicht', function (b) { self.assist.threats = !self.assist.threats; S.threats = self.assist.threats; save(); b.classList.toggle('on', self.assist.threats); self.highlights(); }, this.assist.threats);
