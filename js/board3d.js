@@ -1077,6 +1077,277 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   g.add(m); g.userData.glb = m;
 };
 
+// ---------- Armee-Modus (Test): Trupps in Formation statt Einzelfigur, Regeln bleiben Shogi ----------
+Board3D.ARMY_TIME = { value: 0 };
+// Formationen (lokal, vorne = -z): Plätze [x, z], Höhe und Grundfläche je Soldat
+Board3D.ARMY = {
+  5: { pos: [[0, -0.24], [-0.26, -0.17], [0.26, -0.17], [-0.13, 0.12], [0.13, 0.12]], h: 0.5, foot: 0.3 },
+  3: { pos: [[0, -0.2], [-0.23, 0.11], [0.23, 0.11]], h: 0.62, foot: 0.36 },
+  col: { pos: [[0.02, -0.27], [-0.07, 0], [0.05, 0.26]], h: 0.6, foot: 0.34 },
+  2: { pos: [[-0.18, -0.07], [0.19, 0.08]], h: 0.74, foot: 0.44 },
+  1: { pos: [[0, -0.02]], h: 1.05, foot: 0.85 }
+};
+// Fußsoldaten 5, Lanze als Kolonne, Reiter/Läufer/Turm zu zweit, König und Drachen allein (Helden)
+Board3D.ARMY_TYPE = { 1: 5, 2: 'col', 3: 2, 4: 3, 5: 3, 6: 2, 7: 2, 8: 1, 13: 1, 14: 1 };
+Board3D.rnd = function (seed) { var s = seed * 9301 + 49297; return function () { s = (s * 9301 + 49297) % 233280; return s / 233280; }; };
+// Leerlauf + Kampfhaltung im Vertex-Shader (kein Skelett nötig): Atmen, Umschauen, Gewicht verlagern, Ausholen/Zuschlagen
+Board3D.ARMY_VS = [
+  '#include <begin_vertex>',
+  '{',
+  '  float h = aIdle.x, H = aIdle.y, ph = uPhase, tt = uTime; vec2 c = aIdle.zw, d = transformed.xz - c;',
+  '  d *= 1.0 + sin(tt * 2.2 + ph) * 0.024 * smoothstep(0.35, 0.6, h) * (1.0 - smoothstep(0.78, 0.95, h));',
+  '  float lk = (sin(tt * 0.43 + ph * 1.7) * 0.6 + sin(tt * 0.17 + ph) * 0.4) * 0.32 * smoothstep(0.55, 0.9, h) * (1.0 - abs(uAct));',
+  '  float cs = cos(lk), sn = sin(lk); d = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs);',
+  '  transformed.xz = c + d;',
+  '  float w = h * h;',
+  '  transformed.x += (sin(tt * 0.9 + ph) * 0.03 + sin(tt * 10.0 + ph) * 0.06 * uWalk) * H * w;',
+  '  transformed.z += sin(tt * 0.61 + ph * 1.3) * 0.02 * H * w;',
+  '  transformed.y += (sin(tt * 2.2 + ph) * 0.009 * smoothstep(0.4, 0.8, h) + abs(sin(tt * 10.0 + ph)) * 0.03 * uWalk * h) * H;',
+  '  float up = max(h - 0.38, 0.0) / 0.62; up *= up;',
+  '  transformed.z += uAct * 0.34 * H * up;',
+  '  transformed.y -= abs(uAct) * 0.09 * H * up;',
+  '}'
+].join('\n');
+// Höhe 0..1, Modellhöhe und Mitte je Ecke (für den Shader), einmal pro Geometrie
+Board3D.prototype.idleAttr = function (geo) {
+  if (geo.getAttribute('aIdle')) return;
+  geo.computeBoundingBox(); var b = geo.boundingBox, H = b.max.y - b.min.y || 1, cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2;
+  var p = geo.getAttribute('position'), a = new Float32Array(p.count * 4);
+  for (var i = 0; i < p.count; i++) { a[i * 4] = (p.getY(i) - b.min.y) / H; a[i * 4 + 1] = H; a[i * 4 + 2] = cx; a[i * 4 + 3] = cz; }
+  geo.setAttribute('aIdle', new THREE.BufferAttribute(a, 4));
+};
+// Eigenes Material je Soldat (eigene Phase, Kampfhaltung), das Shader-Programm teilen sich alle
+Board3D.prototype.armyMat = function (col, rim, tint, phase) {
+  var mat = this.statueMat(col, null, false).clone(), u = { uTime: Board3D.ARMY_TIME, uPhase: { value: phase }, uAct: { value: 0 }, uWalk: { value: 0 } };
+  mat.color.offsetHSL(tint * 0.012, 0, tint * 0.04);
+  mat.onBeforeCompile = function (sh) {
+    for (var k in u) sh.uniforms[k] = u[k];
+    sh.vertexShader = 'uniform float uTime, uPhase, uAct, uWalk;\nattribute vec4 aIdle;\n' + sh.vertexShader.replace('#include <begin_vertex>', Board3D.ARMY_VS);
+    if (rim) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.12, 0.05) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2) * 1.6;');
+  };
+  mat.customProgramCacheKey = function () { return rim ? 'army-rim' : 'army'; };
+  mat.userData.u = u;
+  return mat;
+};
+// Feldzeichen mit Kanji: Sente schwarzes Tuch, Gote weißes (wie die 2D-Steine), befördert rotes Kanji
+Board3D.prototype.armyBanner = function (t, col) {
+  var key = 'ban' + t + ':' + col, tex = this.faceTex[key], T = THREE;
+  if (!tex) {
+    var c = document.createElement('canvas'); c.width = 128; c.height = 224; var x = c.getContext('2d');
+    tex = this.faceTex[key] = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace;
+    var u = this.theme.units[t], kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji;
+    var draw = function () {
+      x.fillStyle = col === 0 ? '#16130f' : '#f1ede4'; x.fillRect(0, 0, 128, 224);
+      x.strokeStyle = col === 0 ? '#c9a24a' : '#8a8f96'; x.lineWidth = 7; x.strokeRect(6, 6, 116, 212);
+      x.fillStyle = t >= 9 ? (col === 0 ? '#ff5a40' : '#c41e1e') : col === 0 ? '#ecd08a' : '#1b1b1b';
+      x.font = 'bold ' + (kan.length > 1 ? 70 : 92) + 'px "Noto Serif JP", serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      if (kan.length > 1) { x.fillText(kan[0], 64, 72); x.fillText(kan[1], 64, 152); } else x.fillText(kan, 64, 114);
+      tex.needsUpdate = true;
+    };
+    draw(); if (document.fonts) document.fonts.ready.then(draw);
+  }
+  var g = new T.Group(), dark = this._poleMat || (this._poleMat = new T.MeshStandardMaterial({ color: 0x1a1010, roughness: 0.4 }));
+  var pole = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, 0.9, 6), dark); pole.position.y = 0.45; g.add(pole);
+  var top = new T.Mesh(new T.ConeGeometry(0.025, 0.07, 6), this.statueMat(col, null, false)); top.position.y = 0.93; g.add(top);
+  var piv = new T.Group(); piv.position.y = 0.66; g.add(piv);
+  var flag = new T.Mesh(new T.PlaneGeometry(0.22, 0.38), new T.MeshStandardMaterial({ map: tex, roughness: 0.75, side: T.DoubleSide })); flag.position.x = 0.115; piv.add(flag);
+  g.userData.piv = piv;
+  return g;
+};
+Board3D.prototype.buildSquad = function (g, src, t, col) {
+  var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[bt] || 3];
+  if (!src.userData.idle) { src.traverse(function (o) { if (o.isMesh) self.idleAttr(o.geometry); }); src.userData.idle = true; }
+  var rim = t >= 9 && this.settings.promoStyle === 'glanz', troops = [];
+  F.pos.forEach(function (p, i) {
+    var r = Board3D.rnd(bt * 31 + i * 7 + col * 101), s = (i === 0 && F.pos.length > 1 ? 1.08 : 1) * (0.93 + 0.12 * r()) * (t >= 9 ? 1.06 : 1);
+    var m = Models.fit(src, F.h * s, F.foot * s), tr = new T.Group(), mat = self.armyMat(col, rim, (i % 3) - 1, Math.random() * 6.283);
+    m.traverse(function (o) { if (o.isMesh) { o.material = mat; o.castShadow = true; } });
+    if (i % 2 === 1) m.scale.x *= -1; // gespiegelt: wirkt wie ein anderer Soldat
+    m.userData.ry0 = Math.PI + (r() - 0.5) * 0.35; m.rotation.y = m.userData.ry0;
+    tr.add(m); tr.position.set(p[0], 0.066, p[1]);
+    tr.userData = { glb: m, mat: mat, home: { x: p[0], z: p[1] }, hh: F.h * s * 0.8, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 4 };
+    g.add(tr); troops.push(tr);
+  });
+  g.userData.troops = troops;
+};
+// Leerlauf: kleine Schritte in der Formation, umschauen, Fahne weht
+Board3D.prototype.armyIdle = function (g, t, dt) {
+  var k = 1 - Math.exp(-dt / 450), fighting = g.userData.fighting;
+  g.userData.troops.forEach(function (tr) {
+    var u = tr.userData, m = u.glb;
+    if (!fighting) {
+      if (t > u.next) { u.next = t + 3 + Math.random() * 6; u.tx = (Math.random() - .5) * 0.06; u.tz = (Math.random() - .5) * 0.05; u.look = Math.random() < .45 ? 0 : (Math.random() - .5) * 1.1; }
+      var ox = u.ox, oz = u.oz; u.ox += (u.tx - u.ox) * k; u.oz += (u.tz - u.oz) * k;
+      tr.position.x = u.home.x + u.ox; tr.position.z = u.home.z + u.oz;
+      u.mat.userData.u.uWalk.value = Math.min(0.6, Math.hypot(u.ox - ox, u.oz - oz) / Math.max(dt, 1) * 2500);
+    } else u.look = 0;
+    u.lk += (u.look - u.lk) * k;
+    m.rotation.y = m.userData.ry0 + (m.userData.face || 0) + u.lk;
+  });
+  var b = g.userData.banner; if (b) b.userData.piv.rotation.y = Math.sin(t * 1.7 + g.position.x * 2.1 + g.position.z) * 0.3 + Math.sin(t * 4.1 + g.position.z) * 0.06;
+};
+
+// Trupp-Schlacht: Soldaten paarweise im Zweikampf, Verteidiger fallen einer nach dem anderen, Angreifer formieren sich neu
+Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
+  var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.65 : 1;
+  var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
+  var BT = this.BT, colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
+  var at = A.userData.troops || [A], dt = D.userData.troops || [D];
+  A.userData.fighting = D.userData.fighting = true;
+  function snd(n, a) { if (typeof Sfx !== 'undefined') Sfx.play(n, a); }
+  function wait(ms) { return self.tween(ms * sp, function () { }); }
+  function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
+  var o = this.orbit, cam0 = { x: o.target.x, z: o.target.z, r: o.radius }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
+  if (!short) this.tween(450, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e * 0.85; o.target.z = cam0.z + (mz - cam0.z) * e * 0.85; o.radius = cam0.r * (1 - 0.34 * e); });
+  function camBack() { if (short) return; var c1 = { x: o.target.x, z: o.target.z, r: o.radius }; self.tween(650, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; }); }
+  function wp(s) { var v = new T.Vector3(); s.getWorldPosition(v); return v; }
+  function toLocal(s, x, z) { var v = new T.Vector3(x, BT, z); if (s.parent) { s.parent.updateWorldMatrix(true, false); s.parent.worldToLocal(v); } return v; }
+  function rotY(s) { return s.rotation.y + (s.parent && s.parent.userData.troops ? s.parent.rotation.y : 0); }
+  function ldir(s, wx, wz) { var r = rotY(s); return { x: wx * Math.cos(r) - wz * Math.sin(r), z: wx * Math.sin(r) + wz * Math.cos(r) }; }
+  function tFace(s, x, z, dur) {
+    var m = s.userData.glb; if (!m) return Promise.resolve();
+    var p = wp(s), r = rotY(s), wx = x - p.x, wz = z - p.z, lx = wx * Math.cos(r) - wz * Math.sin(r), lz = wx * Math.sin(r) + wz * Math.cos(r);
+    var goal = Math.atan2(-lx, -lz) - ((m.userData.ry0 || 0) - Math.PI), a0 = m.userData.face || 0;
+    while (goal - a0 > Math.PI) goal -= Math.PI * 2; while (goal - a0 < -Math.PI) goal += Math.PI * 2;
+    return self.tween((dur || 160) * sp, function (k) { m.userData.face = a0 + (goal - a0) * (1 - Math.pow(1 - k, 3)); });
+  }
+  function U(s) { return s.userData.mat ? s.userData.mat.userData.u : null; }
+  function walk(s, v) { var u = U(s); if (u) u.uWalk.value = v; }
+  // Haltung: Oberkörper (Shader) + ganzer Körper kippt in Richtung ld
+  function act(s, v, dur, ld, ang) {
+    var u = U(s), a0 = u ? u.uAct.value : 0, g0 = s.userData.ang || 0;
+    return self.tween(dur * sp, function (k) { var e = ease(k); if (u) u.uAct.value = a0 + (v - a0) * e; if (ld) { s.userData.ang = g0 + ((ang || 0) - g0) * e; self.lean(s, ld.x, ld.z, s.userData.ang); } });
+  }
+  function head(s) { var p = wp(s); p.y += s.userData.hh || 0.8; return p; }
+  function sparks(x, y, z, c, n, sh) { self.emit(x, y, z, c, n, 3.5, 0.9); self.emit(x, y, z, 0xffffff, n / 3, 2.2, 1.1); self.shakeAmt = Math.max(self.shakeAmt || 0, sh); }
+  var killed = 0, total = dt.length;
+  function dieT(d, nx, nz) {
+    if (info.onHit) info.onHit();
+    var ld = ldir(d, nx, nz), p0 = d.position.clone(), fall = 1.3 + Math.random() * 0.35, hp = head(d), u = U(d);
+    sparks(hp.x, hp.y - 0.1, hp.z, colA, big ? 36 : 22, big ? 0.3 : 0.18);
+    return self.tween((360 + Math.random() * 120) * sp, function (k) { var e = k * k; self.lean(d, ld.x, ld.z, e * fall); d.position.x = p0.x + ld.x * e * 0.16; d.position.z = p0.z + ld.z * e * 0.16; if (u) u.uAct.value = -0.5 * k; }).then(function () {
+      var w = wp(d); for (var i = 0; i < 3; i++) self.emit(w.x + nx * i * 0.1, BT + 0.1 + i * 0.05, w.z + nz * i * 0.1, dust, 14, 1.3, 0.7);
+      if (++killed === total) { snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.12); }
+      return self.tween(280 * sp, function (k) { d.scale.setScalar(1 - k); d.position.y = p0.y - k * 0.12; });
+    }).then(function () { d.visible = false; });
+  }
+  // Ziele verteilen: Soldat j kämpft gegen die Verteidiger i mit i % Angreiferzahl = j
+  var groups = at.map(function () { return []; });
+  dt.forEach(function (d, i) { groups[i % at.length].push(d); });
+  function centroid(list) { var c = new T.Vector3(); list.forEach(function (d) { c.add(wp(d)); }); return c.multiplyScalar(1 / list.length); }
+  function cheer(a, j) { var ld = ldir(a, ux, uz); return wait(j * 120).then(function () { return act(a, -0.7, 220, ld, -0.1); }).then(function () { return act(a, 0.3, 160, ld, 0.05); }); }
+  function killAll(defs, nx, nz) { return Promise.all(defs.map(function (d, k) { return wait(k * 70).then(function () { return dieT(d, nx, nz); }); })); }
+  // Zweikampf: hingehen, ausholen, zuschlagen, evtl. Gegenschlag, Todesstoß
+  function duel(a, defs, j) {
+    if (!defs.length) return cheer(a, j);
+    var pa, c, nx, nz, ld;
+    return wait(j * 110).then(function () {
+      pa = wp(a); c = centroid(defs); var ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz);
+      var stop = Math.max(0, dl - 0.27), l0 = a.position.clone(), l1 = toLocal(a, pa.x + nx * stop, pa.z + nz * stop), y0 = a.position.y;
+      return Promise.all([tFace(a, c.x, c.z, 120)].concat(defs.map(function (d) { return tFace(d, pa.x, pa.z, 160); }))).then(function () {
+        walk(a, 1);
+        return self.tween((140 + stop * 300) * sp, function (k) { var e = ease(k); a.position.x = l0.x + (l1.x - l0.x) * e; a.position.z = l0.z + (l1.z - l0.z) * e; a.position.y = y0 + Math.abs(Math.sin(k * Math.PI * 2)) * 0.035; });
+      });
+    }).then(function () { walk(a, 0); snd('whoosh', 0.6); return Promise.all([act(a, -0.85, 200, ld, -0.14)].concat(defs.map(function (d) { return act(d, -0.4, 200); }))); })
+      .then(function () { return act(a, 1, 90, ld, 0.22); })
+      .then(function () {
+        snd('clash', 0.7); var h = head(a), q = centroid(defs); sparks((h.x + q.x) / 2, h.y - 0.05, (h.z + q.z) / 2, colA, 18, 0.14);
+        if (short || j % 2) return;
+        // Gegenschlag: Verteidiger schlägt zurück, Angreifer pariert
+        var dd = defs[0], dl = ldir(dd, -nx, -nz);
+        return Promise.all([act(a, -0.3, 160, ld, -0.12), act(dd, -0.7, 160, dl, -0.1)])
+          .then(function () { snd('whoosh', 0.5); return act(dd, 0.9, 100, dl, 0.18); })
+          .then(function () { snd('clash', 0.6); var h2 = head(dd); sparks(h2.x - nx * 0.15, h2.y - 0.05, h2.z - nz * 0.15, 0xffffff, 16, 0.1); return Promise.all([act(dd, -0.2, 160, dl, 0), act(a, -0.9, 180, ld, -0.16)]); })
+          .then(function () { snd('whoosh', 0.6); return act(a, 1, 90, ld, 0.25); });
+      })
+      .then(function () { return killAll(defs, nx, nz); })
+      .then(function () { return act(a, 0, 260, ld, 0); });
+  }
+  // Fernkampf (Schuss, Magie, Feueratem): jeder Soldat feuert auf seine Ziele
+  function volley(a, defs, j) {
+    if (!defs.length) return cheer(a, j);
+    var pa, nx, nz, ld;
+    return wait(j * 170).then(function () {
+      pa = head(a); var c = centroid(defs), ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz);
+      return tFace(a, c.x, c.z, 140);
+    }).then(function () { return act(a, -0.5, 200, ld, -0.1); }).then(function () {
+      var tgt = centroid(defs); tgt.y = BT + 0.35;
+      if (style === 'breath') {
+        snd('fire');
+        return Promise.all([act(a, 0.7, 120, ld, 0.15), self.tween(650 * sp, function (k) { self.emitDir(pa.x + nx * 0.25, pa.y, pa.z + nz * 0.25, k < .5 ? 0xffb030 : 0xff5a20, 5, nx * 6, -1.2, nz * 6, 1.3); })]);
+      }
+      if (style === 'shoot') {
+        var chain = Promise.resolve();
+        for (var s = 0; s < (short ? 1 : 2); s++) chain = chain.then(function () {
+          snd('zap', 0.6);
+          for (var q = 0; q < 6; q++) { var f = q / 6; self.emitDir(pa.x + (tgt.x - pa.x) * f, pa.y + (tgt.y - pa.y) * f, pa.z + (tgt.z - pa.z) * f, 0xfff0a0, 2, nx * 2, -1, nz * 2, 0.25); }
+          sparks(tgt.x, tgt.y, tgt.z, 0xffe08a, 12, 0.08);
+          return act(a, -0.3, 70, ld, -0.12).then(function () { return act(a, 0.2, 90, ld, 0); });
+        });
+        return chain;
+      }
+      snd('zap', 0.7);
+      var bolt = new T.Mesh(new T.SphereGeometry(0.09, 10, 6), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
+      self.scene.add(bolt);
+      return Promise.all([act(a, 0.8, 140, ld, 0.12), self.tween(380 * sp, function (k) {
+        var x = pa.x + (tgt.x - pa.x) * k, y = pa.y + (tgt.y - pa.y) * k + Math.sin(k * Math.PI) * 0.4, z = pa.z + (tgt.z - pa.z) * k;
+        bolt.position.set(x, y, z); self.emitDir(x, y, z, colA, 2, 0, 0, 0, 0.4);
+      })]).then(function () { self.scene.remove(bolt); });
+    }).then(function () { return killAll(defs, nx, nz); })
+      .then(function () { return act(a, 0, 240, ld, 0); });
+  }
+  // Sprung auf die Gegner
+  function leapAt(a, defs, j) {
+    if (!defs.length) return cheer(a, j);
+    var nx, nz, ld;
+    return wait(j * 160).then(function () {
+      var pa = wp(a), c = centroid(defs), ddx = c.x - pa.x, ddz = c.z - pa.z, dl = Math.hypot(ddx, ddz) || 1; nx = ddx / dl; nz = ddz / dl; ld = ldir(a, nx, nz);
+      var l0 = a.position.clone(), l1 = toLocal(a, c.x - nx * 0.18, c.z - nz * 0.18), y0 = a.position.y;
+      return tFace(a, c.x, c.z, 120).then(function () { return act(a, -0.6, 160, ld, -0.2); }).then(function () {
+        snd('whoosh', 0.6);
+        return self.tween((300 + dl * 120) * sp, function (k) { a.position.x = l0.x + (l1.x - l0.x) * k; a.position.z = l0.z + (l1.z - l0.z) * k; a.position.y = y0 + Math.sin(k * Math.PI) * (0.6 + dl * 0.25); a.userData.ang = -0.2 + k * 0.55; self.lean(a, ld.x, ld.z, a.userData.ang); var u = U(a); if (u) u.uAct.value = -0.6 + k * 1.6; });
+      });
+    }).then(function () {
+      snd('clash', 0.7); var w = wp(a); self.emit(w.x, BT + 0.05, w.z, 0xd8c8a0, 24, 2.5, 0.35);
+      var ring = new T.Mesh(new T.RingGeometry(0.12, 0.2, 24), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(w.x, BT + 0.05, w.z); self.scene.add(ring);
+      self.tween(450, function (k) { ring.scale.setScalar(1 + k * 4); ring.material.opacity = 0.8 * (1 - k); }).then(function () { self.scene.remove(ring); });
+      return killAll(defs, nx, nz);
+    }).then(function () { return act(a, 0, 240, ld, 0); });
+  }
+  // ganzer Trupp marschiert, Soldaten im Gleichschritt
+  function march(x0, z0, x1, z1, dur, run) {
+    at.forEach(function (a) { walk(a, run ? 1 : 0.8); });
+    return self.tween(dur * sp, function (k) { var e = run ? k * k : ease(k); A.position.x = x0 + (x1 - x0) * e; A.position.z = z0 + (z1 - z0) * e; }).then(function () { at.forEach(function (a) { walk(a, 0); }); });
+  }
+  // neu formieren und aufs Feld ziehen
+  function reform() {
+    camBack();
+    var tw = at.map(function (a) {
+      if (a === A || !a.userData.home) return Promise.resolve();
+      var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0;
+      a.userData.ox = a.userData.oz = 0;
+      return self.tween(420 * sp, function (k) { var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y + (0.066 - p0.y) * e; if (m) m.userData.face = f0 * (1 - e); });
+    });
+    var x0 = A.position.x, z0 = A.position.z;
+    tw.push(march(x0, z0, to.x, to.z, 260 + Math.hypot(to.x - x0, to.z - z0) * 200));
+    return Promise.all(tw).then(function () { A.userData.fighting = false; self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); });
+  }
+  // Truppen drehen sich zueinander, dann je nach Kampfstil
+  var dc = centroid(dt), ac = centroid(at);
+  var face = Promise.all(at.map(function (a) { return tFace(a, dc.x, dc.z, 200); }).concat(dt.map(function (d) { return tFace(d, ac.x, ac.z, 240); })));
+  var x0 = A.position.x, z0 = A.position.z, stopD = dist > 1.6 ? dist - 1.15 : Math.max(0, dist - 0.85), battle;
+  if (style === 'magic' || style === 'shoot' || style === 'breath') battle = face.then(function () { return Promise.all(at.map(function (a, j) { return volley(a, groups[j], j); })); });
+  else if (style === 'leap') battle = face.then(function () { return Promise.all(at.map(function (a, j) { return leapAt(a, groups[j], j); })); });
+  else if (style === 'charge') battle = face.then(function () {
+    snd('whoosh');
+    return march(x0, z0, x0 - ux * 0.15, z0 - uz * 0.15, 200).then(function () { return march(x0 - ux * 0.15, z0 - uz * 0.15, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 120, true); });
+  }).then(function () { snd('clash'); return Promise.all(at.map(function (a, j) { return duel(a, groups[j], j * 0.3); })); });
+  else battle = Promise.all([face, march(x0, z0, x0 + ux * stopD, z0 + uz * stopD, 200 + stopD * 260)])
+    .then(function () { return Promise.all(at.map(function (a, j) { return duel(a, groups[j], j); })); });
+  return battle.then(function () { if (D.parent) self.pieceGroup.remove(D); return reform(); });
+};
+
 Board3D.prototype.sqPos = function (sq) { var r = (sq / 9) | 0, c = sq % 9; return { x: c - 4, z: r - 4 }; };
 
 Board3D.prototype.faceTexture = function (t, col) {
@@ -1113,24 +1384,31 @@ Board3D.prototype.makePiece = function (p) {
   // Statuen-Modus: Beförderung = Rot wie die roten Kanji echter Steine (Sockel in Zinnoberlack), Spielerfarbe bleibt Gold/Silber
   var statue = this.settings.figSet === 'statue', promoStatue = statue && t >= 9, ps = this.settings.promoStyle || 'lack';
   var ks = this.settings.komaStyle || 'stein';
+  var army = statue && this.settings.army && this.settings.models !== false && this.quality === 'high' && !!this.figUrl(t, col);
   var bodyMat = statue ? this.komaMats(ks, col, promoStatue) : new T.MeshStandardMaterial({ color: kanjiStyle ? 0xe8c48a : (col === 0 ? 0x1d5e7a : 0x7a1d24), roughness: kanjiStyle ? 0.7 : 0.35, metalness: kanjiStyle ? 0 : 0.2, map: kanjiStyle ? Board3D._grain : null });
   var body = new T.Mesh(this.komaGeo, bodyMat); body.castShadow = true; body.receiveShadow = true; g.add(body);
+  if (army) {
+    // flache Plattform statt Stein, Kanji auf dem Feldzeichen hinten rechts
+    body.scale.set(1.1, 0.3, 1.1);
+    var ban = this.armyBanner(t, col); ban.position.set(0.36, 0.066, 0.3); if (col === 1) ban.rotation.y = Math.PI; g.add(ban); g.userData.banner = ban;
+  }
   var face = new T.Mesh(new T.PlaneGeometry(0.66, 0.66), new T.MeshStandardMaterial({ map: this.faceTexture(t, col), transparent: true, roughness: statue ? 0.35 : 0.5, metalness: statue && ks === 'stein' ? 0.8 : 0, emissive: 0xffffff, emissiveMap: this.faceTexture(t, col), emissiveIntensity: kanjiStyle ? 0 : statue ? (ks === 'stein' ? 0.18 : 0) : 0.35, depthWrite: false }));
-  face.rotation.x = -Math.PI / 2; face.position.set(0, 0.225, 0.04); g.add(face);
-  if (statue && ks === 'stein') g.add(this.komaRim());
+  face.rotation.x = -Math.PI / 2; face.position.set(0, 0.225, 0.04); if (!army) g.add(face);
+  if (statue && ks === 'stein' && !army) g.add(this.komaRim());
   if (!kanjiStyle && !statue) {
     var glow = new T.Mesh(new T.RingGeometry(0.4, 0.5, 5, 1, Math.PI / 2), new T.MeshBasicMaterial({ color: new T.Color(f.color), transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false }));
     glow.rotation.x = -Math.PI / 2; glow.position.y = 0.01; g.add(glow);
   }
-  if (promoStatue && ps === 'fahne') { var fl = this.promoFlag(); fl.position.set(0.3, 0.2, -0.28); if (col === 1) fl.rotation.y = Math.PI; g.add(fl); }
+  if (promoStatue && ps === 'fahne' && !army) { var fl = this.promoFlag(); fl.position.set(0.3, 0.2, -0.28); if (col === 1) fl.rotation.y = Math.PI; g.add(fl); }
   if (this.settings.models !== false && this.quality === 'high') {
-    var url = this.figUrl(t, col), src = url && window.Models && Models.cached ? Models.cached(url) : null;
-    if (src) this.attachGlb(g, src, col);
+    var url = this.figUrl(t, col); if (army) url = url.replace(/\.glb$/, '_lo.glb');
+    var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, c) { this.attachGlb(g, s, c); }.bind(this);
+    if (src) put(g, src, t, col);
     else if (!url && this.theme.id !== 'feudal') { /* Modell fehlt noch: nur Sockel mit Kanji */ }
     else {
       var fig = Figures3D.build(T, t, col, f.color); fig.position.set(0, 0.2, -0.02); fig.scale.multiplyScalar(1.6); g.add(fig); g.userData.fig = fig;
       // KI-Figur (TRELLIS.2) nachladen und den Platzhalter ersetzen
-      if (url && src === null && window.Models && Models.load) Models.load(url).then(function (sc) { if (g.userData.fig === fig) { g.remove(fig); g.userData.fig = null; this.attachGlb(g, sc, col); } }.bind(this)).catch(function () {});
+      if (url && src === null && window.Models && Models.load) Models.load(url).then(function (sc) { if (g.userData.fig === fig) { g.remove(fig); g.userData.fig = null; if (army) this.buildSquad(g, sc, t, col); else this.attachGlb(g, sc, col); } }.bind(this)).catch(function () {});
     }
   }
   // Gote zeigt zum Spieler (Sente)
@@ -1225,8 +1503,8 @@ Board3D.prototype.update = function (now, dt) {
   this.lanterns.forEach(function (l, i) { l.intensity = (l.userData.base || 1.6) + Math.sin(now / 90 + i * 3) * 0.15 + Math.random() * 0.2; });
   if (this.checkRing.visible) { var k = 1 + Math.sin(now / 120) * 0.15; this.checkRing.scale.set(k, k, k); this.checkRing.material.opacity = 0.6 + Math.sin(now / 120) * 0.3; }
   // Figuren-Details
-  var t = now / 1000;
-  this.pieceGroup.children.forEach(function (g) { var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) { m.position.y = 0.2 + Math.max(0, Math.sin(t * 1.6 + sd)) * 0.025; m.rotation.y = (m.userData.ry0 || 0) + Math.sin(t * 0.7 + sd) * 0.08; } });
+  var t = now / 1000, me = this; Board3D.ARMY_TIME.value = t;
+  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) { m.position.y = 0.2 + Math.max(0, Math.sin(t * 1.6 + sd)) * 0.025; m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0) + Math.sin(t * 0.7 + sd) * 0.08; } });
   // Tweens
   var self = this;
   this.tweens = this.tweens.filter(function (tw) {
@@ -1310,6 +1588,24 @@ Board3D.prototype.animate = function (info) {
     this.tween(700, function (k) { beam.material.opacity = Math.sin(k * Math.PI) * 0.45; beam.scale.x = beam.scale.z = 1 - k * 0.6; }).then(function () { self.scene.remove(beam); });
   } else { mover = this.pieces[info.from]; var fp = this.sqPos(info.from); from = { x: fp.x, z: fp.z, y: this.BT }; }
   delete this.pieces[info.from];
+  function promoFx() {
+    if (!info.promo) return;
+    // Beförderung: Stein hebt ab, dreht sich um (wie echter Koma), Lichtsäule
+    var pillar = new T.Mesh(new T.CylinderGeometry(0.5, 0.5, 10, 16, 1, true), new T.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+    pillar.position.set(to.x, self.BT + 5, to.z); self.scene.add(pillar);
+    self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * 0.55; }).then(function () { self.scene.remove(pillar); });
+    return self.tween(220, function (k) { mover.position.y = self.BT + k * 0.9; mover.rotation.z = k * Math.PI / 2; }).then(function () {
+      var np = self.makePiece(after.board[info.to]); np.position.copy(mover.position); np.rotation.z = -Math.PI / 2; self.pieceGroup.remove(mover); self.pieceGroup.add(np); mover = np;
+      self.emit(to.x, self.BT + 0.9, to.z, 0xffd76a, 80, 4, 1.4);
+      return self.tween(300, function (k) { np.position.y = self.BT + 0.9 * (1 - k); np.rotation.z = -Math.PI / 2 * (1 - k); });
+    });
+  }
+  // Schlagen = Kampf (Battle-Chess-Stil), außer abgeschaltet
+  if (capG && !info.drop && (this.settings.fights || 'voll') !== 'aus') {
+    info.usesHit = true;
+    var army = mover.userData.troops || capG.userData.troops;
+    return (army ? this.armyFight(info, mover, from, to, capG, this.fightStyle(Shogi && info.promo ? (Shogi.BASE[Math.abs(after.board[info.to])] || 0) : after.board[info.to])) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
+  }
   var dist = Math.hypot(to.x - from.x, to.z - from.z), dur = info.drop ? 380 : 230 + dist * 45, height = info.drop ? 0 : 0.5 + dist * 0.12;
   return this.tween(dur, function (k) {
     var e = info.drop ? k * k : (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
@@ -1328,19 +1624,180 @@ Board3D.prototype.animate = function (info) {
         return self.tween(450, function (k) { capG.position.set(cs.x + (6.5 * side - cs.x) * k, cs.y + Math.sin(k * Math.PI) * 3, cs.z + (4 * side - cs.z) * k); capG.rotation.x = k * 8; capG.scale.setScalar(1 - k * 0.7); });
       }).then(function () { self.pieceGroup.remove(capG); });
     }
-  }).then(function () {
-    if (!info.promo) return;
-    // Beförderung: Stein hebt ab, dreht sich um (wie echter Koma), Lichtsäule
-    var pillar = new T.Mesh(new T.CylinderGeometry(0.5, 0.5, 10, 16, 1, true), new T.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
-    pillar.position.set(to.x, self.BT + 5, to.z); self.scene.add(pillar);
-    self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * 0.55; }).then(function () { self.scene.remove(pillar); });
-    var baseRot = mover.rotation.y;
-    return self.tween(220, function (k) { mover.position.y = self.BT + k * 0.9; mover.rotation.z = k * Math.PI / 2; }).then(function () {
-      var np = self.makePiece(after.board[info.to]); np.position.copy(mover.position); np.rotation.z = -Math.PI / 2; self.pieceGroup.remove(mover); self.pieceGroup.add(np); mover = np;
-      self.emit(to.x, self.BT + 0.9, to.z, 0xffd76a, 80, 4, 1.4);
-      return self.tween(300, function (k) { np.position.y = self.BT + 0.9 * (1 - k); np.rotation.z = -Math.PI / 2 * (1 - k); });
-    });
-  }).then(function () { self.sync(after); });
+  }).then(promoFx).then(function () { self.sync(after); });
+};
+
+// ---------- Kampf beim Schlagen ----------
+// Die Modelle sind starre Statuen (keine Knochen), darum wird der Kampf über den ganzen Körper inszeniert:
+// zueinander drehen, ausholen, zustoßen, Gegenschlag parieren, Todesstoß, Umkippen und zu Staub zerfallen.
+Board3D.FIGHT = { 1: 'melee', 2: 'thrust', 3: 'leap', 4: 'melee', 5: 'melee', 6: 'magic', 7: 'charge', 8: 'melee', 9: 'melee', 10: 'thrust', 11: 'leap', 12: 'melee', 13: 'charge', 14: 'breath' };
+Board3D.FIGHT_ED = { mecha: { 1: 'shoot', 7: 'shoot', 14: 'shoot' }, fantasy: { 3: 'leap' }, hunde: { 6: 'leap' } };
+Board3D.DUST = { gold: 0xffd76a, silber: 0xdfe6ee, bronze: 0xc8803a, jade: 0x7fd6a8, lack: 0xd23a2a };
+Board3D.prototype.fightStyle = function (p) {
+  var t = Math.abs(p), ed = Board3D.FIGHT_ED[this.theme.id] || {};
+  return ed[t] || Board3D.FIGHT[t] || 'melee';
+};
+Board3D.prototype.dustColor = function (col) {
+  var m = this.settings.figSet === 'statue' && (this.settings.statueMats || [])[col];
+  return Board3D.DUST[m] || new THREE.Color(this.theme.factions[col].color).getHex();
+};
+// Modell (nicht den Sockel) zum Punkt drehen; die Leerlauf-Animation addiert userData.face
+Board3D.prototype.faceTo = function (g, x, z, dur) {
+  var m = g.userData.glb; if (!m) return Promise.resolve();
+  var r = g.rotation.y, wx = x - g.position.x, wz = z - g.position.z;
+  var lx = wx * Math.cos(r) - wz * Math.sin(r), lz = wx * Math.sin(r) + wz * Math.cos(r);
+  var goal = Math.atan2(-lx, -lz), a0 = m.userData.face || 0;
+  while (goal - a0 > Math.PI) goal -= Math.PI * 2; while (goal - a0 < -Math.PI) goal += Math.PI * 2;
+  return this.tween(dur || 160, function (k) { m.userData.face = a0 + (goal - a0) * (1 - Math.pow(1 - k, 3)); });
+};
+// Ganzen Körper zur Richtung (dx,dz) neigen (Drehpunkt = Standfläche)
+Board3D.prototype.lean = function (g, dx, dz, ang) {
+  var q0 = g.userData.q0 || (g.userData.q0 = g.quaternion.clone()), L = Math.hypot(dx, dz) || 1;
+  var ax = new THREE.Vector3(dz / L, 0, -dx / L);
+  g.quaternion.setFromAxisAngle(ax, ang).multiply(q0);
+};
+// Partikel mit Richtung (für Feueratem, Schüsse, Magiespur)
+Board3D.prototype.emitDir = function (x, y, z, color, n, vx, vy, vz, spread) {
+  var col = new THREE.Color(color);
+  for (var k = 0; k < n; k++) {
+    var i = this.pi = (this.pi + 1) % this.pN;
+    this.pPos[i * 3] = x; this.pPos[i * 3 + 1] = y; this.pPos[i * 3 + 2] = z;
+    this.pVel[i * 3] = vx + (Math.random() - .5) * spread; this.pVel[i * 3 + 1] = vy + (Math.random() - .5) * spread + 1.2; this.pVel[i * 3 + 2] = vz + (Math.random() - .5) * spread;
+    this.pLife[i] = 1; this.pBase[i * 3] = col.r; this.pBase[i * 3 + 1] = col.g; this.pBase[i * 3 + 2] = col.b;
+  }
+};
+Board3D.prototype.fight = function (info, A, from, to, D) {
+  var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.65 : 1;
+  // Kampfstil nach Angreifer-Typ (vor einer Beförderung)
+  var pt = Math.abs(info.state.board[info.to]); if (info.promo && typeof Shogi !== 'undefined') pt = Shogi.BASE[pt] || pt;
+  var style = this.fightStyle(pt);
+  var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
+  var cell = Math.hypot(this.sqPos(1).x - this.sqPos(0).x, this.sqPos(1).z - this.sqPos(0).z) || 1;
+  var BT = this.BT, head = BT + 0.95, colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col);
+  var big = Math.abs(info.cap) >= 6;
+  function snd(n, a) { if (typeof Sfx !== 'undefined') Sfx.play(n, a); }
+  function wait(ms) { return self.tween(ms * sp, function () { }); }
+  function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
+  // Kamera rückt näher an den Kampf
+  var o = this.orbit, cam0 = { x: o.target.x, z: o.target.z, r: o.radius }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
+  if (!short) this.tween(420, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e * 0.85; o.target.z = cam0.z + (mz - cam0.z) * e * 0.85; o.radius = cam0.r * (1 - 0.3 * e); });
+  function camBack() { if (short) return; var c1 = { x: o.target.x, z: o.target.z, r: o.radius }; self.tween(600, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; }); }
+  // Treffer: Funken, Ruck, Kamerawackler
+  function hit(x, z, color, n, shake) { self.emit(x, BT + 0.7, z, color, n, 4, 1.1); self.emit(x, BT + 0.7, z, 0xffffff, n / 3, 2.5, 1.3); self.shakeAmt = Math.max(self.shakeAmt || 0, shake); }
+  // Verteidiger stirbt: kippt vom Angreifer weg um, zerfällt zu Staub
+  function die() {
+    if (info.onHit) info.onHit();
+    hit(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35);
+    var p0 = D.position.clone();
+    return self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, ux, uz, e * 1.45); D.position.x = p0.x + ux * e * 0.35; D.position.z = p0.z + uz * e * 0.35; }).then(function () {
+      snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
+      for (var i = 0; i < 4; i++) self.emit(D.position.x + ux * i * 0.18, BT + 0.15 + i * 0.08, D.position.z + uz * i * 0.18, dust, 28, 1.6, 0.9);
+      return self.tween(320 * sp, function (k) { D.scale.setScalar(1 - k); D.position.y = p0.y - k * 0.3; });
+    }).then(function () { self.pieceGroup.remove(D); });
+  }
+  // Angreifer zieht aufs Feld und richtet sich wieder auf
+  function stepIn(x0, z0, dur) {
+    var y0 = A.position.y;
+    return self.tween((dur || 260) * sp, function (k) { var e = ease(k); A.position.x = x0 + (to.x - x0) * e; A.position.z = z0 + (to.z - z0) * e; A.position.y = BT + (y0 - BT) * (1 - e) + Math.sin(k * Math.PI) * 0.15; self.lean(A, ux, uz, (A.userData.ang || 0) * (1 - e)); })
+      .then(function () { A.userData.ang = 0; A.quaternion.copy(A.userData.q0 || A.quaternion); var m = A.userData.glb; if (m) { var a0 = m.userData.face || 0; return self.tween(200, function (k) { m.userData.face = a0 * (1 - k); }); } })
+      .then(function () { camBack(); self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); });
+  }
+  // Anlauf zu einem Punkt vor dem Gegner
+  function approach(px, pz, dur, hop) {
+    return self.tween(dur * sp, function (k) { var e = ease(k); A.position.x = from.x + (px - from.x) * e; A.position.z = from.z + (pz - from.z) * e; A.position.y = BT + Math.sin(k * Math.PI) * (hop || 0.2); });
+  }
+  function leanA(ang, dur, push) {
+    var a0 = A.userData.ang || 0, x0 = A.position.x, z0 = A.position.z;
+    return self.tween(dur * sp, function (k) { var e = ease(k); A.userData.ang = a0 + (ang - a0) * e; self.lean(A, ux, uz, A.userData.ang); if (push) { A.position.x = x0 + ux * push * e; A.position.z = z0 + uz * push * e; } });
+  }
+  function leanD(ang, dur, push) {
+    var a0 = D.userData.ang || 0, x0 = D.position.x, z0 = D.position.z;
+    return self.tween(dur * sp, function (k) { var e = ease(k); D.userData.ang = a0 + (ang - a0) * e; self.lean(D, ux, uz, D.userData.ang); if (push) { D.position.x = x0 + ux * push * e; D.position.z = z0 + uz * push * e; } });
+  }
+  var face = Promise.all([this.faceTo(A, to.x, to.z), this.faceTo(D, from.x, from.z)]);
+
+  if (style === 'magic' || style === 'shoot' || style === 'breath') {
+    // Fernkampf: aus der Distanz, dann aufs Feld
+    var bolt = null;
+    return face.then(function () { snd('whoosh'); return leanA(-0.22, 260); }).then(function () {
+      if (style === 'magic') {
+        snd('zap');
+        bolt = new T.Mesh(new T.SphereGeometry(0.16, 12, 8), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
+        self.scene.add(bolt);
+        return Promise.all([leanA(0.18, 160), self.tween((300 + dist * 40) * sp, function (k) {
+          var x = from.x + dx * k, z = from.z + dz * k, y = head + Math.sin(k * Math.PI) * 0.8;
+          bolt.position.set(x, y, z); bolt.scale.setScalar(1 + Math.sin(k * 30) * 0.2);
+          self.emitDir(x, y, z, colA, 3, 0, 0, 0, 0.6);
+        })]).then(function () { self.scene.remove(bolt); });
+      }
+      if (style === 'shoot') {
+        var shots = short ? 2 : 3, chain = Promise.resolve();
+        for (var s = 0; s < shots; s++) chain = chain.then(function () {
+          snd('zap'); hit(to.x - ux * 0.2, to.z - uz * 0.2, 0xffe08a, 18, 0.12);
+          for (var j = 0; j < 8; j++) { var q = j / 8; self.emitDir(from.x + dx * q, head - 0.1, from.z + dz * q, 0xfff0a0, 2, ux * 2, -1, uz * 2, 0.3); }
+          return Promise.all([leanA(-0.12, 60), leanD(-0.14, 90)]).then(function () { return Promise.all([leanA(0, 90), leanD(0, 90)]); });
+        });
+        return chain;
+      }
+      // Feueratem
+      snd('fire');
+      return self.tween(700 * sp, function (k) {
+        var v = 6.5;
+        self.emitDir(from.x + ux * 0.4, head, from.z + uz * 0.4, k < .5 ? 0xffb030 : 0xff5a20, 6, ux * v, -0.8, uz * v, 1.4);
+        self.lean(D, ux, uz, -0.12 + Math.sin(k * 40) * 0.05);
+      });
+    }).then(die).then(function () { return stepIn(A.position.x, A.position.z, 200 + dist * 40); });
+  }
+
+  if (style === 'leap') {
+    // Sprung: hoch in die Luft, landet auf dem Gegner
+    var x0 = A.position.x, z0 = A.position.z;
+    return face.then(function () { return leanA(-0.2, 180); }).then(function () {
+      snd('whoosh');
+      return self.tween((380 + dist * 30) * sp, function (k) {
+        var stopK = 1 - 0.45 * cell / dist, e = k * stopK;
+        A.position.x = x0 + dx * e; A.position.z = z0 + dz * e; A.position.y = BT + Math.sin(k * Math.PI) * (1.6 + dist * 0.15) + k * 0.5;
+        self.lean(A, ux, uz, -0.2 + k * 0.6); A.userData.ang = -0.2 + k * 0.6;
+        if (k > .55) { D.userData.ang = -(k - .55) * 0.5; self.lean(D, ux, uz, D.userData.ang); }
+      });
+    }).then(function () {
+      snd('clash'); self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 40, 3, 0.4);
+      var ring = new T.Mesh(new T.RingGeometry(0.2, 0.32, 32), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.8, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(to.x, BT + 0.05, to.z); self.scene.add(ring);
+      self.tween(500, function (k) { ring.scale.setScalar(1 + k * 6); ring.material.opacity = 0.8 * (1 - k); }).then(function () { self.scene.remove(ring); });
+      return wait(60);
+    }).then(die).then(function () { return stepIn(A.position.x, A.position.z, 220); });
+  }
+
+  if (style === 'charge') {
+    // Ansturm: kurz zurücksetzen, dann volle Wucht
+    var sx = to.x - ux * cell * 0.55, sz = to.z - uz * cell * 0.55, bx = from.x - ux * 0.25, bz = from.z - uz * 0.25;
+    return face.then(function () {
+      return self.tween(220 * sp, function (k) { var e = ease(k); A.position.x = from.x + (bx - from.x) * e; A.position.z = from.z + (bz - from.z) * e; A.userData.ang = -0.18 * e; self.lean(A, ux, uz, A.userData.ang); });
+    }).then(function () {
+      snd('whoosh');
+      return self.tween((160 + dist * 32) * sp, function (k) { var e = k * k; A.position.x = bx + (sx - bx) * e; A.position.z = bz + (sz - bz) * e; A.position.y = BT + Math.abs(Math.sin(k * Math.PI * 4)) * 0.08; A.userData.ang = -0.18 + 0.5 * k; self.lean(A, ux, uz, A.userData.ang); if (k > .3) self.emit(A.position.x, BT + 0.05, A.position.z, 0xd8c8a0, 1, 0.6, 0.3); });
+    }).then(function () { snd('clash'); return wait(70); }).then(die).then(function () { return stepIn(A.position.x, A.position.z, 200); });
+  }
+
+  // Nahkampf (melee / thrust): Schlagabtausch mit Gegenschlag
+  var stx = to.x - ux * cell * 0.62, stz = to.z - uz * cell * 0.62, reach = style === 'thrust' ? 0.38 : 0.22;
+  var seq = face.then(function () { return Promise.all([approach(stx, stz, 220 + dist * 40, 0.25), self.faceTo(A, to.x, to.z, 1)]); })
+    .then(function () { snd('whoosh'); return leanA(-0.28, 210); })
+    .then(function () { return leanA(style === 'thrust' ? 0.2 : 0.38, 110, reach); })
+    .then(function () { snd('clash'); hit((A.position.x + to.x) / 2, (A.position.z + to.z) / 2, colA, 26, 0.18); return Promise.all([wait(70), leanD(-0.3, 170, 0.1)]); });
+  if (!short) seq = seq
+    // Gegenschlag des Verteidigers, Angreifer pariert
+    .then(function () { return Promise.all([leanA(-0.05, 160, -reach * 0.6), leanD(-0.35, 160)]); })
+    .then(function () { snd('whoosh'); return leanD(0.32, 120, -0.18); })
+    .then(function () { snd('clash'); hit((A.position.x + D.position.x) / 2, (A.position.z + D.position.z) / 2, 0xffffff, 22, 0.14); return Promise.all([leanA(-0.25, 140), leanD(-0.05, 200, 0.1)]); });
+  return seq
+    // Todesstoß: hochspringen und zuschlagen
+    .then(function () { return self.tween(240 * sp, function (k) { A.position.y = BT + Math.sin(k * Math.PI / 2) * 0.35; A.userData.ang = -0.25 - 0.15 * k; self.lean(A, ux, uz, A.userData.ang); }); })
+    .then(function () { snd('whoosh'); var y0 = A.position.y, x0 = A.position.x, z0 = A.position.z; return self.tween(120 * sp, function (k) { A.position.y = y0 + (BT - y0) * k; A.position.x = x0 + ux * reach * k; A.position.z = z0 + uz * reach * k; A.userData.ang = -0.4 + 0.9 * k; self.lean(A, ux, uz, A.userData.ang); }); })
+    .then(function () { return wait(60); })
+    .then(die)
+    .then(function () { return stepIn(A.position.x, A.position.z, 260); });
 };
 Board3D.prototype.fx = function (name, sq) {
   var p = this.sqPos(sq);

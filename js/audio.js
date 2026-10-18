@@ -57,6 +57,12 @@ var Sfx = (function () {
     },
     drop: function () { var t = t0(); noise(t, 0.35, 0.35, 'bandpass', 400, 4, 5000, null, true); for (var i = 0; i < 4; i++) osc('sine', note(i * 2 + 5), t + i * 0.05, 0.3, 0.1, null, null, true); setTimeout(S.tok, 300); },
     promote: function () { var t = t0(); for (var i = 0; i < 7; i++) { osc('sine', note(i + 5), t + i * 0.07, 0.8, 0.14, null, null, true); osc('sine', note(i + 5) * 3.01, t + i * 0.07, 0.3, 0.03, null, null, true); } noise(t, 0.6, 0.2, 'highpass', 3000, 1, 9000, null, true); },
+    // Kampf: Klingen-Klirren, Luftzug, Magie/Schuss, Feuer, Zerbröseln der Statue
+    clash: function () { var t = t0(); noise(t, 0.12, 0.8, 'highpass', 3000, 1, 6000); [1, 2.41, 3.93, 5.6].forEach(function (h) { osc('sine', 880 * h, t, 0.5 / Math.sqrt(h), 0.16 / h, null, null, true); }); osc('triangle', 160, t, 0.1, 0.3, null, 90); },
+    whoosh: function () { var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
+    zap: function () { var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
+    fire: function () { var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
+    crumble: function () { var t = t0(); noise(t, 0.6, 0.6, 'lowpass', 1800, 0.7, 200, null, true); for (var i = 0; i < 5; i++) noise(t + i * 0.06 + Math.random() * 0.04, 0.05, 0.4, 'bandpass', 1500 + Math.random() * 2000, 4); },
     check: function () { var t = t0(); osc('sine', 90, t, 0.5, 1, null, 45, true); noise(t, 0.12, 0.5, 'lowpass', 400, 1); osc('sine', 90, t + 0.22, 0.45, 0.8, null, 45, true); },
     win: function () { var t = t0(); [0, 2, 4, 5, 7, 9, 10].forEach(function (d, i) { osc('triangle', note(d + 5), t + i * 0.12, 0.9, 0.18, null, null, true); }); for (var i = 0; i < 6; i++) osc('sine', 80, t + i * 0.15, 0.3, 0.6, null, 50); },
     lose: function () { var t = t0(); [1, 2.4, 3.8, 5.1].forEach(function (h) { osc('sine', 98 * h, t, 3, 0.25 / h, null, null, true); }); },

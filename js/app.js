@@ -9,7 +9,7 @@
   function cyrb(str) { var h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (var i = 0; i < str.length; i++) { var ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (h2 >>> 0).toString(16) + (h1 >>> 0).toString(16); }
 
   // ---------- Profil ----------
-  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
+  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, fights: 'voll', army: false, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
   var P = load();
   function load() {
     var d = null; try { d = JSON.parse(localStorage.getItem(STORE)); } catch (e) { }
@@ -417,6 +417,8 @@
     seg('render', 'Grafik', HAS3D ? '2D-Brett oder 3D-Schlachtfeld' : '3D nicht verfügbar (offline?)', HAS3D ? [['2d', '2D'], ['3d', '3D']] : [['2d', '2D']]);
     seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']]);
     seg('models', '3D-Figuren', 'Kleine Einheiten-Modelle auf den Steinen', [[true, 'An'], [false, 'Aus']]);
+    seg('fights', 'Kampf beim Schlagen (3D)', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
+    if (OWNER) seg('army', 'Armee-Modus (Test)', 'Trupps in Formation statt Einzelfiguren, Schlacht beim Schlagen (nur 3D-Statuen)', [[false, 'Aus'], [true, 'An']]);
     seg('pieceStyle', 'Steine im 3D', '2D zeigt immer Kanji wie echtes Shogi', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
     var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); box.appendChild(vs);
     if (OWNER && P.skins.length > 1) seg('skin', 'Brett', 'Freigespielt in der Kampagne', P.skins.map(function (k) { return [k, SKINS[k].name]; }));
@@ -651,9 +653,13 @@
     if (d.drop) { if (this.isHuman(col)) this.drops++; Sfx.play('drop'); } else Sfx.play('tok');
     if (!this.isHuman(col)) this.aiMoves++;
     if (this.isHuman(col)) this.moveCount++;
+    // Treffer-Effekte (Ton, Text, Wackeln): im 3D-Kampf genau beim Todesstoß, sonst nach kurzer Zeit
+    var hitDone = false;
+    info.onHit = function () { if (hitDone || !cap) return; hitDone = true; hitFx(); };
     // Animation mit Notbremse: hängt sie (Tab im Hintergrund), geht das Spiel trotzdem weiter
-    var anim = Promise.race([this.r.animate(info), new Promise(function (r) { setTimeout(r, 2500); })]);
-    if (cap) setTimeout(function () { Sfx.play('capture', Math.abs(cap) >= 6); var u = TH.units[Shogi.BASE[Math.abs(cap)]]; self.pop(d.to, '⚔ ' + TH.units[Math.abs(cap)].name + ' gefangen!', TH.factions[col].color); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }, S.render === '3d' ? 250 : 230);
+    var anim = Promise.race([this.r.animate(info), new Promise(function (r) { setTimeout(r, info.usesHit ? 8000 : 2500); })]);
+    function hitFx() { Sfx.play('capture', Math.abs(cap) >= 6); var u = TH.units[Shogi.BASE[Math.abs(cap)]]; self.pop(d.to, '⚔ ' + TH.units[Math.abs(cap)].name + ' gefangen!', TH.factions[col].color); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }
+    if (cap && !info.usesHit) setTimeout(info.onHit, S.render === '3d' ? 250 : 230);
     return anim.then(function () {
       if (!self.alive) return;
       if (d.promo) { Sfx.play('promote'); self.pop(d.to, '⬆ ' + TH.units[Math.abs(st.board[d.to])].name + '!', '#ffd76a'); }
