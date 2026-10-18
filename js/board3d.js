@@ -1085,14 +1085,14 @@ Board3D.prototype.attachGlb = function (g, src, col) {
 Board3D.ARMY_TIME = { value: 0 };
 // Regimenter: Spalten x Reihen, Abstand, Höhe und Grundfläche je Soldat (vorne = -z)
 Board3D.ARMY = {
-  inf: { cols: 6, rows: 4, sx: 0.155, sz: 0.2, h: 0.27, foot: 0.15 },     // Bauer: 24, dicht gedrängt
-  col: { cols: 3, rows: 5, sx: 0.2, sz: 0.165, h: 0.3, foot: 0.17 },     // Lanze: 15 in Kolonne
-  cav: { cols: 4, rows: 2, sx: 0.24, sz: 0.3, h: 0.38, foot: 0.26 },     // Springer: 8 Reiter
-  line: { cols: 4, rows: 3, sx: 0.2, sz: 0.23, h: 0.32, foot: 0.2 },     // Silber: 12
-  gold: { cols: 3, rows: 3, sx: 0.24, sz: 0.24, h: 0.34, foot: 0.22 },   // Gold: 9
-  vet: { cols: 3, rows: 3, sx: 0.24, sz: 0.24, h: 0.36, foot: 0.23 },    // befördert 9–12: 9 Veteranen
-  elite: { cols: 3, rows: 2, sx: 0.28, sz: 0.3, h: 0.4, foot: 0.27 },    // Läufer: 6
-  heavy: { cols: 2, rows: 2, sx: 0.34, sz: 0.32, h: 0.46, foot: 0.32 },  // Turm: 4 schwere Krieger
+  inf: { cols: 8, rows: 6, sx: 0.112, sz: 0.135, h: 0.22, foot: 0.11 },  // Bauer: 48, dichter Haufen
+  col: { cols: 4, rows: 7, sx: 0.15, sz: 0.112, h: 0.24, foot: 0.12 },   // Lanze: 28 in langer Kolonne
+  line: { cols: 5, rows: 4, sx: 0.16, sz: 0.19, h: 0.26, foot: 0.14 },   // Silber: 20
+  gold: { cols: 4, rows: 4, sx: 0.19, sz: 0.19, h: 0.28, foot: 0.16 },   // Gold: 16
+  cav: { cols: 4, rows: 3, sx: 0.21, sz: 0.25, h: 0.33, foot: 0.21 },    // Springer: 12 Reiter
+  vet: { cols: 4, rows: 3, sx: 0.2, sz: 0.24, h: 0.31, foot: 0.18 },     // befördert 9–12: 12 Veteranen
+  elite: { cols: 3, rows: 3, sx: 0.26, sz: 0.26, h: 0.4, foot: 0.24 },   // Läufer: 9
+  heavy: { cols: 3, rows: 2, sx: 0.3, sz: 0.32, h: 0.48, foot: 0.3 },    // Turm: 6 schwere Krieger
   hero: { cols: 1, rows: 1, sx: 0, sz: 0, h: 0.72, foot: 0.8 }
 };
 // je stärker die Figur, desto weniger, aber größere Soldaten; König und Drachen als Held allein
