@@ -1,38 +1,59 @@
-// Online-Duell über öffentlichen MQTT-Broker (Relay, kein eigener Server nötig).
+// Online-Duell über öffentliche MQTT-Broker (Relay, kein eigener Server nötig).
 // Spielstand liegt "retained" am Broker → Fernpartie Zug um Zug, auch wenn einer offline war.
+// Beide Broker gleichzeitig: Senden an alle, Empfangen von allen (fällt einer aus, läuft es über den anderen).
 var Net = (function () {
   var BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
-  var client = null, room = null, onState = null, onPeer = null, myId = null, lastState = null, bi = 0, statusCb = null;
+  var clients = [], room = null, onState = null, onPeer = null, myId = null, lastState = null, statusCb = null;
   function id() { try { var v = localStorage.getItem('shogiPfad.cid'); if (!v) { v = Math.random().toString(36).slice(2, 10); localStorage.setItem('shogiPfad.cid', v); } return v; } catch (e) { return Math.random().toString(36).slice(2, 10); } }
   myId = id();
   function topic(t) { return 'shogipfad/v1/' + room + '/' + t; }
   function code() { var a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = ''; for (var i = 0; i < 6; i++) s += a[Math.floor(Math.random() * a.length)]; return s; }
-  function status(s) { if (statusCb) statusCb(s); }
+  function anyUp() { return clients.some(function (c) { return c.connected; }); }
+  function status() { if (statusCb) statusCb(anyUp() ? 'online' : 'verbinde'); }
+  function seats(s) { return s.seats ? (s.seats[0] ? 1 : 0) + (s.seats[1] ? 1 : 0) : 0; }
+  function len(s) { return s && s.moves ? s.moves.length : -1; }
+  // neuerer Stand: höhere Revanche-Nummer, sonst mehr Züge
+  // bei gleich vielen, aber anderen Zügen entscheidet der spätere Zeitstempel (auf allen Geräten gleich)
+  function newer(a, b) { if (!b) return true; if ((a.reset || 0) !== (b.reset || 0)) return (a.reset || 0) > (b.reset || 0); if (len(a) !== len(b)) return len(a) > len(b); if (seats(a) !== seats(b)) return seats(a) > seats(b); return (a.t || 0) > (b.t || 0) && JSON.stringify(a.moves) !== JSON.stringify(b.moves); }
   function connect(r, cbState, cbPeer, cbStatus) {
     leave(); room = r; onState = cbState; onPeer = cbPeer; statusCb = cbStatus;
-    if (typeof mqtt === 'undefined') { status('offline'); return; }
-    status('verbinde');
-    client = mqtt.connect(BROKERS[bi % BROKERS.length], { clientId: 'sp_' + myId + '_' + Math.random().toString(36).slice(2, 6), clean: true, connectTimeout: 8000, reconnectPeriod: 3000, keepalive: 30 });
-    var failed = 0;
-    client.on('connect', function () {
-      status('online');
-      client.subscribe([topic('state'), topic('ping')]);
-      client.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now(), hello: true }));
-      if (lastState) setTimeout(function () { if (lastState) publishState(lastState, true); }, 1500);
+    if (typeof mqtt === 'undefined') { if (statusCb) statusCb('offline'); return; }
+    if (statusCb) statusCb('verbinde');
+    BROKERS.forEach(function (url) {
+      var c = mqtt.connect(url, { clientId: 'sp_' + myId + '_' + Math.random().toString(36).slice(2, 6), clean: true, connectTimeout: 8000, reconnectPeriod: 2000, keepalive: 20 });
+      clients.push(c);
+      c.on('connect', function () {
+        status();
+        c.subscribe([topic('state'), topic('ping')], { qos: 1 });
+        c.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now(), hello: true }));
+        // Broker ohne gespeicherten Stand (oder nach Ausfall leer): unseren nachreichen
+        c._got = false; setTimeout(function () { if (!c._got && lastState) send(c, lastState); }, 2500);
+      });
+      c.on('message', function (t, msg) {
+        var d; try { d = JSON.parse(msg.toString()); } catch (e) { return; }
+        if (t === topic('state')) {
+          c._got = true;
+          if (newer(d, lastState)) lastState = d;
+          else if (newer(lastState, d)) send(c, lastState); // dieser Broker hat einen älteren Stand → nachziehen
+          onState && onState(d); // App gleicht per Zugliste ab (gleiche Stände sind dort ein No-op)
+        }
+        if (t === topic('ping') && d.id !== myId) { onPeer && onPeer(d); if (d.hello) c.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now() })); }
+      });
+      c.on('close', status); c.on('offline', status);
     });
-    client.on('message', function (t, msg) {
-      var d; try { d = JSON.parse(msg.toString()); } catch (e) { return; }
-      if (t === topic('state')) { if (!lastState || (d.moves || []).length >= (lastState.moves || []).length || d.reset > (lastState.reset || 0)) { lastState = d; onState && onState(d); } else publishState(lastState, true); }
-      if (t === topic('ping') && d.id !== myId) { onPeer && onPeer(d); if (d.hello) client.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now() })); }
+  }
+  function send(c, st) { if (c.connected) c.publish(topic('state'), JSON.stringify(st), { retain: true, qos: 1 }); }
+  function publishState(st) { lastState = st; clients.forEach(function (c) { send(c, st); }); }
+  // Retained-Stand neu holen (z. B. Handy war gesperrt): neu abonnieren liefert ihn sofort
+  function resync() {
+    clients.forEach(function (c) {
+      if (!c.connected) { try { c.reconnect(); } catch (e) { } return; }
+      c.unsubscribe(topic('state'), function () { c.subscribe(topic('state'), { qos: 1 }); });
     });
-    client.on('error', function () { failed++; });
-    client.on('offline', function () { status('verbinde'); if (++failed > 2 && client) { bi++; var rr = room, a = onState, b = onPeer, c = statusCb; connect(rr, a, b, c); } });
   }
-  function publishState(st, quiet) {
-    lastState = st;
-    if (client && client.connected) client.publish(topic('state'), JSON.stringify(st), { retain: true, qos: 1 });
-  }
-  function leave() { if (client) { try { client.end(true); } catch (e) { } } client = null; room = null; lastState = null; }
-  function ping() { if (client && client.connected) client.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now() })); }
-  return { connect: connect, publishState: publishState, leave: leave, code: code, ping: ping, me: function () { return myId; }, setLast: function (s) { lastState = s; } };
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && room) resync(); });
+  addEventListener('online', function () { if (room) resync(); });
+  function leave() { clients.forEach(function (c) { try { c.end(true); } catch (e) { } }); clients = []; room = null; lastState = null; }
+  function ping() { clients.forEach(function (c) { if (c.connected) c.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now() })); }); }
+  return { connect: connect, publishState: publishState, leave: leave, code: code, ping: ping, resync: resync, me: function () { return myId; }, last: function () { return lastState; }, setLast: function (s) { lastState = s; } };
 })();

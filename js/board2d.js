@@ -50,8 +50,10 @@ Board2D.prototype.screenPos = function (sq) {
 Board2D.prototype.setFlip = function (f) { this.flip = !!f; this.renderCoords(); if (this.state) this.sync(this.state); this.setHighlights(this.hl); };
 
 Board2D.prototype.pieceEl = function (p) {
-  var t = Math.abs(p), col = p > 0 ? 0 : 1, u = this.theme.units[t], style = this.settings.pieceStyle || 'both';
+  // 2D immer wie echtes Shogi: nur das Kanji, groß über den ganzen Stein; kleine Figuren etwas kleiner
+  var t = Math.abs(p), col = p > 0 ? 0 : 1, u = this.theme.units[t], style = 'kanji';
   var d = el('div', 'koma c' + col + (t >= 9 ? ' promo' : '') + (t === 8 ? ' king' : ''));
+  d.style.setProperty('--s', { 1: .86, 2: .9, 3: .92, 4: .95, 5: .95 }[t] || 1);
   var kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji;
   var inner = '<div class="koma-in">';
   if (style !== 'kanji') inner += '<div class="koma-icon">' + unitSVG(this.theme, t, col, { color: komaInk(t, col) }) + '</div>';
@@ -108,12 +110,12 @@ Board2D.prototype.animate = function (info) {
     self.place(d, info.to, p); self.piecesEl.appendChild(d);
     if (oldEl) oldEl.remove();
     var dx = fromPos.x - toPos.x, dy = fromPos.y - toPos.y, rot = getComputedStyle(d).getPropertyValue('--rot').trim() || '0deg';
-    var hop = info.drop ? 0.6 : 0.25;
+    var hop = info.drop ? 0.6 : 0.25, ks = +(d.style.getPropertyValue('--s') || 1);
     d.style.zIndex = 50;
     var anim = d.animate([
-      { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(' + rot + ') scale(' + (info.drop ? 0.4 : 1) + ')', opacity: info.drop ? 0 : 1 },
-      { transform: 'translate(' + dx / 2 + 'px,' + (dy / 2 - cell * hop) + 'px) rotate(' + rot + ') scale(1.28)', opacity: 1, offset: 0.55 },
-      { transform: 'translate(0,0) rotate(' + rot + ') scale(1)', opacity: 1 }
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(' + rot + ') scale(' + (info.drop ? 0.4 : ks) + ')', opacity: info.drop ? 0 : 1 },
+      { transform: 'translate(' + dx / 2 + 'px,' + (dy / 2 - cell * hop) + 'px) rotate(' + rot + ') scale(' + 1.28 * ks + ')', opacity: 1, offset: 0.55 },
+      { transform: 'translate(0,0) rotate(' + rot + ') scale(' + ks + ')', opacity: 1 }
     ], { duration: info.drop ? 420 : 260, easing: 'cubic-bezier(.3,.7,.4,1)' });
     anim.onfinish = function () {
       d.style.zIndex = '';
@@ -155,9 +157,11 @@ Board2D.prototype.fx = function (name, sq) {
   if (name === 'sparkle') this.burst(p.x, p.y, '#ffd76a', 20, 3);
 };
 Board2D.prototype.tickFx = function () {
+  // Akku: ohne Partikel nichts zeichnen (nur einmal leeren, dann Ruhe)
+  if (!this.particles.length && this._clean) return;
   var c = this.canvas, g = c.getContext('2d'), dpr = this.dpr || 1;
   g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, c.width, c.height);
-  if (!this.particles.length) return;
+  this._clean = !this.particles.length; if (this._clean) return;
   g.globalCompositeOperation = 'lighter';
   var cell = this.cw / 9;
   this.particles = this.particles.filter(function (p) {

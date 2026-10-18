@@ -417,7 +417,7 @@
     seg('render', 'Grafik', HAS3D ? '2D-Brett oder 3D-Schlachtfeld' : '3D nicht verfügbar (offline?)', HAS3D ? [['2d', '2D'], ['3d', '3D']] : [['2d', '2D']]);
     seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']]);
     seg('models', '3D-Figuren', 'Kleine Einheiten-Modelle auf den Steinen', [[true, 'An'], [false, 'Aus']]);
-    seg('pieceStyle', 'Steine', '„Kanji“ trainiert für das echte Holzbrett', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
+    seg('pieceStyle', 'Steine im 3D', '2D zeigt immer Kanji wie echtes Shogi', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
     var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); box.appendChild(vs);
     if (OWNER && P.skins.length > 1) seg('skin', 'Brett', 'Freigespielt in der Kampagne', P.skins.map(function (k) { return [k, SKINS[k].name]; }));
     if (OWNER && P.titles.length) { var tt = h('div', 'set'); tt.innerHTML = '<div class="l"><b>Titel</b><small>Wird im Profil gezeigt</small></div>'; var tsg = h('div', 'seg'); P.titles.forEach(function (t) { var b = h('button', P.title === t ? 'on' : '', t); b.onclick = function () { P.title = t; save(); renderSettings(); }; tsg.appendChild(b); }); tt.appendChild(tsg); box.appendChild(tt); }
@@ -497,7 +497,7 @@
       if (self.L && self.L.fog && col !== self.human && !self.over) { var cnt = 0; for (var tt = 1; tt < 8; tt++) cnt += st.hands[col][tt]; if (cnt) hand.innerHTML = '<div class="hand-slot fog">🌫<div class="cnt">' + cnt + '</div></div>'; return; }
       [7, 6, 5, 4, 3, 2, 1].forEach(function (t) {
         var n = st.hands[col][t]; if (!n) return;
-        var slot = h('div', 'hand-slot' + (self.sel && self.sel.drop === t && st.turn === col ? ' sel' : ''), komaHTML(t, col) + (n > 1 ? '<div class="cnt">' + n + '</div>' : ''));
+        var slot = h('div', 'hand-slot' + (self.sel && self.sel.drop === t && st.turn === col ? ' sel' : ''), komaHTML(t, col, S.render === '3d' ? null : 'kanji') + (n > 1 ? '<div class="cnt">' + n + '</div>' : ''));
         slot.dataset.col = col; slot.dataset.t = t;
         // Steine in der Hand zeigen zum Gegner, wie auf dem Brett
         var k = slot.querySelector('.koma'); k.style.setProperty('--rot', ((col === 1) !== self.flip ? 180 : 0) + 'deg');
@@ -630,7 +630,7 @@
   };
   Game.prototype.askPromote = function (cand) {
     var self = this, st = this.state, d = Shogi.decode(cand[0]), t = Math.abs(st.board[d.from]), col = st.turn;
-    var box = modal('<h2>Aufstieg?</h2><p>Deine Einheit erreicht das Feindesland.</p><div class="promo-choice"><div class="opt" data-p="1"><div class="pv">' + komaHTML(Shogi.PROMOTE[t], col) + '</div><b>' + TH.units[Shogi.PROMOTE[t]].name + '</b><br><small>befördern</small></div><div class="opt" data-p="0"><div class="pv">' + komaHTML(t, col) + '</div><b>' + TH.units[t].name + '</b><br><small>bleiben</small></div></div>');
+    var box = modal('<h2>Aufstieg?</h2><p>Deine Einheit erreicht das Feindesland.</p><div class="promo-choice"><div class="opt" data-p="1"><div class="pv">' + komaHTML(Shogi.PROMOTE[t], col, S.render === '3d' ? null : 'kanji') + '</div><b>' + TH.units[Shogi.PROMOTE[t]].name + '</b><br><small>befördern</small></div><div class="opt" data-p="0"><div class="pv">' + komaHTML(t, col, S.render === '3d' ? null : 'kanji') + '</div><b>' + TH.units[t].name + '</b><br><small>bleiben</small></div></div>');
     $$('.opt', box).forEach(function (o) { o.onclick = function () { closeModal(); var pr = o.dataset.p === '1'; self.playHuman(cand.filter(function (m) { return Shogi.decode(m).promo === pr; })[0]); }; });
   };
 
@@ -639,7 +639,9 @@
     var self = this; this.sel = null; this.hintMove = null; $('#coach').classList.add('hidden'); clearInterval(this.mvTimer);
     var before = Shogi.clone(this.state);
     this.preEval = this.preEval || null;
-    this.doMove(m).then(function () { self.afterHuman(m, before); });
+    var done = this.doMove(m);
+    if (this.mode === 'online') this.sendOnline(); // sofort senden, nicht erst nach der Animation (Handy gesperrt → Zug ginge sonst verloren)
+    done.then(function () { self.afterHuman(m, before); });
   };
   Game.prototype.doMove = function (m) {
     var self = this, st = this.state, d = Shogi.decode(m), col = st.turn, cap = d.from >= 0 ? st.board[d.to] : 0;
@@ -649,7 +651,8 @@
     if (d.drop) { if (this.isHuman(col)) this.drops++; Sfx.play('drop'); } else Sfx.play('tok');
     if (!this.isHuman(col)) this.aiMoves++;
     if (this.isHuman(col)) this.moveCount++;
-    var anim = this.r.animate(info);
+    // Animation mit Notbremse: hängt sie (Tab im Hintergrund), geht das Spiel trotzdem weiter
+    var anim = Promise.race([this.r.animate(info), new Promise(function (r) { setTimeout(r, 2500); })]);
     if (cap) setTimeout(function () { Sfx.play('capture', Math.abs(cap) >= 6); var u = TH.units[Shogi.BASE[Math.abs(cap)]]; self.pop(d.to, '⚔ ' + TH.units[Math.abs(cap)].name + ' gefangen!', TH.factions[col].color); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }, S.render === '3d' ? 250 : 230);
     return anim.then(function () {
       if (!self.alive) return;
@@ -705,7 +708,7 @@
     var self = this, st = this.state, mode = this.mode;
     if (mode === 'mission') return this.missionCheck();
     if (mode === 'tsume' || mode === 'puzzle' || mode === 'rush') return this.puzzleCheck(m, before);
-    if (mode === 'online') { this.sendOnline(); return this.nextTurn(); }
+    if (mode === 'online') return this.nextTurn();
     if (mode === 'hotseat') { this.saveProgress(); return this.nextTurn(); }
     // Gefecht: KI rechnet sofort, Coach bewertet parallel
     var status = this.lastStatus;
@@ -1176,13 +1179,24 @@
     g.online = { code: code, ready: false, peerSeen: false, startSfen: opt.sfen || Shogi.START, reset: 0 };
     g.start();
     g.coachSay('Verbinde mit Raum <b>' + code + '</b> …');
-    var applied = 0;
-    Net.connect(code, function (d) {
-      if (!g.alive) return;
+    // Netz-Stände nacheinander abarbeiten (nie zwei gleichzeitig), immer nur den neuesten
+    var netBusy = false, netNext = null;
+    function onNet(d) { netNext = d; if (!netBusy) drainNet(); }
+    function drainNet() {
+      if (!netNext || !g.alive) return;
+      var d = netNext; netNext = null; netBusy = true;
+      var done = function () { netBusy = false; drainNet(); };
+      applyNet(d).then(done, function (e) { console.warn('Netz-Stand', e); done(); });
+    }
+    function rebuild(start, list) {
+      g.state = Shogi.fromSFEN(start); g.over = false;
+      for (var i = 0; i < list.length; i++) { if (Shogi.legalMoves(g.state).indexOf(list[i]) < 0) { console.warn('Zug ungültig, Abbruch bei', i, list[i]); break; } Shogi.play(g.state, list[i]); }
+      g.r.sync(g.state);
+    }
+    function applyNet(d) {
+      if (!g.alive || !d.seats) return Promise.resolve();
       var me = Net.me();
-      if (!d.seats) return;
       g.online.gotState = true; g.online.seats = d.seats;
-      if (d.start && d.start !== g.online.startSfen) { g.online.startSfen = d.start; g.state = Shogi.fromSFEN(d.start); applied = 0; g.r.sync(g.state); }
       // Platz einnehmen
       if (d.seats[0] !== me && d.seats[1] !== me) {
         var free = d.seats[0] ? (d.seats[1] ? -1 : 1) : 0;
@@ -1190,30 +1204,40 @@
         else { d.seats[free] = me; Net.publishState(d); }
       }
       g.human = d.seats[0] === me ? 0 : d.seats[1] === me ? 1 : -1;
-      if (g.online.reset !== (d.reset || 0)) { g.online.reset = d.reset || 0; g.state = Shogi.fromSFEN(d.start || g.online.startSfen); applied = 0; g.over = false; g.r.sync(g.state); }
       g.online.ready = !!(d.seats[0] && d.seats[1]);
       rememberDuel(code, g.human);
       g.flip = g.human === 1; g.r.setFlip(g.flip);
-      // neue Züge abspielen (validiert)
-      var moves = d.moves || [], chain = Promise.resolve();
-      if (moves.length < applied) { g.state = Shogi.fromSFEN(d.start || Shogi.START); applied = 0; g.r.sync(g.state); }
-      var fast = moves.length - applied > 2;
-      moves.slice(applied).forEach(function (m) {
-        chain = chain.then(function () {
-          var legal = Shogi.legalMoves(g.state); if (legal.indexOf(m) < 0) return;
-          applied++;
-          if (fast) { Shogi.play(g.state, m); g.r.sync(g.state); return; }
-          return g.doMove(m);
-        });
-      });
-      chain.then(function () {
-        if (!g.alive) return;
+      var start = d.start || g.online.startSfen, net = d.moves || [];
+      var chain = Promise.resolve(), changed = !g.online.shown || g.online.ready !== g.online.wasReady;
+      g.online.shown = true; g.online.wasReady = g.online.ready;
+      // nur der neueste Stand zählt (ältere/gleiche Echos von einem Broker ignorieren)
+      if (d === Net.last()) {
+        changed = true;
+        if (start !== g.online.startSfen || g.online.reset !== (d.reset || 0)) { g.online.startSfen = start; g.online.reset = d.reset || 0; rebuild(start, []); }
+        var loc = g.state.moves.map(function (x) { return x.m; }), k = 0;
+        while (k < net.length && k < loc.length && net[k] === loc[k]) k++;
+        if (k < loc.length) rebuild(start, net); // lokal abgewichen: Netz-Stand ist maßgeblich
+        else if (net.length > k) {
+          var add = net.slice(k);
+          if (add.length > 2) rebuild(start, net);
+          else add.forEach(function (m) {
+            chain = chain.then(function () {
+              if (!g.alive) return;
+              if (Shogi.legalMoves(g.state).indexOf(m) < 0) { rebuild(start, net); return; }
+              return g.doMove(m);
+            });
+          });
+        }
+      }
+      return chain.then(function () {
+        if (!g.alive || !changed) return; // Echo des eigenen Zugs: nichts tun (sonst Eingriff in laufende Animation)
         g.lastStatus = null;
         if (!g.online.ready) g.coachSay('Raum <b>' + code + '</b>: Warte auf deinen Gegner. Schick ihm den Link! <div class="code-big">' + code + '</div>', [{ t: '🔗 Link teilen', f: function () { shareLink(code); g.coachSay('Warte auf deinen Gegner …'); } }]);
-        else { $('#coach').classList.add('hidden'); if (g.human >= 0 && g.state.turn === g.human && moves.length) Sfx.play('select'); }
+        else { $('#coach').classList.add('hidden'); if (g.human >= 0 && g.state.turn === g.human && net.length) Sfx.play('select'); }
         g.updateAll(); g.nextTurn();
       });
-    }, function (peer) { if (!g.online.peerSeen) { g.online.peerSeen = true; g.updateAll(); } }, function (s) {
+    }
+    Net.connect(code, onNet, function (peer) { if (!g.online.peerSeen) { g.online.peerSeen = true; g.updateAll(); } }, function (s) {
       if (!g.alive) return;
       if (s === 'online' && opt.create && !g.online.created) {
         g.online.created = true;
