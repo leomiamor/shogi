@@ -144,8 +144,8 @@ select, input { font: 600 16px system-ui; background: var(--deep); color: var(--
 .b2-frame { position: relative; padding: 3.2%; border-radius: 10px; background: linear-gradient(135deg, var(--wa, #e7bf7f), var(--wb, #b98440)); box-shadow: 0 0 0 3px #5a3416, 0 0 0 6px #2a170a, 0 16px 40px rgba(0, 0, 0, .7), inset 0 0 40px rgba(120, 70, 20, .35); }
 .b2-frame::before { content: ''; position: absolute; inset: 0; border-radius: 10px; background: repeating-linear-gradient(92deg, rgba(120, 70, 20, .07) 0 3px, transparent 3px 11px), repeating-linear-gradient(88deg, rgba(90, 50, 10, .05) 0 2px, transparent 2px 23px); pointer-events: none; }
 .b2-grid { position: relative; width: 100%; height: 100%; display: grid; grid-template: repeat(9, 1fr) / repeat(9, 1fr); border: 2px solid var(--wl, #2b1a0c); }
-.b2-cell { border: 1px solid var(--wl, rgba(43, 26, 12, .75)); position: relative; }
-.chess-skin .b2-cell:nth-child(odd) { background: var(--wa); } .chess-skin .b2-cell:nth-child(even) { background: var(--wb); }
+.b2-cell { border: 1px solid rgba(0, 0, 0, .12); position: relative; }
+.b2-cell:nth-child(odd) { background: var(--wa, #e7bf7f); } .b2-cell:nth-child(even) { background: var(--wb, #b98440); }
 .b2-cell::after { content: ''; position: absolute; inset: 0; transition: background .15s; }
 .b2-cell.last::after { background: rgba(255, 210, 74, .32); }
 .b2-cell.sel::after { background: rgba(70, 215, 255, .45); box-shadow: inset 0 0 0 2px var(--sente); }
@@ -164,22 +164,20 @@ select, input { font: 600 16px system-ui; background: var(--deep); color: var(--
 .b2-fx { position: absolute; inset: 3.2%; width: calc(100% - 6.4%); height: calc(100% - 6.4%); pointer-events: none; z-index: 40; }
 
 /* Koma */
-.koma { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: rotate(var(--rot, 0deg)); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .6)); --rim: var(--sente); --fill: linear-gradient(165deg, #2f7896, #0e2a38 75%); }
+.koma { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transform: rotate(var(--rot, 0deg)); filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .6)); --rim: #c9a24a; --fill: linear-gradient(165deg, #3c3a36, #0d0c0b 75%); }
 .b2-pieces .koma { width: 11.111%; height: 11.111%; }
-.koma.c1 { --rim: var(--gote); --fill: linear-gradient(165deg, #9a3038, #3a0c12 75%); }
-.koma.king { --fill: linear-gradient(165deg, #4aa2c4, #10384a 75%); }
-.koma.c1.king { --fill: linear-gradient(165deg, #c4454c, #48121a 75%); }
-.koma.promo { --rim: #ffd76a; }
+.koma.c1 { --rim: #6f757c; --fill: linear-gradient(165deg, #ffffff, #dcdcdc 75%); }
+.koma.king { --fill: linear-gradient(165deg, #4a4740, #12110f 75%); }
+.koma.c1.king { --fill: linear-gradient(165deg, #ffffff, #e8e4da 75%); }
+.koma.promo { --rim: #d23a2a; }
 .koma-in { position: absolute; inset: 4% 7% 3%; clip-path: polygon(50% 0, 85% 15%, 100% 100%, 0 100%, 15% 15%); background: var(--rim); display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .koma-in::after { content: ''; position: absolute; inset: 7% 8% 5%; clip-path: polygon(50% 0, 85% 15%, 100% 100%, 0 100%, 15% 15%); background: var(--fill); }
 .koma-icon { position: relative; z-index: 1; width: 78%; height: 56%; margin-top: 18%; display: flex; align-items: center; justify-content: center; }
 .koma-icon svg { width: 100%; height: 100%; filter: drop-shadow(0 0 2px rgba(0, 0, 0, .6)); }
-.koma-kanji { position: relative; z-index: 1; font: 900 clamp(7px, 1.7vmin, 14px) var(--font-k); color: rgba(255, 240, 210, .95); line-height: 1; margin-top: 1%; }
-.koma.promo .koma-kanji { color: #ffb0a0; }
-.kanjistyle .koma { --rim: #6a4420; --fill: linear-gradient(165deg, #f6dcaa, #d9ae6a); }
-.kanjistyle .koma.promo { --rim: #8a2a10; }
-.koma-kanji.big { font-size: clamp(14px, 4.2vmin, 34px); color: #1a1008; margin-top: 12%; }
-.koma.promo .koma-kanji.big { color: #c41e1e; }
+.koma-kanji { position: relative; z-index: 1; font: 900 clamp(7px, 1.7vmin, 14px) var(--font-k); color: #ecd08a; line-height: 1; margin-top: 1%; }
+.koma.c1 .koma-kanji { color: #1b1b1b; }
+.koma.promo .koma-kanji { color: #ff6b5c; } .koma.c1.promo .koma-kanji { color: #c41e1e; }
+.koma-kanji.big { font-size: clamp(14px, 4.2vmin, 34px); margin-top: 12%; }
 .koma.dying { animation: dying .4s forwards; }
 @keyframes dying { to { transform: rotate(var(--rot)) scale(1.6); opacity: 0; filter: brightness(3) blur(2px); } }
 

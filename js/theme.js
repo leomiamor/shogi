@@ -146,6 +146,8 @@ var THEMES = {
   });
 })();
 
+// 2D-Steine: Schwarz (Sente, im 3D Gold) gegen Weiß (Gote), befördert rot wie echte Kanji
+function komaInk(t, col) { return t >= 9 ? (col === 0 ? '#ff6b5c' : '#c41e1e') : col === 0 ? '#ecd08a' : '#1b1b1b'; }
 function unitSVG(theme, t, col, opts) {
   opts = opts || {};
   var u = theme.units[t], promoted = t >= 9, f = theme.factions[col];

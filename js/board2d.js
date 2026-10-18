@@ -54,7 +54,7 @@ Board2D.prototype.pieceEl = function (p) {
   var d = el('div', 'koma c' + col + (t >= 9 ? ' promo' : '') + (t === 8 ? ' king' : ''));
   var kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji;
   var inner = '<div class="koma-in">';
-  if (style !== 'kanji') inner += '<div class="koma-icon">' + unitSVG(this.theme, t, col) + '</div>';
+  if (style !== 'kanji') inner += '<div class="koma-icon">' + unitSVG(this.theme, t, col, { color: komaInk(t, col) }) + '</div>';
   if (style !== 'icon') inner += '<div class="koma-kanji' + (style === 'kanji' ? ' big' : '') + '">' + kan + '</div>';
   inner += '</div>';
   d.innerHTML = inner;

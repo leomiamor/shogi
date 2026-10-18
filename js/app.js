@@ -159,7 +159,7 @@
     var u = TH.units[t]; style = style || S.pieceStyle;
     var kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji;
     var inner = '';
-    if (style !== 'kanji') inner += '<div class="koma-icon">' + unitSVG(TH, t, col) + '</div>';
+    if (style !== 'kanji') inner += '<div class="koma-icon">' + unitSVG(TH, t, col, { color: komaInk(t, col) }) + '</div>';
     if (style !== 'icon') inner += '<div class="koma-kanji' + (style === 'kanji' ? ' big' : '') + '">' + kan + '</div>';
     return '<div class="koma c' + col + (t >= 9 ? ' promo' : '') + (t === 8 ? ' king' : '') + '"><div class="koma-in">' + inner + '</div></div>';
   }
