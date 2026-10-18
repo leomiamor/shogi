@@ -1625,29 +1625,32 @@ Board3D.prototype.pickSq = function (cx, cy) {
   if (c < 0 || c > 8 || r < 0 || r > 8) return null;
   return r * 9 + c;
 };
-// Armee-Modus: großes Schild über dem Regiment (Maus darüber oder ausgewählt): Kanji, Name, echter Name
+// Armee-Modus: großes Kanji auf dem Feld des Regiments (Maus darüber oder ausgewählt), liegt flach am Boden und wird über die Soldaten gezeichnet
 Board3D.prototype.showTag = function (sq) {
   var T = THREE, p = sq != null && sq >= 0 && this.state ? this.state.board[sq] : 0;
-  if (!this.tag) { this.tag = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthTest: false })); this.tag.renderOrder = 999; this.tag.visible = false; this.scene.add(this.tag); this.tagTex = {}; }
+  if (!this.tag) {
+    this.tag = new T.Mesh(new T.PlaneGeometry(0.98, 0.98), new T.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
+    this.tag.rotation.order = 'YXZ'; this.tag.renderOrder = 999; this.tag.visible = false; this.scene.add(this.tag); this.tagTex = {};
+  }
   if (!p) { this.tag.visible = false; return; }
   var t = Math.abs(p), col = p > 0 ? 0 : 1, key = t + ':' + col, tex = this.tagTex[key];
   if (!tex) {
-    var c = document.createElement('canvas'); c.width = 512; c.height = 224; var x = c.getContext('2d');
-    tex = this.tagTex[key] = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace;
-    var u = this.theme.units[t] || {}, kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji, ink = t >= 9 ? (col === 0 ? '#ff5a40' : '#c41e1e') : col === 0 ? '#ecd08a' : '#1b1b1b';
+    var c = document.createElement('canvas'); c.width = c.height = 256; var x = c.getContext('2d');
+    tex = this.tagTex[key] = new T.CanvasTexture(c); tex.colorSpace = T.SRGBColorSpace; tex.anisotropy = 8;
+    var u = this.theme.units[t] || {}, kan = (t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji) || '?';
+    var ink = t >= 9 ? (col === 0 ? '#ff5a40' : '#e0241e') : col === 0 ? '#ffd76a' : '#ffffff', edge = col === 0 ? '#1a1206' : '#1b1b1b';
     var draw = function () {
-      x.clearRect(0, 0, 512, 224); x.fillStyle = col === 0 ? 'rgba(22,19,15,.93)' : 'rgba(241,237,228,.95)';
-      x.beginPath(); x.roundRect(6, 6, 500, 212, 26); x.fill(); x.lineWidth = 6; x.strokeStyle = col === 0 ? '#c9a24a' : '#8a8f96'; x.stroke();
-      x.fillStyle = ink; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = 'bold ' + (kan && kan.length > 1 ? 92 : 150) + 'px "Noto Serif JP", serif';
-      if (kan && kan.length > 1) { x.fillText(kan[0], 112, 66); x.fillText(kan[1], 112, 160); } else x.fillText(kan || '?', 112, 118);
-      x.textAlign = 'left'; x.fillStyle = col === 0 ? '#f3e6c4' : '#1b1b1b'; x.font = 'bold 44px system-ui, sans-serif'; x.fillText(u.name || '', 214, 92);
-      x.fillStyle = col === 0 ? '#c9b88a' : '#55595e'; x.font = '30px system-ui, sans-serif'; x.fillText(u.real || '', 214, 146);
+      x.clearRect(0, 0, 256, 256); x.textAlign = 'center'; x.textBaseline = 'middle';
+      var two = kan.length > 1; x.font = 'bold ' + (two ? 118 : 210) + 'px "Noto Serif JP", serif';
+      x.lineJoin = 'round'; x.lineWidth = two ? 14 : 20; x.strokeStyle = edge; x.fillStyle = ink;
+      (two ? [[kan[0], 72], [kan[1], 186]] : [[kan, 136]]).forEach(function (k) { x.strokeText(k[0], 128, k[1]); x.fillText(k[0], 128, k[1]); });
       tex.needsUpdate = true;
     };
     draw(); if (document.fonts) document.fonts.ready.then(draw);
   }
   if (this.tag.material.map !== tex) { this.tag.material.map = tex; this.tag.material.needsUpdate = true; }
-  var q = this.sqPos(sq); this.tag.position.set(q.x, this.BT + 1.55, q.z); this.tag.scale.set(2.3, 1.0, 1); this.tag.visible = true;
+  // flach auf dem Feld, Oberkante zeigt von der Kamera weg (lesbar aus Spielersicht)
+  var q = this.sqPos(sq); this.tag.position.set(q.x, this.BT + 0.02, q.z); this.tag.rotation.set(-Math.PI / 2, this.orbit.thetaGoal || 0, 0); this.tag.material.opacity = 0.92; this.tag.visible = true;
 };
 Board3D.prototype.hoverAt = function (cx, cy) {
   var sq = cx == null ? null : this.pickSq(cx, cy);
