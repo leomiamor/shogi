@@ -1035,14 +1035,15 @@ Board3D.prototype.figUrl = function (t, col) {
   if (this.settings.aiFigures === false) return null;
   var set = this.settings.figSet, ed = this.theme.id;
   // andere Editionen: nur Statuen, Modelle unter models/style/<edition>/
-  if (ed !== 'feudal') { var me = t >= 9 && t <= 12 ? t - 8 : t; return set === 'statue' && (Board3D.STATUE_READY_ED[ed] || []).indexOf(me) >= 0 ? 'models/style/' + ed + '/detail_' + me + '.glb' : null; } // Stilprobe: 'holz' / 'lowpoly' / 'statue' (nur Ashigaru, Fuchs, Tengu, Daimyō)
-  // Statue: befördert 9–12 nutzt das Grundmodell (fällt beim Schlagen eh zurück), Kirin 13 und Drache 14 eigene Modelle
-  if (set === 'statue') { var m = t >= 9 && t <= 12 ? t - 8 : t; return Board3D.STATUE_READY.indexOf(m) >= 0 ? 'models/style/detail_' + m + '.glb' : null; }
+  if (ed !== 'feudal') { var me = t >= 9 && t <= 12 && (Board3D.STATUE_READY_ED[ed] || []).indexOf(t) < 0 ? t - 8 : t; return set === 'statue' && (Board3D.STATUE_READY_ED[ed] || []).indexOf(me) >= 0 ? 'models/style/' + ed + '/detail_' + me + '.glb' : null; } // Stilprobe: 'holz' / 'lowpoly' / 'statue' (nur Ashigaru, Fuchs, Tengu, Daimyō)
+  // Statue: befördert 9–12 nutzt ein eigenes Modell, sobald es geprüft ist, sonst das Grundmodell (dann 10 % größer)
+  if (set === 'statue') { var m = t >= 9 && t <= 12 && Board3D.STATUE_READY.indexOf(t) < 0 ? t - 8 : t; return Board3D.STATUE_READY.indexOf(m) >= 0 ? 'models/style/detail_' + m + '.glb' : null; }
   if (set) return col === 0 && [1, 3, 7, 8].indexOf(t) >= 0 ? 'models/style/' + set + '_' + t + '.glb' : null;
   return 'models/fig/' + t + '_' + col + '.glb';
 };
 // Statuen-Look: alle Figuren eines Spielers in einem Material, Normal-Map des Modells bleibt für die Details
 Board3D.STATUE_READY = [1, 2, 3, 4, 5, 6, 7, 8, 13, 14]; // Typen, deren Statuen-Modell die Prüfung bestanden hat
+Board3D.promoOnBase = function (ed, t) { return t >= 9 && t <= 12 && ((ed === 'feudal' ? Board3D.STATUE_READY : Board3D.STATUE_READY_ED[ed]) || []).indexOf(t) < 0; };
 Board3D.STATUE_READY_ED = { mecha: [1, 3, 4, 5, 8], fantasy: [1, 8], hunde: [] }; // dito für die anderen Editionen
 Board3D.STATUE = { gold: [0xd9a93a, 0.28, 1], silber: [0xc9ced6, 0.25, 1], bronze: [0x7a4a26, 0.35, 0.85] };
 Board3D.prototype.statueMat = function (col, normalMap, rim) {
@@ -1072,7 +1073,7 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   var m = Models.fit(src, 1.15, 0.95), self = this; m.position.set(0, 0.2, 0);
   var rim = this.settings.figSet === 'statue' && Math.abs(g.userData.p || 0) >= 9 && this.settings.promoStyle === 'glanz';
   if (this.settings.figSet === 'statue') m.traverse(function (o) { if (o.isMesh) o.material = self.statueMat(col, o.material.normalMap, rim); });
-  if (this.settings.figSet === 'statue' && Math.abs(g.userData.p || 0) >= 9) m.scale.multiplyScalar(1.1);
+  if (this.settings.figSet === 'statue' && Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0))) m.scale.multiplyScalar(1.1);
   // TRELLIS-Modelle schauen nach +z (zur eigenen Seite), also umdrehen, damit sie zum Gegner blicken
   m.userData.ry0 = this.settings.figSet === 'statue' ? Math.PI : 0; m.rotation.y = m.userData.ry0;
   g.add(m); g.userData.glb = m;
@@ -1167,7 +1168,8 @@ Board3D.prototype.armyDraw = function () {
       var u = tr.userData, P = pools[u.pk] || self.armyPool(u.pk, u.geo, u.col, u.rim);
       if (P.n >= P.cap) { P.grow = true; return; }
       var i = P.n++;
-      P.im.setMatrixAt(i, u.mesh.matrixWorld); P.im.setColorAt(i, u.tint);
+      P.im.setMatrixAt(i, u.mesh.matrixWorld);
+      if (u.flash > 0) { var fl = self._flc || (self._flc = new THREE.Color()); fl.copy(u.tint).multiplyScalar(1 + u.flash * 3); fl.r += u.flash * 0.6; P.im.setColorAt(i, fl); } else P.im.setColorAt(i, u.tint);
       P.anim.setXYZ(i, u.u.uPhase.value, u.u.uAct.value, u.u.uWalk.value);
     });
   });
@@ -1209,11 +1211,12 @@ Board3D.prototype.buildSquad = function (g, src, t, col) {
   var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[bt] || 'line'];
   if (!src.userData.idle) { src.traverse(function (o) { if (o.isMesh) self.idleAttr(o.geometry); }); src.userData.idle = true; }
   var mesh0 = null; src.traverse(function (o) { if (o.isMesh && !mesh0) mesh0 = o; }); if (!mesh0) return;
-  var rim = t >= 9 && this.settings.promoStyle === 'glanz', pk = mesh0.geometry.uuid + ':' + col + (rim ? 'r' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101);
+  var rim = t >= 9 && this.settings.promoStyle === 'glanz', pk = mesh0.geometry.uuid + ':' + col + (rim ? 'r' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101 + (this._squadN = (this._squadN || 0) + 1) * 7919), fa = (rnd() - .5) * 0.12, fox = (rnd() - .5) * 0.07, foz = (rnd() - .5) * 0.06;
   this.armyPool(pk, mesh0.geometry, col, rim);
   function noop() { }
   for (var r = 0; r < F.rows; r++) for (var c = 0; c < F.cols; c++) {
-    var x = (c - (F.cols - 1) / 2) * F.sx + (rnd() - .5) * 0.03, z = (r - (F.rows - 1) / 2) * F.sz + (rnd() - .5) * 0.025;
+    var x0 = (c - (F.cols - 1) / 2) * F.sx + (rnd() - .5) * 0.05, z0 = (r - (F.rows - 1) / 2) * F.sz + (rnd() - .5) * 0.045;
+    var x = x0 * Math.cos(fa) - z0 * Math.sin(fa) + fox, z = x0 * Math.sin(fa) + z0 * Math.cos(fa) + foz;
     var officer = F.cols > 1 && r === 0 && c === (F.cols >> 1), s = (officer ? 1.14 : 1) * (0.92 + 0.14 * rnd()) * (t >= 9 ? 1.06 : 1);
     var m = Models.fit(src, F.h * s, F.foot * s), tr = new T.Group(), mesh = null;
     m.traverse(function (o) { if (o.isMesh) { o.visible = false; o.raycast = noop; if (!mesh) mesh = o; } });
@@ -1229,7 +1232,7 @@ Board3D.prototype.buildSquad = function (g, src, t, col) {
 Board3D.prototype.armyIdle = function (g, t, dt) {
   var k = 1 - Math.exp(-dt / 450), fighting = g.userData.fighting;
   g.userData.troops.forEach(function (tr) {
-    var u = tr.userData, m = u.glb;
+    var u = tr.userData, m = u.glb; if (u.flash > 0) u.flash = Math.max(0, u.flash - dt / 220); if (u.dead) return;
     if (!fighting) {
       if (t > u.next) { u.next = t + 3 + Math.random() * 7; u.tx = (Math.random() - .5) * 0.035; u.tz = (Math.random() - .5) * 0.03; u.look = Math.random() < .5 ? 0 : (Math.random() - .5) * 1.1; }
       var ox = u.ox, oz = u.oz; u.ox += (u.tx - u.ox) * k; u.oz += (u.tz - u.oz) * k;
@@ -1242,52 +1245,348 @@ Board3D.prototype.armyIdle = function (g, t, dt) {
   var b = g.userData.banner; if (b) b.userData.piv.rotation.y = Math.sin(t * 1.7 + g.position.x * 2.1 + g.position.z) * 0.3 + Math.sin(t * 4.1 + g.position.z) * 0.06;
 };
 
-// Schlachtfeld: Wiese bis zum Horizont, zertrampelte Erde, dezentes Raster, Felsen, Bäume, Feldlager beider Armeen
+// Schlachtfeld im Total-War-Stil: Hügelland bis zu fernen Bergen, Gras/Erde/Fels gemischt (ohne sichtbare Kacheln), Wolkenschatten,
+// wogende Grasbüschel, Wälder auf den Hügeln, Feldlager mit Vorhängen (Jinmaku), Lagerfeuer, Dunst
+Board3D.noise = (function () {
+  var P = new Uint8Array(512), r = Board3D.rnd(1234), i;
+  for (i = 0; i < 256; i++) P[i] = i;
+  for (i = 255; i > 0; i--) { var j = Math.floor(r() * (i + 1)), t = P[i]; P[i] = P[j]; P[j] = t; }
+  for (i = 0; i < 256; i++) P[i + 256] = P[i];
+  function h(x, z) { return P[P[x & 255] + (z & 255)] / 255; }
+  function n2(x, z) { var xi = Math.floor(x), zi = Math.floor(z), fx = x - xi, fz = z - zi, u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+    var a = h(xi, zi), b = h(xi + 1, zi), c = h(xi, zi + 1), d = h(xi + 1, zi + 1); return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v; }
+  return function (x, z, oct) { var s = 0, amp = 0.5, f = 1, n = oct || 4; for (var k = 0; k < n; k++) { s += amp * n2(x * f + k * 17.3, z * f - k * 9.1); f *= 2.03; amp *= 0.5; } return s / (1 - Math.pow(0.5, n)); };
+})();
+function fsmooth(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+// Abstand vom Spielfeld-Rechteck (0 im Feld)
+Board3D.fieldE = function (x, z) { return Math.hypot(Math.max(Math.abs(x) - 4.7, 0), Math.max(Math.abs(z) - 5.0, 0)); };
+// Geländehöhe über der Spielebene: Feld flach, sanfte Hügel, am Horizont Bergketten
+Board3D.fieldH = function (x, z) {
+  var N = Board3D.noise, e = Board3D.fieldE(x, z), f = fsmooth(2.2, 20, e);
+  var hills = (N(x * 0.05, z * 0.05) - 0.42) * 7 * f * f + f * 1.4;
+  var m = fsmooth(34, 85, e), ridge = 1 - Math.abs(N(x * 0.022 + 5, z * 0.022 - 3, 5) * 2 - 1);
+  var bump = (N(x * 0.6, z * 0.6, 2) - 0.5) * 0.06 * fsmooth(0.6, 3, e);
+  var mo = 0; (Board3D.MOUNDS || []).forEach(function (q) { var d = Math.hypot(x - q[0], z - q[1]); mo = Math.max(mo, q[3] * fsmooth(q[2], q[2] * 0.5, d)); });
+  return Math.max(hills, -0.2, mo) + m * (6 + ridge * ridge * 30) + bump;
+};
 Board3D.prototype.buildField = function (hi) {
-  var T = THREE, scene = this.scene, self = this, Y = this.BT;
-  scene.background = new T.Color(0x8d9aa4); scene.fog = new T.FogExp2(0x9aa4aa, 0.02);
-  this.hemi.color.set(0xdfe6ee); this.hemi.groundColor.set(0x3a3a2a); this.hemi.intensity = 0.75;
-  this.sun.color.set(0xffe2b8); this.sun.intensity = 2.4; this.sun.position.set(-9, 15, 7);
-  this.useHdr('studio_kontrast_01.hdr'); this.addCamLight(0.45); this.skyBackground('sky_kloofendal_38d_partly_cloudy_puresky.webp', 0.8);
+  var T = THREE, scene = this.scene, self = this, Y = this.BT, N = Board3D.noise, H = Board3D.fieldH, E = Board3D.fieldE;
+  var fogC = 0xb4bec4; scene.background = new T.Color(fogC); scene.fog = new T.FogExp2(fogC, 0.0105);
+  this.hemi.color.set(0xd6e4f2); this.hemi.groundColor.set(0x4a4430); this.hemi.intensity = 0.62;
+  this.sun.color.set(0xffdcaa); this.sun.intensity = 2.4; this.sun.position.set(-13, 11, 5);
+  var sc = this.sun.shadow.camera; sc.left = -11; sc.right = 11; sc.top = 11; sc.bottom = -11; sc.far = 50; sc.updateProjectionMatrix(); this.sun.shadow.mapSize.set(2048, 2048);
+  this.useHdr('studio_kontrast_01.hdr'); this.addCamLight(0.35); this.skyBackground('sky_kloofendal_38d_partly_cloudy_puresky.webp', 0.95);
   if (this.boardMesh) this.boardMesh.visible = false; (this.boardLegs || []).forEach(function (l) { l.visible = false; });
-  var grass = new T.Mesh(new T.CircleGeometry(70, 48), this.texMat('leafy_grass', 26, 0x9aac78)); grass.rotation.x = -Math.PI / 2; grass.position.y = Y - 0.006; grass.receiveShadow = true; scene.add(grass);
-  // Erde, die an den Rändern in die Wiese ausläuft
-  var ac = document.createElement('canvas'); ac.width = ac.height = 256; var ag = ac.getContext('2d'); ag.fillStyle = '#000'; ag.fillRect(0, 0, 256, 256);
-  ag.filter = 'blur(14px)'; ag.fillStyle = '#fff'; ag.fillRect(34, 32, 188, 192);
-  ag.filter = 'blur(6px)'; ag.fillStyle = '#000'; var rr = Board3D.rnd(7); for (var i = 0; i < 26; i++) { ag.globalAlpha = 0.25 + rr() * 0.35; ag.beginPath(); ag.arc(rr() * 256, rr() * 256, 6 + rr() * 16, 0, 7); ag.fill(); }
-  var amap = new T.CanvasTexture(ac), mud = this.texMat('forest_ground_04', 5, 0xb4a488); mud.alphaMap = amap; mud.transparent = true; mud.depthWrite = false;
-  var field = new T.Mesh(new T.PlaneGeometry(13, 13.6), mud); field.rotation.x = -Math.PI / 2; field.position.y = Y - 0.003; field.receiveShadow = true; scene.add(field);
-  // Raster nur angedeutet (Spielfelder bleiben erkennbar)
-  var gc = document.createElement('canvas'); gc.width = gc.height = 1024; var gg = gc.getContext('2d'), q = 1024 / 9;
-  gg.strokeStyle = 'rgba(30,22,10,0.8)'; gg.lineWidth = 4; gg.setLineDash([22, 9]);
-  for (var k = 1; k < 9; k++) { gg.beginPath(); gg.moveTo(k * q, 0); gg.lineTo(k * q, 1024); gg.stroke(); gg.beginPath(); gg.moveTo(0, k * q); gg.lineTo(1024, k * q); gg.stroke(); }
-  gg.setLineDash([]); gg.lineWidth = 7; gg.strokeStyle = 'rgba(30,22,10,0.8)'; gg.strokeRect(3, 3, 1018, 1018);
-  var gt = new T.CanvasTexture(gc); gt.anisotropy = 8;
-  var grid = new T.Mesh(new T.PlaneGeometry(9, 9), new T.MeshBasicMaterial({ map: gt, transparent: true, depthWrite: false })); grid.rotation.x = -Math.PI / 2; grid.position.y = Y + 0.002; scene.add(grid);
-  // Felsen und Bäume rund ums Schlachtfeld
-  var rockM = this.texMat('mossy_rock', 1, 0x8a8a7a), rnd = Board3D.rnd(11), geoR = new T.IcosahedronGeometry(1, 1);
-  for (i = 0; i < 34; i++) {
-    var a = rnd() * Math.PI * 2, d = 7.2 + rnd() * 16, rx = Math.cos(a) * d, rz = Math.sin(a) * d * 0.9;
-    if (rz > 5 && Math.abs(rx) < 7) continue; // freie Sicht von der Kamera
-    var s = 0.25 + rnd() * (d > 12 ? 1.2 : 0.5), rk = new T.Mesh(geoR, rockM); rk.scale.set(s * (1 + rnd()), s * (0.5 + rnd() * 0.5), s * (1 + rnd())); rk.rotation.y = rnd() * 6; rk.position.set(rx, Y - s * 0.2, rz); rk.castShadow = hi; rk.receiveShadow = true; scene.add(rk);
+  this.orbit.phi0 = 1.2; this.orbit.phi = 1.2; this.orbit.target.z = -1.2;
+  this.root.classList.add('b3-feld');
+
+  // ---- Rauschtextur (Wolkenschatten, Farbflecken, Kachelbrecher) ----
+  var nc = document.createElement('canvas'); nc.width = nc.height = 256; var ng = nc.getContext('2d'), id = ng.createImageData(256, 256), x, z, i, k;
+  for (z = 0; z < 256; z++) for (x = 0; x < 256; x++) {
+    // kachelbar: auf einem Torus abtasten
+    var a1 = x / 256 * Math.PI * 2, a2 = z / 256 * Math.PI * 2, v = N(3 + Math.cos(a1) * 1.6 + Math.sin(a2) * 0.3, 3 + Math.sin(a1) * 1.6 + Math.cos(a2) * 1.6, 5);
+    var w = N(9 + Math.cos(a1) * 4, 9 + Math.sin(a2) * 4 + Math.sin(a1) * 2, 3);
+    i = (z * 256 + x) * 4; id.data[i] = v * 255; id.data[i + 1] = w * 255; id.data[i + 2] = 0; id.data[i + 3] = 255;
   }
-  [[-9, -8, 1], [10, -9, 1.2], [-12, 1, 1.1], [12, 3, 0.95], [-7, -13, 0.9], [4, -14, 1.3], [-15, -6, 1.4], [16, -3, 1.2], [-14, 9, 1], [15, 11, 1.1]].forEach(function (p) { self.parkTree(p[0], p[1], Y, p[2]); });
-  // Feldlager: Zelte und Nobori-Fahnen hinter den eigenen Linien (Sente schwarz/gold, Gote weiß)
-  [0, 1].forEach(function (col) {
-    var zs = col === 0 ? 1 : -1, cloth = new T.MeshStandardMaterial({ color: col === 0 ? 0x1c1916 : 0xe8e2d6, roughness: 0.9 }), trim = self.statueMat(col, null, false);
-    [[-5.6, 7.4], [5.8, 7.6], [-7.6, 6.2], [7.8, 6.4]].forEach(function (p, j) {
-      if (col === 0 && Math.abs(p[0]) < 6.5) return; // vorn bei der Kamera nur seitlich
-      var tent = new T.Group(), body = new T.Mesh(new T.ConeGeometry(0.9, 1.1, 4), cloth); body.rotation.y = Math.PI / 4; body.position.y = 0.55; tent.add(body);
-      var tip = new T.Mesh(new T.SphereGeometry(0.06, 8, 6), trim); tip.position.y = 1.12; tent.add(tip);
-      tent.position.set(p[0], Y, p[1] * zs); tent.rotation.y = j; tent.traverse(function (o) { o.castShadow = hi; }); scene.add(tent);
-    });
-    for (var n = 0; n < 6; n++) {
-      var nx = (n < 3 ? -1 : 1) * (5.6 + (n % 3) * 0.9), nz = (6.2 - (n % 3) * 0.5) * zs;
-      var nb = new T.Group(), pole = new T.Mesh(new T.CylinderGeometry(0.02, 0.02, 1.8, 6), self._poleMat || (self._poleMat = new T.MeshStandardMaterial({ color: 0x1a1010, roughness: 0.4 }))); pole.position.y = 0.9; nb.add(pole);
-      var cl = new T.Mesh(new T.PlaneGeometry(0.32, 1.1), new T.MeshStandardMaterial({ color: col === 0 ? 0x16130f : 0xf1ede4, side: T.DoubleSide, roughness: 0.8 })); cl.position.set(0.17, 1.15, 0); nb.add(cl);
-      nb.position.set(nx, Y, nz); scene.add(nb);
+  ng.putImageData(id, 0, 0); var noiseT = new T.CanvasTexture(nc); noiseT.wrapS = noiseT.wrapT = T.RepeatWrapping;
+  var tG = Board3D.tex('leafy_grass', 1).map, tD = Board3D.tex('forest_ground_04', 1).map, tR = Board3D.tex('rock_face_03', 1).map;
+  var U = this.fieldU = { uTime: { value: 0 } };
+
+  // ---- Gelände: Raster wird zur Mitte hin dichter ----
+  var S = hi ? 200 : 120, geo = new T.PlaneGeometry(2, 2, S, S); geo.rotateX(-Math.PI / 2);
+  var pos = geo.attributes.position, mix = new Float32Array(pos.count * 3);
+  function warp(u) { return Math.sign(u) * Math.pow(Math.abs(u), 1.9) * 150; }
+  for (i = 0; i < pos.count; i++) {
+    x = warp(pos.getX(i)); z = warp(pos.getZ(i)); pos.setXYZ(i, x, H(x, z), z);
+  }
+  geo.computeVertexNormals();
+  var nrm = geo.attributes.normal;
+  for (i = 0; i < pos.count; i++) {
+    x = pos.getX(i); z = pos.getZ(i); var e = E(x, z), slope = 1 - nrm.getY(i);
+    // Erde: Spielfeld zertrampelt (mit Grasinseln), Trampelpfade zu den Lagern; Fels an steilen Hängen
+    var dirt = (1 - fsmooth(0.2, 2.6, e)) * (0.55 + 0.45 * fsmooth(0.35, 0.6, N(x * 0.35, z * 0.35, 3)));
+    var path = Math.max(0, 1 - Math.abs(x - Math.sin(z * 0.25) * 1.5) / 0.8) * fsmooth(4.5, 6, Math.abs(z)) * (1 - fsmooth(10, 16, Math.abs(z)));
+    dirt = Math.max(dirt, path * 0.8);
+    var rock = fsmooth(0.16, 0.32, slope) + fsmooth(40, 70, e) * 0.35;
+    rock = Math.min(1, rock); dirt *= 1 - rock;
+    mix[i * 3] = Math.max(0, 1 - dirt - rock); mix[i * 3 + 1] = dirt; mix[i * 3 + 2] = rock;
+  }
+  geo.setAttribute('aMix', new T.BufferAttribute(mix, 3));
+  this.fieldGeo = geo;
+  var gm = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
+  gm.onBeforeCompile = function (sh) {
+    sh.uniforms.tG = { value: tG }; sh.uniforms.tD = { value: tD }; sh.uniforms.tR = { value: tR }; sh.uniforms.tN = { value: noiseT }; sh.uniforms.uTime = U.uTime;
+    sh.vertexShader = 'attribute vec3 aMix; varying vec3 vMix; varying vec3 vWp;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vMix = aMix; vWp = (modelMatrix * vec4(position, 1.0)).xyz;');
+    sh.fragmentShader = 'uniform sampler2D tG, tD, tR, tN; uniform float uTime; varying vec3 vMix; varying vec3 vWp;\n' + sh.fragmentShader.replace('#include <map_fragment>', [
+      'vec2 wp = vWp.xz; vec4 nz = texture2D(tN, wp * 0.013); float n2 = texture2D(tN, wp * 0.09 + 0.31).r;',
+      'vec3 g = mix(texture2D(tG, wp * 0.31).rgb, texture2D(tG, wp * 0.067 + 0.4).rgb, 0.5);',
+      'g *= mix(vec3(0.56, 0.74, 0.4), vec3(0.98, 0.92, 0.6), smoothstep(0.35, 0.85, nz.r));', // frisch / trocken
+      'vec3 d = mix(texture2D(tD, wp * 0.42).rgb, texture2D(tD, wp * 0.11 + 0.2).rgb, 0.4) * vec3(1.05, 0.98, 0.88);',
+      'vec3 r = texture2D(tR, wp * 0.09).rgb * vec3(0.95, 0.95, 1.0);',
+      'float wd = smoothstep(0.0, 1.0, clamp(vMix.y + (n2 - 0.5) * 0.7, 0.0, 1.0)), wr = smoothstep(0.2, 0.8, vMix.z + (nz.g - 0.5) * 0.4);',
+      'vec3 col = mix(mix(g, d, wd), r, wr);',
+      'float cl = smoothstep(0.42, 0.66, texture2D(tN, wp * 0.0065 + uTime * vec2(0.0045, 0.0022)).r);', // Wolkenschatten ziehen übers Land
+      'col *= mix(1.0, 0.7, cl);',
+      'diffuseColor.rgb *= col;'].join('\n'));
+  };
+  var ground = new T.Mesh(geo, gm); ground.position.y = Y - 0.004; ground.receiveShadow = true; scene.add(ground);
+
+  // ---- Raster: leise, beim Auswählen deutlicher ----
+  var gc = document.createElement('canvas'); gc.width = gc.height = 1024; var gg = gc.getContext('2d'), q = 1024 / 9;
+  gg.strokeStyle = 'rgba(40,30,16,1)'; gg.lineWidth = 3; gg.setLineDash([14, 12]);
+  for (k = 1; k < 9; k++) { gg.beginPath(); gg.moveTo(k * q, 0); gg.lineTo(k * q, 1024); gg.stroke(); gg.beginPath(); gg.moveTo(0, k * q); gg.lineTo(1024, k * q); gg.stroke(); }
+  gg.lineWidth = 4; gg.strokeRect(2, 2, 1020, 1020);
+  var gt = new T.CanvasTexture(gc); gt.anisotropy = 8;
+  var grid = new T.Mesh(new T.PlaneGeometry(9, 9), new T.MeshBasicMaterial({ map: gt, transparent: true, opacity: 0.3, depthWrite: false })); grid.rotation.x = -Math.PI / 2; grid.position.y = Y + 0.003; scene.add(grid);
+  this.fieldGrid = grid;
+
+  // ---- Grasbüschel (Instanzen, wiegen im Wind) ----
+  if (hi) {
+    var bl = [], cols = [], nb = 9;
+    for (k = 0; k < nb; k++) {
+      var an = k / nb * Math.PI * 2 + Math.random(), rr = 0.02 + Math.random() * 0.05, bx = Math.cos(an) * rr, bz = Math.sin(an) * rr, ww = 0.02 + Math.random() * 0.016, hh = 0.5 + Math.random() * 0.6, lean = 0.15 + Math.random() * 0.25, ox = Math.cos(an + 1.6) * ww, oz = Math.sin(an + 1.6) * ww;
+      bl.push(bx - ox, 0, bz - oz, bx + ox, 0, bz + oz, bx + Math.cos(an) * lean * hh, hh, bz + Math.sin(an) * lean * hh);
+      cols.push(0.16, 0.22, 0.07, 0.16, 0.22, 0.07, 0.62, 0.66, 0.3);
+    }
+    var bg = new T.BufferGeometry(); bg.setAttribute('position', new T.Float32BufferAttribute(bl, 3)); bg.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
+    var nn = []; for (k = 0; k < bl.length / 3; k++) nn.push(0, 1, 0); bg.setAttribute('normal', new T.Float32BufferAttribute(nn, 3));
+    var bm = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, side: T.DoubleSide });
+    bm.onBeforeCompile = function (sh) {
+      sh.uniforms.uTime = U.uTime;
+      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vec3 ip = instanceMatrix[3].xyz; float hw = position.y * position.y;\n float wv = sin(uTime * 1.6 + ip.x * 0.45 + ip.z * 0.3) * 0.6 + sin(uTime * 3.1 + ip.x * 1.7) * 0.25;\n transformed.x += wv * 0.18 * hw; transformed.z += wv * 0.08 * hw;');
+    };
+    var cnt = 60000, im = new T.InstancedMesh(bg, bm, cnt), m4 = new T.Matrix4(), qq = new T.Quaternion(), up = new T.Vector3(0, 1, 0), vv = new T.Vector3(), ss = new T.Vector3(), cc = new T.Color(), n = 0, tries = 0;
+    while (n < cnt && tries++ < cnt * 4) {
+      // dichter nahe dem Feld, wo die Kamera ist
+      var rad = 2 + Math.pow(Math.random(), 1.7) * 40, ang = Math.random() * Math.PI * 2; x = Math.cos(ang) * rad * 1.1; z = Math.sin(ang) * rad;
+      var e2 = E(x, z), gw = 1 - (1 - fsmooth(0.2, 2.6, e2)) * (0.55 + 0.45 * fsmooth(0.35, 0.6, N(x * 0.35, z * 0.35, 3)));
+      if (Math.random() > gw * gw) continue;
+      var sz = (0.09 + Math.random() * 0.1) * (1 + fsmooth(4, 25, e2) * 2) * (0.6 + N(x * 0.2, z * 0.2, 2) * 0.9);
+      qq.setFromAxisAngle(up, Math.random() * 6.28); m4.compose(vv.set(x, Y + H(x, z) - 0.01, z), qq, ss.set(sz * 1.4, sz, sz * 1.4)); im.setMatrixAt(n, m4);
+      var dry = N(x * 0.06, z * 0.06, 3); cc.setRGB(0.6 + dry * 0.45, 0.8 + dry * 0.15, 0.5 + Math.random() * 0.15); im.setColorAt(n, cc); n++;
+    }
+    im.count = n; im.receiveShadow = true; im.raycast = function () { }; scene.add(im);
+  }
+
+  // ---- Wälder auf den Hügeln (Zedern + Laubbäume, eine Instanz je Art) ----
+  function merge(parts) { // [geo, color, matrix]
+    var P = [], Nn = [], C = [];
+    parts.forEach(function (p) { var g = p[0].index ? p[0].toNonIndexed() : p[0]; g.applyMatrix4(p[2]); g.computeVertexNormals(); var pa = g.attributes.position, na = g.attributes.normal, c = new T.Color(p[1]);
+      for (var j = 0; j < pa.count; j++) { var jt = 0.85 + Math.random() * 0.3; P.push(pa.getX(j), pa.getY(j), pa.getZ(j)); Nn.push(na.getX(j), na.getY(j), na.getZ(j)); C.push(c.r * jt, c.g * jt, c.b * jt); } });
+    var o = new T.BufferGeometry(); o.setAttribute('position', new T.Float32BufferAttribute(P, 3)); o.setAttribute('normal', new T.Float32BufferAttribute(Nn, 3)); o.setAttribute('color', new T.Float32BufferAttribute(C, 3)); return o;
+  }
+  function jit(g, a) { var p = g.attributes.position; for (var j = 0; j < p.count; j++) p.setXYZ(j, p.getX(j) + (Math.random() - .5) * a, p.getY(j) + (Math.random() - .5) * a, p.getZ(j) + (Math.random() - .5) * a); return g; }
+  var M = function (x, y, z, s) { return new T.Matrix4().compose(new T.Vector3(x, y, z), new T.Quaternion(), new T.Vector3(s, s, s)); };
+  var cedar = merge([[new T.CylinderGeometry(0.05, 0.09, 1.2, 6), 0x4a3424, M(0, 0.6, 0, 1)],
+    [jit(new T.ConeGeometry(0.75, 1.5, 8, 2), 0.12), 0x22401f, M(0, 1.5, 0, 1)], [jit(new T.ConeGeometry(0.6, 1.3, 8, 2), 0.1), 0x284a24, M(0, 2.3, 0, 1)], [jit(new T.ConeGeometry(0.42, 1.1, 8, 2), 0.08), 0x2e5228, M(0, 3.0, 0, 1)]]);
+  var leafy = merge([[new T.CylinderGeometry(0.07, 0.12, 1.6, 6), 0x50392a, M(0, 0.8, 0, 1)],
+    [jit(new T.IcosahedronGeometry(0.9, 1), 0.25), 0x3d6a2c, M(0, 2.3, 0, 1)], [jit(new T.IcosahedronGeometry(0.7, 1), 0.2), 0x4a7a33, M(0.6, 1.9, 0.2, 1)], [jit(new T.IcosahedronGeometry(0.65, 1), 0.2), 0x36602a, M(-0.5, 2.0, -0.3, 1)], [jit(new T.IcosahedronGeometry(0.55, 1), 0.2), 0x55813a, M(0.1, 2.9, 0.1, 1)]]);
+  var treeM = new T.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+  [[cedar, hi ? 1400 : 600], [leafy, hi ? 700 : 300]].forEach(function (tt, ti) {
+    var ti2 = new T.InstancedMesh(tt[0], treeM, tt[1]), m4 = new T.Matrix4(), qq = new T.Quaternion(), up = new T.Vector3(0, 1, 0), n = 0, tries = 0;
+    while (n < tt[1] && tries++ < tt[1] * 30) {
+      var x = (Math.random() - .5) * 150, z = (Math.random() - .5) * 150, e = E(x, z);
+      if (e < 7.5 || (Math.abs(x) < 9 && Math.abs(z) < 16)) continue;                 // Feld, Lager und Kamerablick frei
+      if (Board3D.MOUNDS.some(function (q) { return Math.hypot(x - q[0], z - q[1]) < q[2] * 0.75; }) || (x > 12.5 && x < 25 && z > -22 && z < -9.5) || (x > -17 && x < 9 && z > -30 && z < -12)) continue; // Bauwerke und Dorf frei
+      var dens = fsmooth(0.5, 0.62, N(x * 0.04 + ti * 3, z * 0.04, 3)) * (1 - fsmooth(45, 70, e)); // Waldstücke
+      if (Math.random() > dens) continue;
+      var y = H(x, z), s = 0.8 + Math.random() * 0.6;
+      qq.setFromAxisAngle(up, Math.random() * 6.28); m4.compose(new T.Vector3(x, Y + y - 0.1, z), qq, new T.Vector3(s, s * (0.9 + Math.random() * 0.3), s)); ti2.setMatrixAt(n++, m4);
+    }
+    ti2.count = n; ti2.castShadow = hi; ti2.receiveShadow = true; ti2.raycast = function () { }; scene.add(ti2);
+  });
+  // einzelne Bäume und Felsen am Feldrand
+  var rockM = this.texMat('mossy_rock', 1, 0x8a8a7a), rnd = Board3D.rnd(11), geoR = jit(new T.IcosahedronGeometry(1, 2), 0.18); geoR.computeVertexNormals();
+  for (i = 0; i < 26; i++) {
+    var a = rnd() * Math.PI * 2, d = 7.5 + rnd() * 14, rx = Math.cos(a) * d * 1.1, rz = Math.sin(a) * d;
+    if (Math.abs(rx) < 9 && Math.abs(rz) < 14) continue;
+    var s = 0.12 + rnd() * 0.45, rk = new T.Mesh(geoR, rockM); rk.scale.set(s * (1 + rnd()), s * (0.45 + rnd() * 0.4), s * (1 + rnd())); rk.rotation.y = rnd() * 6; rk.position.set(rx, Y + H(rx, rz) - s * 0.15, rz); rk.castShadow = hi; rk.receiveShadow = true; scene.add(rk);
+  }
+
+  // ---- Feldlager beider Armeen: Vorhangwände mit Wappen, Zelte, Feuer, Speerständer, Nobori ----
+  this.campFires = [];
+  [0, 1].forEach(function (col) { self.buildCamp(col, hi); });
+  if (this.theme.id === 'feudal') this.buildLandmarks(hi);
+};
+// Hügel mit flacher Kuppe für Bauwerke im Hintergrund: [x, z, Radius, Höhe]
+Board3D.MOUNDS = [[-5, -37, 10, 3.4], [21, -29, 6, 2.6], [-24, 26, 7, 2.8], [16, 31, 6, 1.8]];
+// Bauwerke im Hintergrund: Burg auf dem Hügel hinter Gote, Pagode, Dorf mit brennendem Hof, Tempeltor und Torii hinter Sente, Wachtürme an den Lagern
+Board3D.prototype.buildLandmarks = function (hi) {
+  var T = THREE, scene = this.scene, self = this, Y = this.BT, H = Board3D.fieldH;
+  var plaster = new T.MeshStandardMaterial({ color: 0xeeeae0, roughness: 0.85 }), tile = new T.MeshStandardMaterial({ color: 0x3b414a, roughness: 0.55, metalness: 0.2 });
+  var darkWood = new T.MeshStandardMaterial({ color: 0x2e2620, roughness: 0.8 }), wood = new T.MeshStandardMaterial({ color: 0x6a5038, roughness: 0.85 }), gold = this.statueMat(0, null, false);
+  var st = Board3D.tex('japanese_stone_wall', [2, 1]), stone = new T.MeshStandardMaterial({ map: st.map, normalMap: st.normalMap, color: 0xb0aca4, roughness: 0.95 });
+  var thatch = new T.MeshStandardMaterial({ color: 0x8a7048, roughness: 1, flatShading: true });
+  // Fensterreihe (schwarze Schlitze, dunkle Holzbänder) als Textur für die Burgwände
+  var wc = document.createElement('canvas'); wc.width = 256; wc.height = 64; var wg = wc.getContext('2d');
+  wg.fillStyle = '#eeeae0'; wg.fillRect(0, 0, 256, 64); wg.fillStyle = '#2e2620'; wg.fillRect(0, 54, 256, 10); wg.fillRect(0, 0, 256, 4);
+  for (var x = 14; x < 256; x += 40) { wg.fillRect(x, 20, 16, 20); wg.fillStyle = '#4a3a2a'; wg.fillRect(x + 7, 20, 2, 20); wg.fillStyle = '#2e2620'; }
+  var winT = new T.CanvasTexture(wc); winT.colorSpace = T.SRGBColorSpace; winT.wrapS = T.RepeatWrapping;
+  function wallMat(rep) { var t = winT.clone(); t.needsUpdate = true; t.repeat.set(rep, 1); return new T.MeshStandardMaterial({ map: t, roughness: 0.85 }); }
+  function mesh(geo, mat, x, y, z, ry) { var m = new T.Mesh(geo, mat); m.position.set(x || 0, y || 0, z || 0); if (ry) m.rotation.y = ry; m.castShadow = hi; m.receiveShadow = true; return m; }
+  // geschwungenes Walmdach: Pyramidenstumpf + breite Traufe
+  function roof(g, w, d, y, h) {
+    var r = new T.CylinderGeometry(0.2, 0.72, 1, 4, 1); r.rotateY(Math.PI / 4); r.scale(w, h, d);
+    g.add(mesh(r, tile, 0, y + h / 2, 0));
+    var eave = new T.CylinderGeometry(0.72, 0.8, 1, 4, 1, true); eave.rotateY(Math.PI / 4); eave.scale(w, 0.06, d); g.add(mesh(eave, tile, 0, y + 0.02, 0));
+  }
+  function place(g, x, z, ry, s) { g.position.set(x, Y + H(x, z) - 0.05, z); g.rotation.y = ry || 0; if (s) g.scale.setScalar(s); scene.add(g); return g; }
+
+  // ---- Burg (Tenshu) mit Mauerring und Ecktürmen ----
+  function keep(tiers, w0) {
+    var g = new T.Group(), y = 0;
+    var base = new T.CylinderGeometry(0.62, 0.78, 1, 4); base.rotateY(Math.PI / 4); base.scale(w0 * 1.15, 1.3, w0 * 1.0); g.add(mesh(base, stone, 0, 0.65, 0)); y = 1.3;
+    for (var i = 0; i < tiers; i++) {
+      var w = w0 * (1 - i * 0.2), d = w * 0.82, h = i === tiers - 1 ? 0.75 : 0.62;
+      g.add(mesh(new T.BoxGeometry(w * 0.86, h, d * 0.86), wallMat(Math.max(1, Math.round(w))), 0, y + h / 2, 0)); y += h;
+      roof(g, w * 1.12, d * 1.12, y - 0.05, i === tiers - 1 ? 0.75 : 0.32); y += i === tiers - 1 ? 0 : 0.22;
+      // Ziergiebel (Chidori-hafu) an der Front
+      if (i < tiers - 1) { var gb = new T.ConeGeometry(0.35, 0.3, 3); gb.rotateY(Math.PI / 2); g.add(mesh(gb, tile, 0, y + 0.04, d * 0.5)); }
+    }
+    // goldene Shachihoko auf dem First
+    [-1, 1].forEach(function (sx) { var sh = mesh(new T.ConeGeometry(0.06, 0.22, 6), gold, sx * w0 * 0.18, y + 0.72, 0); sh.rotation.z = sx * 0.4; g.add(sh); });
+    return g;
+  }
+  var cx = Board3D.MOUNDS[0][0], cz = Board3D.MOUNDS[0][1], castle = new T.Group();
+  castle.add(keep(4, 3.2));
+  // Mauerring (weiß mit Ziegelkappe) und zwei Ecktürme (Yagura)
+  var ringW = 9, ringD = 7;
+  [[0, ringD / 2, ringW, 0], [0, -ringD / 2, ringW, 0], [ringW / 2, 0, ringD, Math.PI / 2], [-ringW / 2, 0, ringD, Math.PI / 2]].forEach(function (wl, j) {
+    var len = wl[2] - (j === 0 ? 1.4 : 0);
+    var wall = mesh(new T.BoxGeometry(len, 0.55, 0.22), plaster, wl[0] + (j === 0 ? 0.7 : 0), 0.28, wl[1], wl[3]); castle.add(wall);
+    var cap = new T.CylinderGeometry(0.05, 0.3, 0.16, 4, 1); cap.rotateY(Math.PI / 4); cap.scale(len * 1.4, 1, 1.1); var c = mesh(cap, tile, wl[0] + (j === 0 ? 0.7 : 0), 0.62, wl[1], wl[3]); castle.add(c);
+  });
+  [[ringW / 2, ringD / 2], [-ringW / 2, ringD / 2], [ringW / 2, -ringD / 2]].forEach(function (p) { var yg = keep(2, 1.3); yg.position.set(p[0], -0.2, p[1]); castle.add(yg); });
+  // Tor
+  var gate = new T.Group(); gate.add(mesh(new T.BoxGeometry(1.2, 0.7, 0.4), darkWood, 0, 0.35, 0)); roof(gate, 1.7, 0.8, 0.7, 0.28); gate.position.set(-ringW / 2 + 0.7, 0, ringD / 2); castle.add(gate);
+  place(castle, cx, cz, 0.25, 1.35);
+  // Banner auf der Burgmauer (Gote-Farben)
+  for (var b = 0; b < 6; b++) { var nb = new T.Group(); nb.add(mesh(new T.CylinderGeometry(0.02, 0.02, 1.4, 5), darkWood, 0, 0.7, 0)); nb.add(mesh(new T.PlaneGeometry(0.25, 0.8), new T.MeshStandardMaterial({ color: 0xf1ede4, side: T.DoubleSide }), 0.13, 0.95, 0)); nb.position.set(-ringW / 2 + 1 + b * 1.5, 0.6, ringD / 2 + 0.05); castle.add(nb); }
+
+  // ---- Dorf am Feldrand: Bauernhäuser mit Strohdach, eins brennt ----
+  function minka(burn) {
+    var g = new T.Group(), w = 1.1 + Math.random() * 0.5, d = 0.8 + Math.random() * 0.3;
+    g.add(mesh(new T.BoxGeometry(w, 0.5, d), darkWood, 0, 0.25, 0));
+    g.add(mesh(new T.BoxGeometry(w * 0.9, 0.3, d * 1.01), plaster, 0, 0.3, 0));
+    var r = new T.CylinderGeometry(0.12, 0.72, 1, 4, 1); r.rotateY(Math.PI / 4); r.scale(w * 1.25, 0.75, d * 1.35); var rm = mesh(r, burn ? new T.MeshStandardMaterial({ color: 0x2a2018, roughness: 1, flatShading: true }) : thatch, 0, 0.5 + 0.37, 0); g.add(rm);
+    return g;
+  }
+  var vill = [[17, -14], [19, -16.2], [16.4, -17.4], [20.6, -13.2], [18.6, -19], [22.2, -17]];
+  vill.forEach(function (p, i) {
+    var burn = i === 1, g = place(minka(burn), p[0], p[1], Math.random() * 0.6 - 0.3 + (i % 2) * 1.57);
+    if (burn) {
+      var fx = p[0], fz = p[1], fy = Y + H(fx, fz) + 0.8, pl = new T.PointLight(0xff7020, 4, 8, 2); pl.position.set(fx, fy + 0.4, fz); scene.add(pl); pl.userData.base = 4; self.lanterns.push(pl);
+      var flames = []; for (var k = 0; k < 5; k++) { var fl = new T.Mesh(new T.ConeGeometry(0.16, 0.6, 6), new T.MeshBasicMaterial({ color: k % 2 ? 0xffa030 : 0xff6a10, transparent: true, opacity: 0.85, blending: T.AdditiveBlending, depthWrite: false })); fl.position.set(fx + (k - 2) * 0.2, fy + 0.15, fz + (Math.random() - .5) * 0.3); scene.add(fl); flames.push(fl); }
+      var puffs = []; for (var j = 0; j < 12; j++) { var sp = new T.Sprite(self.smokeMat()); sp.material.color.set(0x3a3632); sp.userData.t = j / 12; scene.add(sp); puffs.push(sp); }
+      self.campFires.push({ x: fx, y: fy + 0.3, z: fz, fl: flames[2], flames: flames, puffs: puffs, big: 3.2, rise: 9 });
     }
   });
+  // Felder (Reis/Gemüse) beim Dorf als Streifen
+  for (var f = 0; f < 4; f++) { var pa = new T.Mesh(new T.PlaneGeometry(2.6, 0.9), new T.MeshStandardMaterial({ color: f % 2 ? 0x6f7a3a : 0x5a5030, roughness: 1 })); pa.rotation.x = -Math.PI / 2; var px = 14.5, pz = -11 - f * 0.95; pa.position.set(px, Y + H(px, pz) + 0.01, pz); pa.receiveShadow = true; scene.add(pa); }
+
+  // ---- hinter Sente: Tempel mit Pagode, Torii am Hügel ----
+  var tx = Board3D.MOUNDS[3][0], tz = Board3D.MOUNDS[3][1], temple = new T.Group();
+  temple.add(mesh(new T.BoxGeometry(2.4, 0.2, 1.8), stone, 0, 0.1, 0)); temple.add(mesh(new T.BoxGeometry(2, 0.7, 1.4), new T.MeshStandardMaterial({ color: 0x8a2a1e, roughness: 0.7 }), 0, 0.55, 0));
+  roof(temple, 3, 2.2, 0.9, 0.7); place(temple, tx, tz, Math.PI + 0.3);
+  // eigener Fallback, wenn die Modelle (Pagode, Torii) nicht laden
+  if (window.Models) Models.ready(function (M) {
+    function put(name, size, x, z, ry) { return M.get('models/env/' + name + '.glb', size, { by: 'height' }).then(function (g) { if (!self.alive) return; g.position.set(x, Y + H(x, z) - 0.05, z); g.rotation.y = ry || 0; g.traverse(function (o) { if (o.isMesh) { o.castShadow = hi; o.receiveShadow = true; } }); scene.add(g); }).catch(function () { }); }
+    put('pagoda', 7.5, Board3D.MOUNDS[1][0], Board3D.MOUNDS[1][1], 0.6);
+    put('pagoda', 6, tx + 3.2, tz + 1.5, 2.1);
+    var m2 = Board3D.MOUNDS[2]; put('torii', 2.4, m2[0] + 2, m2[1] - 3, 0.9);
+  });
+
+  // ---- Wachtürme (Yagura aus Holz) an den Lagern ----
+  [[-11, 9.5], [11.5, 9], [-11.5, -9.5], [11, -9]].forEach(function (p) {
+    var g = new T.Group(), hgt = 1.5;
+    [[-0.22, -0.22], [0.22, -0.22], [-0.22, 0.22], [0.22, 0.22]].forEach(function (q) { var l = mesh(new T.CylinderGeometry(0.025, 0.03, hgt, 5), wood, q[0], hgt / 2, q[1]); g.add(l); });
+    [0.45, 0.95].forEach(function (yy) { [[0, -0.22, 0], [0, 0.22, 0], [-0.22, 0, 1], [0.22, 0, 1]].forEach(function (q) { var br = mesh(new T.BoxGeometry(0.5, 0.025, 0.025), wood, q[0], yy, q[1], q[2] ? Math.PI / 2 : 0); g.add(br); }); });
+    g.add(mesh(new T.BoxGeometry(0.6, 0.05, 0.6), wood, 0, hgt, 0)); g.add(mesh(new T.BoxGeometry(0.6, 0.18, 0.6), darkWood, 0, hgt + 0.11, 0));
+    roof(g, 0.8, 0.8, hgt + 0.42, 0.25);
+    [[0, 0.32], [0, -0.32], [0.32, 0], [-0.32, 0]].forEach(function (q) { g.add(mesh(new T.CylinderGeometry(0.012, 0.012, 0.25, 4), wood, q[0], hgt + 0.32, q[1])); });
+    place(g, p[0], p[1], Math.random());
+  });
+};
+
+// Feldlager: Jinmaku (Vorhang-Umfriedung mit Mon), Zelte in Reihen, Lagerfeuer mit Rauch, Speerständer, Nobori-Reihe
+Board3D.prototype.buildCamp = function (col, hi) {
+  var T = THREE, scene = this.scene, self = this, Y = this.BT, H = Board3D.fieldH, zs = col === 0 ? 1 : -1;
+  var dark = col === 0, cloth = dark ? '#16120e' : '#efe9dc', ink = dark ? '#d9b45a' : '#1a1410';
+  // Vorhangstoff mit Streifen und Wappen (Mon) als Textur
+  var c = document.createElement('canvas'); c.width = 512; c.height = 128; var g = c.getContext('2d');
+  g.fillStyle = cloth; g.fillRect(0, 0, 512, 128); g.fillStyle = dark ? '#2a221a' : '#d8d0c0'; for (var s = 0; s < 512; s += 64) g.fillRect(s, 0, 3, 128);
+  g.strokeStyle = ink; g.lineWidth = 6; [[128, 64], [384, 64]].forEach(function (m) { g.beginPath(); g.arc(m[0], m[1], 36, 0, 7); g.stroke(); g.beginPath(); g.arc(m[0], m[1], 14, 0, 7); g.fillStyle = ink; g.fill(); for (var k = 0; k < 6; k++) { var a = k * Math.PI / 3; g.beginPath(); g.arc(m[0] + Math.cos(a) * 24, m[1] + Math.sin(a) * 24, 7, 0, 7); g.fill(); } });
+  var tx = new T.CanvasTexture(c); tx.colorSpace = T.SRGBColorSpace; tx.wrapS = T.RepeatWrapping; tx.anisotropy = 4;
+  var curM = new T.MeshStandardMaterial({ map: tx, side: T.DoubleSide, roughness: 0.85 }), poleM = this._poleMat || (this._poleMat = new T.MeshStandardMaterial({ color: 0x1a1010, roughness: 0.5 }));
+  var tentM = new T.MeshStandardMaterial({ color: dark ? 0x2a241e : 0xe6dfd0, roughness: 0.9, side: T.DoubleSide }), woodM = new T.MeshStandardMaterial({ color: 0x5a4030, roughness: 0.9 });
+  function at(o, x, z, ry) { o.position.set(x, Y + H(x, z), z); o.rotation.y = ry || 0; o.traverse(function (m) { if (m.isMesh) { m.castShadow = hi; m.receiveShadow = true; } }); scene.add(o); return o; }
+  // Umfriedung (U-Form, offen zum Feld) hinter den eigenen Linien
+  function maku(cx, cz, w, d) {
+    var grp = new T.Group(), hgt = 0.34;
+    [[0, -d / 2 * zs, w, 0], [-w / 2, 0, d, Math.PI / 2], [w / 2, 0, d, Math.PI / 2]].forEach(function (sg, j) {
+      var pl = new T.Mesh(new T.PlaneGeometry(sg[2], hgt, 8, 1), curM.clone()); pl.material.map = tx.clone(); pl.material.map.needsUpdate = true; pl.material.map.repeat.set(sg[2] / 1.4, 1);
+      var pp = pl.geometry.attributes.position; for (var k = 0; k < pp.count; k++) pp.setZ(k, Math.sin(pp.getX(k) * 9) * 0.025); pl.geometry.computeVertexNormals();
+      pl.position.set(sg[0], hgt / 2 + 0.06, sg[1]); pl.rotation.y = sg[3]; grp.add(pl);
+      for (var q = -sg[2] / 2; q <= sg[2] / 2 + 0.01; q += sg[2] / Math.round(sg[2] / 0.45)) { var po = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, 0.48, 5), poleM); var ca = Math.cos(sg[3]), sa = Math.sin(sg[3]); po.position.set(sg[0] + q * ca, 0.24, sg[1] - q * sa); grp.add(po); }
+    });
+    // Feldherrnstuhl und Kommando-Fahne in der Mitte
+    var st = new T.Mesh(new T.BoxGeometry(0.12, 0.08, 0.1), woodM); st.position.set(0, 0.04, -d * 0.2 * zs); grp.add(st);
+    return at(grp, cx, cz);
+  }
+  maku(0, 12.2 * zs, 3.6, 1.6);
+  // Zelte (Satteldach) in Reihen links und rechts
+  var tsh = new T.Shape(); tsh.moveTo(-0.3, 0); tsh.lineTo(0, 0.34); tsh.lineTo(0.3, 0); tsh.lineTo(-0.3, 0);
+  var tg = new T.ExtrudeGeometry(tsh, { depth: 0.62, bevelEnabled: false }); tg.translate(0, 0, -0.31);
+  for (var side = -1; side <= 1; side += 2) for (var r = 0; r < 2; r++) for (var k = 0; k < 4; k++) {
+    var x = side * (7.2 + k * 1.0 + r * 0.4), z = (7.4 + r * 1.3 + (k % 2) * 0.2) * zs, t = new T.Group(), body = new T.Mesh(tg, tentM); t.add(body);
+    var ridge = new T.Mesh(new T.CylinderGeometry(0.008, 0.008, 0.72, 4), poleM); ridge.rotation.x = Math.PI / 2; ridge.position.y = 0.345; t.add(ridge);
+    var door = new T.Mesh(new T.PlaneGeometry(0.14, 0.2), new T.MeshBasicMaterial({ color: 0x0c0906 })); door.position.set(0, 0.1, 0.312 * zs); if (zs < 0) door.rotation.y = Math.PI; t.add(door);
+    at(t, x, z, (Math.random() - .5) * 0.25);
+  }
+  // Lagerfeuer mit Glut, Licht und Rauch
+  [[-8.2, 9.8], [8.4, 9.6], [0, 13.6]].forEach(function (p) {
+    var x = p[0], z = p[1] * zs, f = new T.Group();
+    for (var j = 0; j < 5; j++) { var lg = new T.Mesh(new T.CylinderGeometry(0.015, 0.015, 0.22, 5), woodM); lg.rotation.set(Math.PI / 2 - 0.5, j * 1.26, 0); lg.position.y = 0.04; f.add(lg); }
+    var fl = new T.Mesh(new T.ConeGeometry(0.06, 0.18, 6), new T.MeshBasicMaterial({ color: 0xffa040 })); fl.position.y = 0.1; f.add(fl);
+    at(f, x, z); fl.castShadow = false;
+    var pl = new T.PointLight(0xff9040, 1.2, 3, 2); pl.position.set(x, Y + H(x, z) + 0.3, z); scene.add(pl); self.lanterns.push(pl); pl.userData.base = 1.2;
+    var puffs = [];
+    for (var j2 = 0; j2 < 7; j2++) { var sp2 = new T.Sprite(self.smokeMat()); sp2.userData.t = j2 / 7; scene.add(sp2); puffs.push(sp2); }
+    self.campFires.push({ x: x, y: Y + H(x, z) + 0.15, z: z, fl: fl, puffs: puffs });
+  });
+  // Speerständer
+  for (var j = 0; j < 4; j++) {
+    var rx = (j < 2 ? -1 : 1) * (6.6 + (j % 2) * 3.4), rz = 8.8 * zs, rack = new T.Group();
+    for (var sp = 0; sp < 7; sp++) { var spr = new T.Mesh(new T.CylinderGeometry(0.006, 0.006, 0.75, 4), poleM); spr.position.set((sp - 3) * 0.06, 0.36, 0); spr.rotation.z = (sp - 3) * 0.04; rack.add(spr); }
+    var bar = new T.Mesh(new T.BoxGeometry(0.5, 0.02, 0.02), woodM); bar.position.y = 0.3; rack.add(bar);
+    at(rack, rx, rz, (Math.random() - .5) * 0.4);
+  }
+  // Nobori-Reihen am Lagerrand (wehen)
+  var nm = new T.MeshStandardMaterial({ color: dark ? 0x16130f : 0xf1ede4, side: T.DoubleSide, roughness: 0.8 });
+  this.nobori = this.nobori || [];
+  for (var n = 0; n < 10; n++) {
+    var nx = (n < 5 ? -1 : 1) * (5.9 + (n % 5) * 0.75), nz = (6.6 + (n % 2) * 0.25) * zs, nb = new T.Group(), pole = new T.Mesh(new T.CylinderGeometry(0.01, 0.01, 1.0, 5), poleM); pole.position.y = 0.5; nb.add(pole);
+    var clg = new T.PlaneGeometry(0.17, 0.6, 1, 6), cl = new T.Mesh(clg, nm); cl.position.set(0.09, 0.66, 0); nb.add(cl);
+    at(nb, nx, nz, col === 1 ? Math.PI : 0); this.nobori.push({ m: cl, ph: Math.random() * 6 });
+  }
+};
+Board3D.prototype.smokeMat = function () {
+  if (!Board3D._smokeT) { var c = document.createElement('canvas'); c.width = c.height = 64; var g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,0.9)'); gr.addColorStop(0.5, 'rgba(255,255,255,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); Board3D._smokeT = new THREE.CanvasTexture(c); }
+  return new THREE.SpriteMaterial({ map: Board3D._smokeT, color: 0x9a948c, transparent: true, depthWrite: false, opacity: 0.3 });
+};
+// pro Bild: Gras/Wolken-Zeit, Rauch der Lagerfeuer, Nobori wehen, Raster je nach Auswahl
+Board3D.prototype.fieldTick = function (now, dt) {
+  this.fieldU.uTime.value = now / 1000;
+  var self = this;
+  (this.campFires || []).forEach(function (f, i) {
+    f.fl.scale.y = 0.8 + Math.sin(now / 70 + i * 2) * 0.2 + Math.random() * 0.15;
+    // Rauchsäule: Puffs steigen, wachsen, treiben mit dem Wind ab und verblassen
+    var B = f.big || 1, R = f.rise || 2.4;
+    if (f.flames) f.flames.forEach(function (fl, j) { fl.scale.set(1, 0.7 + Math.sin(now / 60 + j * 1.7) * 0.3 + Math.random() * 0.25, 1); });
+    f.puffs.forEach(function (p) { var u = p.userData; u.t = (u.t + dt / (7000 + B * 1500)) % 1; var t = u.t; p.position.set(f.x + t * t * 1.6 * B + Math.sin(now / 900 + t * 5) * 0.05 * B, f.y + t * R, f.z - t * t * 0.5 * B); var sz = (0.15 + t * 1.1) * B; p.scale.set(sz, sz, 1); p.material.opacity = Math.sin(Math.PI * Math.min(1, t * 1.4)) * (B > 1 ? 0.55 : 0.35); });
+  });
+  (this.nobori || []).forEach(function (n) { var p = n.m.geometry.attributes.position; for (var j = 0; j < p.count; j++) { var xx = p.getX(j) + 0.085; p.setZ(j, Math.sin(now / 380 + n.ph + p.getY(j) * 6) * 0.035 * (xx / 0.17)); } p.needsUpdate = true; });
+  if (this.fieldGrid) { var want = this.hl && (this.hl.selected != null || this.hoverSq != null) ? 0.75 : 0.28, mt = this.fieldGrid.material; mt.opacity += (want - mt.opacity) * Math.min(1, dt / 160); }
 };
 
 // Trupp-Schlacht: Soldaten im Zweikampf mit dem nächsten Gegner, vordere Reihen zuerst, Verteidiger fallen einzeln, Angreifer formieren sich neu
@@ -1301,9 +1600,16 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   function snd(n, a) { if (typeof Sfx !== 'undefined') Sfx.play(n, a); }
   function wait(ms) { return self.tween(ms * sp, function () { }); }
   function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
-  var o = this.orbit, cam0 = { x: o.target.x, z: o.target.z, r: o.radius }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
-  if (!short) this.tween(450, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e * 0.85; o.target.z = cam0.z + (mz - cam0.z) * e * 0.85; o.radius = cam0.r * (1 - 0.4 * e); });
-  function camBack() { if (short) return; var c1 = { x: o.target.x, z: o.target.z, r: o.radius }; self.tween(650, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; }); }
+  // Kino-Kamera: tief auf Augenhöhe, seitlich zur Front, dreht langsam um das Gemenge
+  var o = this.orbit, cam0 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal }, ranged = style === 'magic' || style === 'shoot' || style === 'breath' || style === 'leap', fk = ranged ? Math.max(0.55, 1 - 1.1 / dist) : 0.72, mx = from.x + dx * fk, mz = from.z + dz * fk;
+  var cdx = Math.sin(o.theta), cdz = Math.cos(o.theta), px = -uz, pz = ux; if (px * cdx + pz * cdz < 0) { px = -px; pz = -pz; }
+  var vx = px * 0.85 + cdx * 0.55 - ux * 0.25, vz = pz * 0.85 + cdz * 0.55 - uz * 0.25, th1 = Math.atan2(vx, vz);
+  while (th1 - o.theta > Math.PI) th1 -= Math.PI * 2; while (th1 - o.theta < -Math.PI) th1 += Math.PI * 2;
+  var c1r = ranged ? 5.2 : Math.max(4.6, Math.min(7, 3.6 + dist * 0.9));
+  this.hlGroup.visible = false; if (this.look === 'feld') this.showTag(null);
+  self._camBack = false;
+  if (!short) { self.cineDrift = 0; this.tween(700, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.15 - cam0.y) * e; o.radius = cam0.r + (c1r - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; }).then(function () { if (!self._camBack) self.cineDrift = 0.00007 * (Math.random() < .5 ? 1 : -1); }); }
+  function camBack() { if (short) return; self._camBack = true; self.cineDrift = 0; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal }; self.tween(900, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; }).then(function () { self._camBack = false; }); }
   function wp(s) { var v = new T.Vector3(); s.getWorldPosition(v); return v; }
   function toLocal(s, x, z) { var v = new T.Vector3(x, BT, z); if (s.parent) { s.parent.updateWorldMatrix(true, false); s.parent.worldToLocal(v); } return v; }
   function rotY(s) { return s.rotation.y + (s.parent && s.parent.userData.troops ? s.parent.rotation.y : 0); }
@@ -1323,28 +1629,40 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
     return self.tween(dur * sp, function (k) { var e = ease(k); if (u) u.uAct.value = a0 + (v - a0) * e; if (ld) { s.userData.ang = g0 + ((ang || 0) - g0) * e; self.lean(s, ld.x, ld.z, s.userData.ang); } });
   }
   function head(s) { var p = wp(s); p.y += s.userData.hh || 0.8; return p; }
-  function sparks(x, y, z, c, n, sh) { n = Math.max(4, Math.round(n * pf)); self.emit(x, y, z, c, n, 3.2, 0.9); self.emit(x, y, z, 0xffffff, n / 3, 2, 1.1); self.shakeAmt = Math.max(self.shakeAmt || 0, sh); }
-  var killed = 0, total = dt.length;
-  function dieT(d, nx, nz, att) {
+  function sparks(x, y, z, c, n, sh) { n = Math.max(4, Math.round(n * pf)); self.emit(x, y, z, 0xffc870, n, 3.2, 0.9); self.emit(x, y, z, 0xffffff, n / 3, 2, 1.1); self.shakeAmt = Math.max(self.shakeAmt || 0, sh); }
+  var killed = 0, total = dt.length, ptA = Math.abs(A.userData.p || 0), heavyA = style === 'charge' || [3, 6, 7, 8, 13, 14, 11].indexOf(ptA) >= 0, corpses = [];
+  function flash(s, v) { if (s.userData.u) s.userData.flash = v || 1; }
+  // Schwert-/Speerspur: heller Bogen vor dem Soldaten, verblasst schnell
+  function trail(s, nx, nz, col) {
+    if (many && Math.random() < 0.5) return;
+    var w = wp(s), h = s.userData.hh || 0.25, ring = new T.Mesh(self._trailGeo || (self._trailGeo = new T.RingGeometry(0.7, 1, 18, 1, -0.8, 2.5)), new T.MeshBasicMaterial({ color: col || 0xffffff, transparent: true, opacity: 0.75, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
+    ring.rotation.set(0, Math.atan2(-nz, nx), 0); ring.position.set(w.x + nx * h * 0.25, w.y + h * 0.62, w.z + nz * h * 0.25); ring.scale.setScalar(h * 0.75); self.scene.add(ring);
+    self.tween(170, function (k) { ring.material.opacity = 0.75 * (1 - k); ring.scale.setScalar(h * (0.75 + k * 0.25)); }).then(function () { self.scene.remove(ring); ring.material.dispose(); });
+  }
+  function dieT(d, nx, nz, att, heavy) {
     if (!att && info.onHit) info.onHit();
-    var ld = ldir(d, nx, nz), p0 = d.position.clone(), fall = 1.3 + Math.random() * 0.35, hp = head(d), u = U(d), kb = 0.14 + Math.random() * 0.12;
-    sparks(hp.x, hp.y - 0.06, hp.z, att ? colD : colA, big ? 30 : 20, big ? 0.25 : 0.14);
-    // Rückstoß: kurz nach hinten geschleudert, dreht sich, kippt um
-    var spin = (Math.random() - 0.5) * 1.2, m = d.userData.glb, f0 = m ? m.userData.face || 0 : 0;
-    return self.tween((380 + Math.random() * 140) * sp, function (k) {
-      var e = 1 - Math.pow(1 - k, 2), tp = k * k;
-      self.lean(d, ld.x, ld.z, tp * fall); d.position.x = p0.x + ld.x * e * kb; d.position.z = p0.z + ld.z * e * kb; d.position.y = p0.y + Math.sin(k * Math.PI) * 0.05;
+    if (heavy == null) heavy = heavyA && Math.random() < (big ? 0.7 : 0.45);
+    var ld = ldir(d, nx, nz), p0 = d.position.clone(), fall = 1.45 + Math.random() * 0.3, hp = head(d), u = U(d), kb = heavy ? 0.35 + Math.random() * 0.45 : 0.14 + Math.random() * 0.12;
+    sparks(hp.x, hp.y - 0.06, hp.z, att ? colD : colA, big ? 30 : 20, heavy ? 0.3 : big ? 0.25 : 0.14); flash(d, 1.2);
+    // Rückstoß: nach hinten geschleudert (schwere Treffer: durch die Luft mit Überschlag), kippt um und bleibt liegen
+    var spin = (Math.random() - 0.5) * (heavy ? 3 : 1.2), m = d.userData.glb, f0 = m ? m.userData.face || 0 : 0, air = heavy ? 0.28 + Math.random() * 0.3 : 0.05, flip = heavy ? 2.2 + Math.random() * 1.6 : fall;
+    return self.tween((heavy ? 620 : 380 + Math.random() * 140) * sp, function (k) {
+      var e = 1 - Math.pow(1 - k, 2), tp = heavy ? Math.min(1, k * 1.15) : k * k;
+      self.lean(d, ld.x, ld.z, heavy ? tp * flip - (k > .87 ? (k - .87) / .13 * (flip - fall) : 0) : tp * fall); d.position.x = p0.x + ld.x * e * kb; d.position.z = p0.z + ld.z * e * kb; d.position.y = p0.y + Math.sin(k * Math.PI) * air;
       if (m) m.userData.face = f0 + spin * e; if (u) u.uAct.value = -0.9 * (1 - k) + 0.4 * k;
     }).then(function () {
-      var w = wp(d); self.emit(w.x + nx * 0.08, BT + 0.06, w.z + nz * 0.08, dust, many ? 6 : 14, 1.1, 0.6);
+      var w = wp(d); self.emit(w.x + nx * 0.08, BT + 0.06, w.z + nz * 0.08, dust, heavy ? 18 : many ? 6 : 14, heavy ? 1.6 : 1.1, 0.6);
+      if (heavy) { var y1 = d.position.y; self.tween(160 * sp, function (k) { d.position.y = y1 + Math.sin(k * Math.PI) * 0.04; }); }
       if (!att && ++killed === total) {
-        snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.12);
+        snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.16); if (!short) self.slowmo(420, 0.3);
         // Feldzeichen fällt mit dem letzten Mann
         var ban = D.userData.banner; if (ban) { var bl = ldir(D, nx, nz); self.tween(520 * sp, function (k) { self.lean(ban, bl.x, bl.z, k * k * 1.5); }); }
       }
-      return self.tween(260 * sp, function (k) { d.scale.setScalar(1 - k); d.position.y = p0.y - k * 0.08; });
-    }).then(function () { d.visible = false; });
+      d.userData.dead = true; corpses.push(d);
+    });
   }
+  // Gefallene sinken nach der Schlacht langsam ein
+  function bury(list, then) { var ys = list.map(function (d) { return d.position.y; }); return self.tween(1100, function (k) { list.forEach(function (d, i) { d.position.y = ys[i] - k * k * 0.12; }); }, 700).then(function () { list.forEach(function (d) { d.visible = false; }); if (then) then(); }); }
   // Ziele verteilen: Angreifer von vorne nach hinten nehmen den nächsten freien Gegner, übrige Gegner gehen an den nächsten Angreifer
   var groups = at.map(function () { return []; }), ap = at.map(wp), dp = dt.map(wp), dc = new T.Vector3(), ac = new T.Vector3();
   dp.forEach(function (p) { dc.add(p); }); dc.multiplyScalar(1 / dp.length); ap.forEach(function (p) { ac.add(p); }); ac.multiplyScalar(1 / ap.length);
@@ -1359,7 +1677,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   function cheer(a) { var ld = ldir(a, ux, uz), r = a.userData.ord || 0; return wait(r * st).then(function () { return act(a, -0.7, 220, ld, -0.1); }).then(function () { return act(a, 0.3, 160, ld, 0.05); }).then(function () { return act(a, 0, 200, ld, 0); }); }
   function killAll(defs, nx, nz) { return Promise.all(defs.map(function (d, k) { return wait(k * 70).then(function () { return dieT(d, nx, nz); }); })); }
   // Zweikampf: anrennen, Schlagabtausch (Waffenarm holt aus und schlägt), Paraden, Todesstoß; manche Angreifer fallen auch
-  function swing(s, dur, ld, back) { return act(s, back ? -1.25 : 1.15, dur, ld, back ? -0.16 : 0.24); }
+  function swing(s, dur, ld, back, nx, nz) { if (!back && nx != null) trail(s, nx, nz); return act(s, back ? -1.25 : 1.15, dur, ld, back ? -0.16 : 0.24); }
   function block(s, ld) { return act(s, -0.55, 110, ld, -0.1); }
   function push(s, nx, nz, d, dur) { var p0 = s.position.clone(), l = ldir(s, nx, nz); return self.tween(dur * sp, function (k) { var e = 1 - Math.pow(1 - k, 3); s.position.x = p0.x + l.x * d * e; s.position.z = p0.z + l.z * d * e; }); }
   function duel(a, defs) {
@@ -1377,15 +1695,15 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
     })
       // 1. Hieb: Verteidiger pariert, wird zurückgedrängt
       .then(function () { walk(a, 0); if (loud) snd('whoosh', 0.45); return Promise.all([swing(a, 170, ld, true), block(dd, dl2)]); })
-      .then(function () { return swing(a, 75, ld); })
-      .then(function () { var p = mid(); clash(p[0], p[1], p[2], 0xffffff, 12); return Promise.all([push(dd, nx, nz, 0.05, 140), act(dd, -0.3, 140, dl2, -0.14)]); })
+      .then(function () { return Promise.all([swing(a, 75, ld, false, nx, nz), push(a, nx, nz, 0.03, 75)]); })
+      .then(function () { var p = mid(); clash(p[0], p[1], p[2], 0xffffff, 12); flash(dd, 0.5); return Promise.all([push(dd, nx, nz, 0.05, 140), act(dd, -0.3, 140, dl2, -0.14)]); })
       .then(function () {
         if (short) return;
         // 2. Gegenschlag: Verteidiger holt aus, Angreifer blockt und weicht einen Schritt
         return Promise.all([act(a, -0.2, 120, ld, 0), swing(dd, 170, dl2, true)])
-          .then(function () { return Promise.all([swing(dd, 75, dl2), block(a, ld)]); })
+          .then(function () { return Promise.all([swing(dd, 75, dl2, false, -nx, -nz), block(a, ld)]); })
           .then(function () {
-            var p = mid(); clash(p[0], p[1], p[2], colD, 12);
+            var p = mid(); clash(p[0], p[1], p[2], colD, 12); flash(a, 0.5);
             if (falls) return dieT(a, -nx, -nz, true); // dieser Angreifer fällt
             return Promise.all([push(a, -nx, -nz, 0.05, 140), act(dd, 0, 140, dl2, 0)]);
           });
@@ -1395,7 +1713,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
         if (falls) return wait(160).then(function () { return killAll(defs, nx, nz); });
         // 3. Todesstoß: weit ausholen, wuchtig durchziehen
         if (loud) snd('whoosh', 0.55);
-        return swing(a, 190, ld, true).then(function () { return Promise.all([swing(a, 70, ld), push(a, nx, nz, 0.06, 70)]); })
+        return swing(a, 190, ld, true).then(function () { return Promise.all([swing(a, 70, ld, false, nx, nz), push(a, nx, nz, 0.08, 70)]); })
           .then(function () { var p = mid(); clash(p[0], p[1], p[2], colA, 18); return killAll(defs, nx, nz); })
           .then(function () { return act(a, 0, 260, ld, 0); });
       });
@@ -1461,7 +1779,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   function reform() {
     camBack();
     var tw = at.map(function (a) {
-      if (a === A || !a.userData.home) return Promise.resolve();
+      if (a === A || !a.userData.home || a.userData.dead) return Promise.resolve();
       var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0;
       a.userData.ox = a.userData.oz = 0; walk(a, 0.7);
       return self.tween(480 * sp, function (k) { var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y * (1 - e); if (m) m.userData.face = f0 * (1 - e); }).then(function () { walk(a, 0); });
@@ -1479,11 +1797,32 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   else if (style === 'charge') battle = face.then(function () {
     snd('whoosh');
     return march(x0, z0, x0 - ux * 0.15, z0 - uz * 0.15, 200).then(function () { return march(x0 - ux * 0.15, z0 - uz * 0.15, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 120, true); });
-  }).then(function () { snd('clash'); st = st * 0.4; return each(duel); });
-  else battle = face.then(function () { if (!short) snd('whoosh', 0.7); return Promise.all(at.map(function (a, j) { return wait(j * 12).then(function () { return act(a, -1.1, 200, null); }); })); })
-    .then(function () { return march(x0, z0, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 200, true); })
+  }).then(impact).then(function () { st = st * 0.4; return each(duel); });
+  else battle = face.then(function () { if (!short) snd('whoosh', 0.7); return Promise.all(at.map(function (a, j) { return wait(j * 12).then(function () { return act(a, -1.1, 200, null); }); }).concat(dt.map(function (d, j) { return wait(60 + j * 15).then(function () { return act(d, -0.8, 200, null); }); }))); })
+    .then(function () { return Promise.all([march(x0, z0, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 200, true), meet(160 + stopD * 200)]); })
+    .then(impact)
     .then(function () { return each(duel); });
-  return battle.then(function () { if (D.parent) self.pieceGroup.remove(D); return reform(); });
+  // Verteidiger stürmen ein Stück entgegen
+  function meet(dur) {
+    if (short) return Promise.resolve();
+    var p0 = D.position.clone(); dt.forEach(function (d) { walk(d, 1); });
+    return self.tween(dur * 0.7 * sp, function (k) { var e = k * k; D.position.x = p0.x - ux * 0.16 * e; D.position.z = p0.z - uz * 0.16 * e; }, dur * 0.3 * sp).then(function () { dt.forEach(function (d) { walk(d, 0); }); });
+  }
+  // Aufprall der Linien: Staubwall, Wackeln, kurze Zeitlupe, vordere Reihe wird gestaucht
+  function impact() {
+    snd('clash', 0.9); if (!short) self.slowmo(300, 0.25); self.shakeAmt = Math.max(self.shakeAmt || 0, big ? 0.3 : 0.2);
+    var c = centroid(dt), pxx = -uz, pzz = ux;
+    for (var q = -3; q <= 3; q++) self.emit(c.x - ux * 0.25 + pxx * q * 0.13, BT + 0.05, c.z - uz * 0.25 + pzz * q * 0.13, dust, many ? 5 : 9, 1.4, 0.5);
+    dt.forEach(function (d) { var w = wp(d), dd2 = (w.x - c.x) * ux + (w.z - c.z) * uz; if (dd2 < 0.05) { flash(d, 0.4); push(d, ux, uz, 0.05, 160); } });
+    return wait(120);
+  }
+  return battle.then(function () {
+    self.cineDrift = 0; self.hlGroup.visible = true; var mine = corpses.filter(function (c) { return at.indexOf(c) >= 0; }), theirs = corpses.filter(function (c) { return at.indexOf(c) < 0; });
+    if (mine.length) bury(mine);
+    if (theirs.length) bury(theirs, function () { if (D.parent) self.pieceGroup.remove(D); });
+    else if (D.parent) self.pieceGroup.remove(D);
+    return reform();
+  });
 };
 
 Board3D.prototype.sqPos = function (sq) { var r = (sq / 9) | 0, c = sq % 9; return { x: c - 4, z: r - 4 }; };
@@ -1587,14 +1926,17 @@ Board3D.prototype.setHighlights = function (h) {
 Board3D.prototype.resize = function () {
   var w = this.root.clientWidth, h = this.root.clientHeight; if (!w || !h) return;
   this.renderer.setSize(w, h, false); this.renderer.domElement.style.width = w + 'px'; this.renderer.domElement.style.height = h + 'px';
-  this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+  this.camera.aspect = w / h;
+  // Schlachtfeld: Bild nach oben verschoben (mehr Himmel und Burg im Hintergrund, Armeen weiter unten), Perspektive bleibt gleich
+  if (this.look === 'feld') this.camera.setViewOffset(w, h, 0, -h * 0.17, w, h); else this.camera.clearViewOffset();
+  this.camera.updateProjectionMatrix();
   // Abstand so, dass das Brett (≈11 breit) ins Bild passt
   var vf = this.camera.fov * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * this.camera.aspect);
   var need = Math.max(6.2 / Math.tan(hf / 2), 6.4 / Math.tan(vf / 2));
   this.orbit.fit = need; if (!this.orbit.user) this.orbit.radius = need;
 };
-Board3D.prototype.setFlip = function (f) { this.flip = !!f; this.orbit.thetaGoal = f ? Math.PI : 0; };
-Board3D.prototype.resetCamera = function () { this.orbit.user = false; this.orbit.radius = this.orbit.fit; this.orbit.phi = 0.78; this.orbit.thetaGoal = this.flip ? Math.PI : 0; };
+Board3D.prototype.setFlip = function (f) { this.flip = !!f; this.orbit.thetaGoal = f ? Math.PI : 0; if (this.look === 'feld' && !this.orbit.user) this.orbit.target.z = f ? 1.2 : -1.2; };
+Board3D.prototype.resetCamera = function () { this.orbit.user = false; this.orbit.radius = this.orbit.fit; this.orbit.phi = this.orbit.phi0 || 0.78; if (this.look === 'feld') this.orbit.target.set(0, 0, this.flip ? 1.2 : -1.2); this.orbit.thetaGoal = this.flip ? Math.PI : 0; };
 Board3D.prototype.initInput = function () {
   var self = this, el = this.renderer.domElement, ptrs = {}, start = null, moved = false, pinch0 = 0, rad0 = 0;
   el.style.touchAction = 'none';
@@ -1627,6 +1969,7 @@ Board3D.prototype.pickSq = function (cx, cy) {
 };
 // Armee-Modus: großes Kanji auf dem Feld des Regiments (Maus darüber oder ausgewählt), liegt flach am Boden und wird über die Soldaten gezeichnet
 Board3D.prototype.showTag = function (sq) {
+  if (this.hlGroup && !this.hlGroup.visible) sq = null; // während der Schlacht kein Schild
   var T = THREE, p = sq != null && sq >= 0 && this.state ? this.state.board[sq] : 0;
   if (!this.tag) {
     this.tag = new T.Mesh(new T.PlaneGeometry(0.98, 0.98), new T.MeshBasicMaterial({ transparent: true, depthTest: false, depthWrite: false }));
@@ -1673,27 +2016,32 @@ Board3D.prototype.update = function (now, dt) {
   c.position.set(o.target.x + o.radius * s * Math.sin(o.theta) + (Math.random() - .5) * shake, o.target.y + o.radius * Math.cos(o.phi) + (Math.random() - .5) * shake, o.target.z + o.radius * s * Math.cos(o.theta));
   c.lookAt(o.target);
   if (this.camLight) { this.camLight.position.copy(c.position).add(new THREE.Vector3(0, 3, 0)); this.camLight.target.position.copy(o.target); }
+  if (this.fieldU) this.fieldTick(now, dt);
   if (this.hallSides) this.hallSides.forEach(function (h) { h.g.visible = c.position[h.axis] * h.sign < h.R - 0.6; });
   this.lanterns.forEach(function (l, i) { l.intensity = (l.userData.base || 1.6) + Math.sin(now / 90 + i * 3) * 0.15 + Math.random() * 0.2; });
   if (this.checkRing.visible) { var k = 1 + Math.sin(now / 120) * 0.15; this.checkRing.scale.set(k, k, k); this.checkRing.material.opacity = 0.6 + Math.sin(now / 120) * 0.3; }
   // Figuren-Details
   var t = now / 1000, me = this; Board3D.ARMY_TIME.value = t;
   this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) { m.position.y = 0.2 + Math.max(0, Math.sin(t * 1.6 + sd)) * 0.025; m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0) + Math.sin(t * 0.7 + sd) * 0.08; } });
-  // Tweens
+  // Tweens (laufen auf einer eigenen Uhr, damit Zeitlupe geht)
   var self = this;
+  if (this.slowUntil && now > this.slowUntil) { this.timeScale = 1; this.slowUntil = 0; }
+  var ts = this.timeScale || 1, vt = this.vt = (this.vt == null ? now : this.vt + dt * ts);
+  if (this.cineDrift) o.thetaGoal += dt * this.cineDrift;
   this.tweens = this.tweens.filter(function (tw) {
     if (tw.forever) { tw.f(now); return true; }
-    if (tw.start == null) tw.start = now;
-    var k = Math.min(1, (now - tw.start) / tw.dur);
+    if (tw.start == null) tw.start = vt;
+    var k = Math.min(1, (vt - tw.start) / tw.dur);
     if (k >= 0) tw.f(k);
     if (k >= 1) { tw.done && tw.done(); return false; }
     return true;
   });
-  this.updateParticles(dt);
+  this.updateParticles(dt * ts);
   if (this.armyPools) this.armyDraw();
   if (this.petals) this.updatePetals(dt, now);
 };
-Board3D.prototype.tween = function (dur, f, delay) { var self = this; return new Promise(function (res) { self.tweens.push({ dur: dur, f: f, done: res, start: delay ? performance.now() + delay : null }); }); };
+Board3D.prototype.tween = function (dur, f, delay) { var self = this; return new Promise(function (res) { self.tweens.push({ dur: dur, f: f, done: res, start: delay ? (self.vt || performance.now()) + delay : null }); }); };
+Board3D.prototype.slowmo = function (ms, scale) { this.timeScale = scale; this.slowUntil = performance.now() + ms; };
 
 // ---------- Partikel ----------
 Board3D.prototype.initParticles = function () {
