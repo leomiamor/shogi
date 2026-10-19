@@ -32,7 +32,7 @@
       var names = Object.keys(meta.clips), clips = names.map(function (n) { var c = meta.clips[n]; return new T.Vector4(c[0], c[1], meta.fps, c[2]); });
       while (clips.length < 32) clips.push(new T.Vector4(0, 1, 24, 0));
       var ids = {}, dur = {}; names.forEach(function (n, j) { ids[n] = j; dur[n] = meta.clips[n][1] / meta.fps; });
-      var A = { geo: geo, tex: tex, clips: clips, ids: ids, dur: dur, hit: meta.hit || {}, meta: meta, src: scene, mesh: pm };
+      var A = { geo: geo, mat: sm.material, map: (sm.material && sm.material.map) || null, tex: tex, clips: clips, ids: ids, dur: dur, hit: meta.hit || {}, meta: meta, src: scene, mesh: pm };
       done[base] = A; return A;
     }, function (e) { done[base] = false; throw e; });
     return cache[base];

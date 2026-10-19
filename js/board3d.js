@@ -1,3 +1,5 @@
+// Handy/Tablet (grober Zeiger oder Touch-Gerät): Akku-Sparmaßnahmen
+Board3D.MOBILE = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 // 3D-Brett mit Three.js: schwebende Insel, Laternen, Kirschblüten, Figuren-Modelle, Partikel.
 function Board3D(root, theme, settings) {
   var self = this;
@@ -5,8 +7,10 @@ function Board3D(root, theme, settings) {
   this.tweens = []; this.onSquare = null; this.pieces = {}; this.quality = settings.quality || 'high';
   root.innerHTML = ''; root.classList.add('b3');
   var T = THREE, hi = this.quality === 'high';
-  var r = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, hi ? 2 : 1.25));
+  // Handy: Akku schonen (Strom-Modus, Auflösung, Bildrate gedeckelt, Armee-Schatten und Gras reduziert)
+  var mob = this.mobile = Board3D.MOBILE, army = settings.army && hi;
+  var r = new T.WebGLRenderer({ antialias: !(mob && army), powerPreference: mob ? 'default' : 'high-performance' });
+  r.setPixelRatio(Math.min(window.devicePixelRatio || 1, mob ? (army ? 1.5 : 1.75) : hi ? 2 : 1.25));
   r.outputColorSpace = T.SRGBColorSpace; r.toneMapping = T.ACESFilmicToneMapping; r.toneMappingExposure = 1.05;
   r.shadowMap.enabled = hi; r.shadowMap.type = T.PCFSoftShadowMap;
   root.appendChild(r.domElement); this.renderer = r;
@@ -122,13 +126,15 @@ function Board3D(root, theme, settings) {
   this.initInput();
   this.resize();
   this._ro = new ResizeObserver(function () { self.resize(); }); this._ro.observe(root);
-  var last = performance.now();
+  var last = performance.now(), calm = 0;
   function loop(now) {
     if (!self.alive) return;
+    requestAnimationFrame(loop);
+    // Handy: 30 fps bei Bewegung (Züge, Kampf, Kamera), 20 fps in Ruhe; PC ungedeckelt
+    if (mob) { if (self.tweens.length || now - (self.lastInput || 0) < 400 || Math.abs(self.orbit.theta - self.orbit.thetaGoal) > 1e-3) calm = now; if (now - last < (now - calm > 1500 ? 50 : 33.3) - 2) return; }
     var dt = Math.min(50, now - last); last = now;
     self.update(now, dt);
     r.render(scene, cam);
-    requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 
@@ -1136,28 +1142,102 @@ Board3D.prototype.idleAttr = function (geo) {
   for (i = 0; i < p.count; i++) { a[i * 4] = (p.getY(i) - b.min.y) / H; a[i * 4 + 1] = H * ws; a[i * 4 + 2] = cx; a[i * 4 + 3] = cz; }
   geo.setAttribute('aIdle', new THREE.BufferAttribute(a, 4));
 };
-Board3D.prototype.armyMatI = function (col, rim) {
-  var key = 'armyI' + col + (rim ? 'r' : ''); this.statueCache = this.statueCache || {};
+// bemalt: Farbtextur, die vom hochaufgelösten KI-Modell auf das Low-Poly-Modell gebacken wurde (tools/texbake); sonst Gold/Silber-Statue
+Board3D.prototype.armyBase = function (col, map) {
+  if (!map) return this.statueMat(col, null, false).clone();
+  var m = new THREE.MeshStandardMaterial({ map: map, normalMap: map.userData.nmap || null, roughness: 0.7, metalness: 0, envMapIntensity: 0.45 });
+  if (map.userData.nscale) m.normalScale.copy(map.userData.nscale);
+  return m;
+};
+// Bemalte Soldaten: Originalfarben des KI-Designs (gebackene Farb- und Normal-Map). Spieler erkennt man am Randschein der Silhouette
+// (Sente Gold, Gote Silber, wie die Statuen), an Formation und Fahnen, optional am Sashimono (Sente gold mit schwarzem Mon, Gote silberweiß mit rotem Mon)
+Board3D.RIM = [[1.0, 0.62, 0.16], [0.75, 0.85, 1.0]];
+Board3D.NO_SASHI = [3, 13, 14]; // Kreaturen (Fuchs, Hirsch, Drache) tragen kein Rückenfähnchen
+Board3D.SASHI = [[[0.85, 0.55, 0.12], [0.02, 0.018, 0.015]], [[0.8, 0.82, 0.85], [0.6, 0.04, 0.03]]]; // Tuch, Mon: Sente Gold/schwarz, Gote Silberweiß/rot
+Board3D.WHITE_FUR = [3]; // Kitsune (Springer): weißes Fell wie die Inari-Füchse statt Orange
+Board3D.KUMADORI = [[0.85, 0.52, 0.1], [0.62, 0.05, 0.03]]; // Zeichnung im Fell (dunkle Partien des Originals): Sente Gold, Gote Zinnober
+Board3D.paintPatch = function (sh, col, t) {
+  var fur = Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0;
+  var r = Board3D.RIM[col] || Board3D.RIM[0], f = Board3D.SASHI[col] || Board3D.SASHI[0], v3 = function (x) { return 'vec3(' + x.join(', ') + ')'; };
+  sh.uniforms.uFlagT = Board3D.ARMY_TIME;
+  sh.vertexShader = 'uniform float uFlagT; attribute float aFlag; attribute vec2 aFlagUV; varying float vFlag; varying vec2 vFlagUV;\n' + sh.vertexShader
+    .replace('#include <begin_vertex>', '#include <begin_vertex>\n vFlag = aFlag; vFlagUV = aFlagUV;')
+    // Fähnchen weht (nach Skelett/Biegung, vor der Projektion), Phase nach Weltposition des Soldaten
+    .replace('#include <project_vertex>', 'if (aFlag > 0.75) { float fp = instanceMatrix[3].x * 3.1 + instanceMatrix[3].z * 1.7; transformed.z += (sin(uFlagT * 4.2 + fp + aFlagUV.x * 2.5) * 0.6 + sin(uFlagT * 7.3 + fp * 1.3) * 0.25) * aFlagUV.x * 0.035; }\n#include <project_vertex>');
+  sh.fragmentShader = 'varying float vFlag; varying vec2 vFlagUV;\n' + sh.fragmentShader
+    .replace('#include <map_fragment>', ['#include <map_fragment>',
+      // etwas kräftiger und heller (die gebackene Albedo ist dunkel, auf dem Feld wirkte die Armee matschig)
+      '{ vec3 c0 = diffuseColor.rgb; float l0 = dot(c0, vec3(0.2126, 0.7152, 0.0722)); diffuseColor.rgb = max(mix(vec3(l0), c0, 1.18), 0.0) * 1.06;',
+      fur ? '  { float mx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)), mn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b)), sat = (mx - mn) / (mx + 1e-4), hue = mx == diffuseColor.r ? mod((diffuseColor.g - diffuseColor.b) / max(mx - mn, 1e-5), 6.0) / 6.0 : 0.5;' +
+        ' float w = smoothstep(0.22, 0.42, sat) * (1.0 - smoothstep(0.13, 0.17, hue));' +
+        ' float mk = 1.0 - smoothstep(0.1, 0.17, l0); vec3 fw = vec3(0.93, 0.91, 0.88) * clamp(0.62 + l0 * 1.6, 0.0, 1.0);' +
+        ' diffuseColor.rgb = mix(diffuseColor.rgb, mix(fw, ' + v3(Board3D.KUMADORI[col] || Board3D.KUMADORI[0]) + ', mk), w); }' : '',
+      '  if (vFlag > 0.75) { float rr = length((vFlagUV - vec2(0.5, 0.6)) * vec2(0.45, 1.0)) / 0.15; diffuseColor.rgb = mix(' + v3(f[1]) + ', ' + v3(f[0]) + ', smoothstep(0.9, 1.0, rr)); }',
+      '  else if (vFlag > 0.25) diffuseColor.rgb = vec3(0.05, 0.04, 0.035); }'].join('\n'))
+    .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>' + (fur ? '\n roughnessFactor = 0.95;' : ''))
+    // Randschein in Spielerfarbe: liest sich auch aus der Ferne, kostet nur eine Rechnung pro Pixel
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (vFlag < 0.25) totalEmissiveRadiance += ' + v3(r) + ' * pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 3.0) * 0.32;');
+};
+// Sashimono an die Soldaten-Geometrie hängen: Stange am Rücken + Tuch (doppelseitig), folgt Rumpf (Skelett: spine_03) bzw. Körper-Biegung
+Board3D.prototype.sashiGeo = function (geo, sk) {
+  if (geo.userData.sashi) return geo.userData.sashi;
+  var T = THREE, GC = ['getX', 'getY', 'getZ', 'getW']; function comp(at, i, k) { return at[GC[k]](i); } geo.computeBoundingBox(); var bb = geo.boundingBox, H = bb.max.y - bb.min.y, y0 = bb.min.y, zb = bb.min.z * 0.85, n0 = geo.getAttribute('position').count;
+  var P = [], N = [], F = [], FU = [];
+  function quad(a, b, c, d, nz, fl, uv) { var i0 = P.length / 3; [a, b, c, d].forEach(function (q, k) { P.push(q[0], q[1], q[2]); N.push(0, 0, nz); F.push(fl); FU.push(uv[k][0], uv[k][1]); }); return nz > 0 ? [i0, i0 + 1, i0 + 2, i0, i0 + 2, i0 + 3] : [i0, i0 + 2, i0 + 1, i0, i0 + 3, i0 + 2]; }
+  var I = [], pw = H * 0.008, yb = y0 + H * 0.5, yt = y0 + H * 1.04, cx0 = 0.0, z0 = zb - H * 0.012, U0 = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  // Stange: zwei gekreuzte schmale Flächen
+  I = I.concat(quad([cx0 - pw, yb, z0], [cx0 + pw, yb, z0], [cx0 + pw, yt, z0], [cx0 - pw, yt, z0], -1, 0.5, U0), quad([cx0 - pw, yb, z0], [cx0 + pw, yb, z0], [cx0 + pw, yt, z0], [cx0 - pw, yt, z0], 1, 0.5, U0));
+  // Tuch: hängt seitlich an der Stange, oben
+  var fx0 = cx0 + pw, fx1 = cx0 + pw + H * 0.075, fy0 = y0 + H * 0.86, fy1 = yt - H * 0.01, zf = z0 - H * 0.002;
+  I = I.concat(quad([fx0, fy0, zf], [fx1, fy0, zf], [fx1, fy1, zf], [fx0, fy1, zf], -1, 1, U0), quad([fx0, fy0, zf + H * 0.001], [fx1, fy0, zf + H * 0.001], [fx1, fy1, zf + H * 0.001], [fx0, fy1, zf + H * 0.001], 1, 1, U0));
+  var m = P.length / 3, out = new T.BufferGeometry(), src = geo.index ? geo : null;
+  ['position', 'normal', 'uv', 'aIdle', 'aSkinI', 'aSkinW'].forEach(function (nm) {
+    var at = geo.getAttribute(nm); if (!at) return; var isz = at.itemSize, arr = new Float32Array((n0 + m) * isz);
+    for (var i = 0; i < n0; i++) for (var k = 0; k < isz; k++) arr[i * isz + k] = comp(at, i, k);
+    for (i = 0; i < m; i++) {
+      var o = (n0 + i) * isz, y = P[i * 3 + 1];
+      if (nm === 'position') { arr[o] = P[i * 3]; arr[o + 1] = y; arr[o + 2] = P[i * 3 + 2]; }
+      else if (nm === 'normal') { arr[o] = 0; arr[o + 1] = 0; arr[o + 2] = N[i * 3 + 2]; }
+      else if (nm === 'aIdle') { arr[o] = Math.min(0.92, (y - y0) / H * 0.8); arr[o + 1] = comp(at, 0, 1); arr[o + 2] = comp(at, 0, 2); arr[o + 3] = comp(at, 0, 3); }
+      else if (nm === 'aSkinI') { arr[o] = sk ? Math.max(0, sk.meta.bones.indexOf('spine_03')) : 0; }
+      else if (nm === 'aSkinW') { arr[o] = 1; }
+    }
+    out.setAttribute(nm, new T.BufferAttribute(arr, isz));
+  });
+  var fl = new Float32Array(n0 + m), fu = new Float32Array((n0 + m) * 2);
+  for (var i = 0; i < m; i++) { fl[n0 + i] = F[i]; fu[(n0 + i) * 2] = FU[i * 2]; fu[(n0 + i) * 2 + 1] = FU[i * 2 + 1]; }
+  out.setAttribute('aFlag', new T.BufferAttribute(fl, 1)); out.setAttribute('aFlagUV', new T.BufferAttribute(fu, 2));
+  var idx = []; if (geo.index) for (i = 0; i < geo.index.count; i++) idx.push(geo.index.getX(i)); else for (i = 0; i < n0; i++) idx.push(i);
+  I.forEach(function (x) { idx.push(n0 + x); }); out.setIndex(idx);
+  out.boundingBox = null; out.computeBoundingSphere();
+  return (geo.userData.sashi = out);
+};
+Board3D.prototype.armyMatI = function (col, rim, map, t) {
+  var key = 'armyI' + col + (rim ? 'r' : '') + (map ? map.uuid : ''); this.statueCache = this.statueCache || {};
   if (this.statueCache[key]) return this.statueCache[key];
-  var mat = this.statueMat(col, null, false).clone();
+  var mat = this.armyBase(col, map);
+  if (map && Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0) mat.normalScale.multiplyScalar(0.3); // Fell: weich statt facettiert
   mat.onBeforeCompile = function (sh) {
     sh.uniforms.uTime = Board3D.ARMY_TIME;
     sh.vertexShader = 'uniform float uTime;\nattribute vec4 aIdle;\nattribute vec3 iAnim;\n' + sh.vertexShader.replace('#include <begin_vertex>', Board3D.ARMY_VS);
+    if (map) Board3D.paintPatch(sh, col, t);
     if (rim) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.12, 0.05) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2) * 1.6;');
   };
-  mat.customProgramCacheKey = function () { return rim ? 'armyI-rim' : 'armyI'; };
+  mat.customProgramCacheKey = function () { return (rim ? 'armyI-rim' : 'armyI') + (map ? 'p' + col + (Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0 ? 'f' : '') : ''); };
   return (this.statueCache[key] = mat);
 };
 // Material für Soldaten mit Skelett: Clips aus der gebackenen Textur statt Vertex-Biegung
-Board3D.prototype.armyMatS = function (col, rim, sk) {
-  var key = 'armyS' + col + (rim ? 'r' : ''); this.statueCache = this.statueCache || {};
+Board3D.prototype.armyMatS = function (col, rim, sk, map, t) {
+  var key = 'armyS' + col + (rim ? 'r' : '') + (map ? map.uuid : ''); this.statueCache = this.statueCache || {};
   if (this.statueCache[key]) return this.statueCache[key];
-  var mat = this.statueMat(col, null, false).clone();
+  var mat = this.armyBase(col, map);
+  if (map && Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0) mat.normalScale.multiplyScalar(0.3); // Fell: weich statt facettiert
   mat.onBeforeCompile = function (sh) {
     SkinAnim.patch(sh, sk);
+    if (map) Board3D.paintPatch(sh, col, t);
     if (rim) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.12, 0.05) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2) * 1.6;');
   };
-  mat.customProgramCacheKey = function () { return rim ? 'armyS-rim' : 'armyS'; };
+  mat.customProgramCacheKey = function () { return (rim ? 'armyS-rim' : 'armyS') + (map ? 'p' + col + (Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0 ? 'f' : '') : ''); };
   return (this.statueCache[key] = mat);
 };
 // Clip je Soldat: Tod > Einzelaktion (Hieb, Block, Treffer, Jubel) > Laufen/Gehen > Kampfhaltung/Ruhe
@@ -1179,18 +1259,18 @@ Board3D.prototype.skinShot = function (s, name, hitAt) {
 Board3D.SKIN = { 1: 'models/anim/ashigaru' }; // Typen mit Skelett (nur Feudal-Statuen)
 Board3D.ATK = ['atk1', 'atk2', 'atk3', 'atk4'];
 // Instanzen-Topf je Modell + Farbe (wächst bei Bedarf)
-Board3D.prototype.armyPool = function (key, geo, col, rim, sk) {
+Board3D.prototype.armyPool = function (key, geo, col, rim, sk, map, t) {
   var pools = this.armyPools = this.armyPools || {}, P = pools[key], T = THREE;
   if (P && !P.grow) return P;
-  var cap = P ? P.cap * 2 : 64; sk = sk || (P && P.skin);
+  var cap = P ? P.cap * 2 : 64; sk = sk || (P && P.skin); map = map || (P && P.map); t = t || (P && P.t);
   if (P) { this.scene.remove(P.im); P.im.dispose(); }
   var g2 = geo.clone(), anim = new T.InstancedBufferAttribute(new Float32Array(cap * 3), 3); anim.setUsage(T.DynamicDrawUsage); g2.setAttribute('iAnim', anim);
   var clip = null; if (sk) { clip = new T.InstancedBufferAttribute(new Float32Array(cap * 4), 4); clip.setUsage(T.DynamicDrawUsage); g2.setAttribute('iClip', clip); }
-  var im = new T.InstancedMesh(g2, sk ? this.armyMatS(col, rim, sk) : this.armyMatI(col, rim), cap); im.instanceMatrix.setUsage(T.DynamicDrawUsage);
+  var im = new T.InstancedMesh(g2, sk ? this.armyMatS(col, rim, sk, map, t) : this.armyMatI(col, rim, map, t), cap); im.instanceMatrix.setUsage(T.DynamicDrawUsage);
   if (sk) { var dm = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking }); dm.onBeforeCompile = function (sh) { SkinAnim.patch(sh, sk, true); }; dm.customProgramCacheKey = function () { return 'armySd'; }; im.customDepthMaterial = dm; }
-  im.setColorAt(0, new T.Color(1, 1, 1)); im.count = 0; im.frustumCulled = false; im.castShadow = this.quality === 'high'; im.raycast = function () { };
+  im.setColorAt(0, new T.Color(1, 1, 1)); im.count = 0; im.frustumCulled = false; im.castShadow = this.quality === 'high' && !this.mobile; im.raycast = function () { };
   this.scene.add(im);
-  return (pools[key] = { im: im, anim: anim, clip: clip, skin: sk || null, cap: cap, n: 0, grow: false, geo: geo, col: col, rim: rim });
+  return (pools[key] = { im: im, anim: anim, clip: clip, skin: sk || null, cap: cap, n: 0, grow: false, geo: geo, col: col, rim: rim, map: map || null, t: t });
 };
 // jedes Bild: Platzhalter-Matrizen und Animationswerte in die Instanzen kopieren
 Board3D.prototype.armyDraw = function () {
@@ -1201,7 +1281,7 @@ Board3D.prototype.armyDraw = function () {
     if (!g.visible || !g.userData.troops) return;
     g.userData.troops.forEach(function (tr) {
       if (!tr.visible) return;
-      var u = tr.userData, P = pools[u.pk] || self.armyPool(u.pk, u.geo, u.col, u.rim, u.skin);
+      var u = tr.userData, P = pools[u.pk] || self.armyPool(u.pk, u.geo, u.col, u.rim, u.skin, u.map, u.t);
       if (P.n >= P.cap) { P.grow = true; return; }
       var i = P.n++;
       P.im.setMatrixAt(i, u.mesh.matrixWorld);
@@ -1268,8 +1348,12 @@ Board3D.prototype.buildSquad = function (g, src, t, col, sk) {
   var T = THREE, self = this, bt = t >= 9 && t <= 12 ? t - 8 : t, F = Board3D.ARMY[Board3D.ARMY_TYPE[t] || 'line'];
   if (!sk && !src.userData.idle) { src.traverse(function (o) { if (o.isMesh) self.idleAttr(o.geometry); }); src.userData.idle = true; }
   var mesh0 = null; src.traverse(function (o) { if (o.isMesh && !mesh0) mesh0 = o; }); if (!mesh0) return;
-  var geo0 = sk ? sk.geo : mesh0.geometry, rim = t >= 9 && this.settings.promoStyle === 'glanz', pk = geo0.uuid + ':' + col + (rim ? 'r' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101 + (this._squadN = (this._squadN || 0) + 1) * 7919), fa = (rnd() - .5) * 0.12, fox = (rnd() - .5) * 0.07, foz = (rnd() - .5) * 0.06;
-  this.armyPool(pk, geo0, col, rim, sk);
+  var geo0 = sk ? sk.geo : mesh0.geometry, rim = t >= 9 && this.settings.promoStyle === 'glanz';
+  var srcM = sk ? sk.mat : mesh0.material, map = this.settings.armyLook !== 'statue' && srcM && srcM.map || null;
+  if (map && !map.userData.nscale) { map.userData.nmap = srcM.normalMap || null; map.userData.nscale = srcM.normalScale ? srcM.normalScale.clone() : null; }
+  var pk = geo0.uuid + ':' + col + (rim ? 'r' : '') + (map ? 'c' : '') + (map && this.settings.armySashi !== false && Board3D.NO_SASHI.indexOf(bt) < 0 ? 's' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101 + (this._squadN = (this._squadN || 0) + 1) * 7919), fa = (rnd() - .5) * 0.12, fox = (rnd() - .5) * 0.07, foz = (rnd() - .5) * 0.06;
+  if (pk.slice(-1) === 's') geo0 = this.sashiGeo(geo0, sk);
+  this.armyPool(pk, geo0, col, rim, sk, map, t);
   function noop() { }
   var slots = [];
   Board3D.komaSlots(F).forEach(function (p, i) {
@@ -1285,7 +1369,7 @@ Board3D.prototype.buildSquad = function (g, src, t, col, sk) {
     m.userData.ry0 = Math.PI + (rnd() - 0.5) * 0.3; m.rotation.y = m.userData.ry0;
     tr.add(m); tr.position.set(x, 0, z);
     var br = 0.88 + rnd() * 0.2, hue = (rnd() - 0.5) * 0.1;
-    tr.userData = { glb: m, mesh: mesh, pk: pk, geo: geo0, skin: sk || null, col: col, rim: rim, tint: new T.Color(br * (1 + hue), br, br * (1 - hue)), u: { uPhase: { value: Math.random() * 6.283 }, uAct: { value: 0 }, uWalk: { value: 0 } }, home: { x: x, z: z }, hh: F.h * s * 0.8, pw0: (F.pw || F.h) * s, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 5 };
+    tr.userData = { glb: m, mesh: mesh, pk: pk, geo: geo0, map: map, t: t, skin: sk || null, col: col, rim: rim, tint: new T.Color(br * (1 + hue), br, br * (1 - hue)), u: { uPhase: { value: Math.random() * 6.283 }, uAct: { value: 0 }, uWalk: { value: 0 } }, home: { x: x, z: z }, hh: F.h * s * 0.8, pw0: (F.pw || F.h) * s, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 5 };
     if (sk) { tr.userData.cur = 'idle'; tr.userData.clip = [sk.ids.idle, -Math.random() * sk.dur.idle, -1, 0]; }
     g.add(tr); troops.push(tr);
   });
@@ -1418,7 +1502,7 @@ Board3D.prototype.buildField = function (hi) {
       sh.uniforms.uTime = U.uTime;
       sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vec3 ip = instanceMatrix[3].xyz; float hw = position.y * position.y;\n float wv = sin(uTime * 1.6 + ip.x * 0.45 + ip.z * 0.3) * 0.6 + sin(uTime * 3.1 + ip.x * 1.7) * 0.25;\n transformed.x += wv * 0.18 * hw; transformed.z += wv * 0.08 * hw;');
     };
-    var cnt = 60000, im = new T.InstancedMesh(bg, bm, cnt), m4 = new T.Matrix4(), qq = new T.Quaternion(), up = new T.Vector3(0, 1, 0), vv = new T.Vector3(), ss = new T.Vector3(), cc = new T.Color(), n = 0, tries = 0;
+    var cnt = this.mobile ? 22000 : 60000, im = new T.InstancedMesh(bg, bm, cnt), m4 = new T.Matrix4(), qq = new T.Quaternion(), up = new T.Vector3(0, 1, 0), vv = new T.Vector3(), ss = new T.Vector3(), cc = new T.Color(), n = 0, tries = 0;
     while (n < cnt && tries++ < cnt * 4) {
       // dichter nahe dem Feld, wo die Kamera ist
       var rad = 2 + Math.pow(Math.random(), 1.7) * 40, ang = Math.random() * Math.PI * 2; x = Math.cos(ang) * rad * 1.1; z = Math.sin(ang) * rad;
@@ -2167,6 +2251,7 @@ Board3D.prototype.initInput = function () {
   el.style.touchAction = 'none';
   el.addEventListener('pointerdown', function (e) { el.setPointerCapture(e.pointerId); ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; var ids = Object.keys(ptrs); if (ids.length === 1) { start = { x: e.clientX, y: e.clientY, th: self.orbit.thetaGoal, ph: self.orbit.phi }; moved = false; } else if (ids.length === 2) { var a = ptrs[ids[0]], b = ptrs[ids[1]]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); rad0 = self.orbit.radius; moved = true; } });
   el.addEventListener('pointermove', function (e) {
+    self.lastInput = performance.now();
     if (!ptrs[e.pointerId]) { if (e.pointerType === 'mouse' && self.look === 'feld') self.hoverAt(e.clientX, e.clientY); return; } ptrs[e.pointerId] = { x: e.clientX, y: e.clientY }; var ids = Object.keys(ptrs);
     if (ids.length === 2) { var a = ptrs[ids[0]], b = ptrs[ids[1]], d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) { self.orbit.radius = Math.max(8, Math.min(40, rad0 * pinch0 / d)); self.orbit.user = true; } return; }
     if (!start) return; var dx = e.clientX - start.x, dy = e.clientY - start.y;
@@ -2175,7 +2260,7 @@ Board3D.prototype.initInput = function () {
   });
   function up(e) { var was = ptrs[e.pointerId]; delete ptrs[e.pointerId]; if (!Object.keys(ptrs).length) { if (was && !moved && start) self.pick(e.clientX, e.clientY); start = null; pinch0 = 0; } }
   el.addEventListener('pointerup', up); el.addEventListener('pointerleave', function () { if (self.look === 'feld') self.hoverAt(null); }); el.addEventListener('pointercancel', function (e) { delete ptrs[e.pointerId]; start = null; });
-  el.addEventListener('wheel', function (e) { e.preventDefault(); self.orbit.radius = Math.max(8, Math.min(40, self.orbit.radius * (1 + e.deltaY * 0.001))); self.orbit.user = true; }, { passive: false });
+  el.addEventListener('wheel', function (e) { e.preventDefault(); self.lastInput = performance.now(); self.orbit.radius = Math.max(8, Math.min(40, self.orbit.radius * (1 + e.deltaY * 0.001))); self.orbit.user = true; }, { passive: false });
   el.addEventListener('dblclick', function () { self.resetCamera(); });
 };
 Board3D.prototype.pick = function (cx, cy) { var sq = this.pickSq(cx, cy); if (sq != null && this.onSquare) this.onSquare(sq); };
