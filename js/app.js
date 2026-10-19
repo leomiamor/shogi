@@ -174,7 +174,8 @@
     if (o.id && PORTRAITS.indexOf(o.id) >= 0) return '<div class="portrait pimg" style="background-image:url(img/p/' + o.id + '.webp);--pc:' + (o.color || '#888') + '"></div>';
     return '<div class="portrait" style="background:radial-gradient(circle at 35% 30%,' + o.color + ',#1a1020)">' + '<svg viewBox="0 0 100 100" fill="#fff4dc">' + ICONS[icon] + '</svg></div>';
   }
-  function mentorHTML() { return '<div class="portrait pimg" style="background-image:url(img/p/mentor.webp)"></div>'; }
+  // Mentor je Edition: Hoshi (feudal) = mentor.webp, sonst mentor_<edition>.webp
+  function mentorHTML() { return '<div class="portrait pimg" style="background-image:url(img/p/mentor' + (TH.id && TH.id !== 'feudal' ? '_' + TH.id : '') + '.webp)"></div>'; }
 
   // Geschichte im Visual-Novel-Stil
   function story(lines, unit, done) {
