@@ -299,16 +299,16 @@
       var r0 = o.radius, t0 = o.thetaGoal, sw = (Math.random() < 0.5 ? -1 : 1) * 0.22;
       self.tween(260, function (k) { var e = 1 - Math.pow(1 - k, 3); o.radius = r0 * (1 - 0.12 * e); o.thetaGoal = o.theta = t0 + sw * e; });
     }
-    // ein Schlag: beim Treffer-Frame pariert der Gegner; graze = Treffer streift (Taumeln, kein Tod)
-    function strike(att, def, graze) {
+    // ein Schlag: beim Treffer-Frame pariert der Gegner; graze = Treffer streift (Taumeln, kein Tod), brk = Abwehr bricht (vor dem Finisher)
+    function strike(att, def, graze, brk) {
       var hitAt = 0.32 * sp, ka2 = att.userData.sk, kd2 = def.userData.sk;
       if (ka2) self.figPlay(att, ['atk1', 'atk2'], { hitAt: hitAt, then: 'ready' });
       else leanD(-0.3, hitAt * 700);
-      if (kd2 && !graze) self.figPlay(def, 'block', { hitAt: hitAt, then: 'ready' });
+      if (kd2 && !graze) self.figPlay(def, brk && has(def, 'parry2') ? 'parry2' : 'block', { hitAt: hitAt, then: 'ready' });
       snd('whoosh', 0.7, typ(att));
       return self.tween(hitAt * 1000, function () { }).then(function () {
         var p = mid();
-        if (graze) { if (kd2) self.figPlay(def, 'hit1', { then: 'ready' }); snd('hit', 0.5, typ(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return; }
+        if (graze) { if (kd2) self.figPlay(def, has(def, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); snd('hit', 0.5, typ(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return; }
         snd('clash', 0.8); sparks(p.x, p.z, 0xffffff, 22, 0.14); if (!kd2 && def === D) return leanD(-0.25, 140).then(function () { return leanD(0, 160); });
       });
     }
@@ -401,7 +401,8 @@
       return self.tween(ms, function (k) { var e = k < 0.85 ? k / 0.85 * 0.92 : 0.92 + (k - 0.85) / 0.15 * 0.08; A.position.x = from.x + (stx - from.x) * e; A.position.z = from.z + (stz - from.z) * e; A.position.y = BT; });
     }).then(function () { self.figPlay(A, 'ready'); return wait(120); });
     if (circ) seq = seq.then(circle);
-    for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze); }).then(function () { return wait(i === n - 1 ? 200 : 160); }); })(i);
+    var brk = (n - 1) % 2 ? n - 2 : n - 1; // letzter Angriff vor dem Finisher: Abwehr des Verteidigers bricht
+    for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze, i === brk); }).then(function () { return wait(i === n - 1 ? 200 : 160); }); })(i);
     this._duel = { n: n, nMax: nMax, circ: circ, hero: hero }; // für Tests
     return seq.then(finisher).then(stepIn);
   };
