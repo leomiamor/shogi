@@ -254,7 +254,7 @@
   // Heldenduell (Vorbild: Duelle in Total War: Three Kingdoms, Lords/Monster in Warhammer): Anlauf, Umkreisen, 3–5 Schläge
   // mit Paraden (einer streift), gepaarter Finisher (fin_a/fin_d, sonst atk4 + Sterbe-Clip), Staub. König, Turm und Läufer
   // schlagen mit mehr Wucht (Zeitlupe, Druckwelle, Kameraschwenk). Alles im Zeitbudget der Notbremse in app.js (8 s).
-  Board3D.FIG_DUEL = { budget: 6600, swing: 620, circle: 900, heroes: [6, 7, 8] };
+  Board3D.FIG_DUEL = { budget: 7200, swing: 480, circle: 800, heroes: [6, 7, 8] };
   Board3D.prototype.figFight = function (info, A, from, to, D, style) {
     var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.75 : 1, BT = this.BT, FD = Board3D.FIG_DUEL;
     var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
@@ -314,20 +314,21 @@
     }
     // Todesstoß: gepaarter Finisher, wenn beide Clips da sind; sonst atk4 und danach der Sterbe-Clip
     function finisher() {
-      var hitAt = 0.45 * sp, pair = !short && has(A, 'fin_a') && has(D, 'fin_d');
+      var hitAt = 0.45 * sp, pair = !short && has(A, 'fin_a') && has(D, 'fin_d'), left = 0;
       self.figPlay(A, pair ? 'fin_a' : 'atk4', { hitAt: hitAt, then: 'ready' });
-      var left = pair ? self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }) : 0;
+      // fin_d trifft früher (0,33 s) als hitAt: später starten, damit beide Treffer-Frames aufeinanderliegen
+      if (pair) { var dA = kd.A, hd = dA.hit.fin_d || 0; left = dA.dur.fin_d - hd + hitAt; if (hd >= hitAt) self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }); else wait((hitAt - hd) * 1000 / sp).then(function () { self.figPlay(D, 'fin_d', { hold: true }); }); }
       snd('whoosh', 0.9, ta);
       return self.tween(hitAt * 1000, function () { }).then(function () {
         if (info.onHit) info.onHit();
         snd('hit', 0.9, ta); sparks(D.position.x, D.position.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(D.position.x, D.position.z);
-        return pair ? crumble(wait(Math.min(1300, Math.max(0, left - hitAt) * 1000 * 0.9))) : die();
+        return pair ? crumble(wait(Math.min(1150, Math.max(0, left - hitAt) * 1000 * 0.9))) : die();
       });
     }
     // Verteidiger stirbt: Sterbe-Animation (oder Umkippen ohne Rig), dann zerfällt er zu Staub
     function die() {
       var p0 = D.position.clone(), u = dir(), fall;
-      if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, td); fall = wait(Math.min(1300, left * 1000 * 0.8)); }
+      if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, td); fall = wait(Math.min(1150, left * 1000 * 0.8)); }
       else fall = self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, u[0], u[1], e * 1.45); D.position.x = p0.x + u[0] * e * 0.35; D.position.z = p0.z + u[1] * e * 0.35; });
       return crumble(fall);
     }
@@ -358,8 +359,10 @@
       });
       snd('march', FD.circle, ta);
       // ohne Seitwärts-Clip: in Gehrichtung schauen (Tangente), am Ende zum Gegner drehen
+      var cpr = 0; // Kamera dreht mit, damit das Profil bleibt
       return self.tween(FD.circle, function (k) {
-        var e = ease(k), va = rot(a0, ph * e), vd = rot(d0, ph * e), vb = rot(a0, ph * e + ph * 0.05), wb = rot(d0, ph * e + ph * 0.05);
+        var e = ease(k); o.thetaGoal += ph * e - cpr; o.theta += ph * e - cpr; cpr = ph * e;
+        var va = rot(a0, ph * e), vd = rot(d0, ph * e), vb = rot(a0, ph * e + ph * 0.05), wb = rot(d0, ph * e + ph * 0.05);
         A.position.x = m0.x + va[0]; A.position.z = m0.z + va[1]; D.position.x = m0.x + vd[0]; D.position.z = m0.z + vd[1];
         if (strafe) { look(A, D.position.x, D.position.z); look(D, A.position.x, A.position.z); }
         else { look(A, m0.x + vb[0] + (vb[0] - va[0]) * 20, m0.z + vb[1] + (vb[1] - va[1]) * 20); look(D, m0.x + wb[0] + (wb[0] - vd[0]) * 20, m0.z + wb[1] + (wb[1] - vd[1]) * 20); }
@@ -386,17 +389,20 @@
     // Nahkampf: Anlauf (Laufen bzw. Sprint beim Ansturm), Umkreisen, Schlagabtausch, Finisher
     var stand = cell * (style === 'thrust' ? 0.95 : 0.85), stx = to.x - ux * stand, stz = to.z - uz * stand, run = Math.hypot(stx - from.x, stz - from.z);
     var gait = style === 'charge' || run > 2.5 ? 'sprint' : run > 0.9 ? 'run' : 'walk', ms = Math.max(260, Math.min(1200, run / Board3D.FIG_GAIT[gait] * 1000));
-    // Zeitbudget (Voll): fester Teil ohne Schläge, daraus 3–5 Schläge; reicht es nicht, entfällt das Umkreisen
-    var circ = !short && !!kd, fixed = 180 + ms + 120 + 450 + 1300 + 320 + 650 + (hero ? 300 : 0) + 300;
-    if (circ && fixed + FD.circle + 180 + 3 * FD.swing > FD.budget) circ = false;
-    var n = short ? 1 : Math.max(2, Math.min(5, Math.floor((FD.budget - fixed - (circ ? FD.circle + 180 : 0)) / FD.swing))), graze = n >= 3 ? 1 + Math.floor(Math.random() * (n - 1)) : -1;
+    // Zeitbudget (Voll, Notbremse in app.js bei 8 s): fester Teil ohne Schläge (Drehen, Anlauf, Finisher, Fall, Zerfall, Schritt aufs Feld,
+    // Bild-Takt der Tweens; an Messungen geeicht), daraus 3–5 Schläge (zufällig, so viele das Budget erlaubt); reicht es nicht, entfällt das Umkreisen
+    var circ = !short && !!kd, fixed = ms + 3955 + (hero ? 300 : 0);
+    function fit(c) { return Math.max(2, Math.min(5, Math.floor((FD.budget - fixed - (c ? FD.circle + 180 : 0)) / FD.swing))); }
+    var want = 3 + Math.floor(Math.random() * 3); // gewünschte Wechsel; für 5 entfällt notfalls das Umkreisen
+    if (circ && (fit(true) < 3 || fit(true) < want && fit(false) >= want)) circ = false;
+    var nMax = fit(circ), n = short ? 1 : Math.min(nMax, want), graze = n >= 3 ? 1 + Math.floor(Math.random() * (n - 1)) : -1;
     var seq = face.then(function () {
       self.figPlay(A, gait); snd('march', ms, ta); if (gait === 'sprint') snd('roar', 0.5, ta);
       return self.tween(ms, function (k) { var e = k < 0.85 ? k / 0.85 * 0.92 : 0.92 + (k - 0.85) / 0.15 * 0.08; A.position.x = from.x + (stx - from.x) * e; A.position.z = from.z + (stz - from.z) * e; A.position.y = BT; });
     }).then(function () { self.figPlay(A, 'ready'); return wait(120); });
     if (circ) seq = seq.then(circle);
-    for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze); }).then(function () { return wait(i === n - 1 ? 220 : 300); }); })(i);
-    this._duel = { n: n, circ: circ, hero: hero }; // für Tests
+    for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze); }).then(function () { return wait(i === n - 1 ? 200 : 160); }); })(i);
+    this._duel = { n: n, nMax: nMax, circ: circ, hero: hero }; // für Tests
     return seq.then(finisher).then(stepIn);
   };
 
