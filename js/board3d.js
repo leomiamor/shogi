@@ -1607,7 +1607,7 @@ Board3D.prototype.foliageMat = function (kind) {
 };
 Board3D.prototype.buildField = function (hi) {
   var T = THREE, scene = this.scene, self = this, Y = this.BT, N = Board3D.noise, H = Board3D.fieldH, E = Board3D.fieldE;
-  var MD = this.mood = Board3D.FIELD_MOODS[Board3D.FIELD_MOOD || this.settings.fieldMood || 'pass'] || Board3D.FIELD_MOODS.pass; Board3D.FIELD_SHAPE = MD.shape || null; Board3D.MOUNDS = (MD.mounds || Board3D.MOUNDS0).map(function (q) { return q.slice(); });
+  var MD = this.mood = Board3D.FIELD_MOODS[Board3D.FIELD_MOOD || this.settings.fieldMood || 'feldzug'] || Board3D.FIELD_MOODS.feldzug || Board3D.FIELD_MOODS.pass; Board3D.FIELD_SHAPE = MD.shape || null; Board3D.MOUNDS = (MD.mounds || Board3D.MOUNDS0).map(function (q) { return q.slice(); });
   var fogC = new T.Color(MD.fog[0] == null ? 0xb4bec4 : MD.fog[0]); scene.background = fogC.clone(); scene.fog = new T.FogExp2(fogC, MD.fog[1]);
   this.hemi.color.set(MD.hemi[0]); this.hemi.groundColor.set(MD.hemi[1]); this.hemi.intensity = MD.hemi[2];
   var sd = new T.Vector3().fromArray(MD.sun[2]); if (sd.length() < 2) sd.normalize().multiplyScalar(22);
@@ -1641,7 +1641,7 @@ Board3D.prototype.buildField = function (hi) {
   }
   ng.putImageData(id, 0, 0); var noiseT = new T.CanvasTexture(nc); noiseT.wrapS = noiseT.wrapT = T.RepeatWrapping;
   var tG = Board3D.tex('leafy_grass', 1).map, tD = Board3D.tex('forest_ground_04', 1).map, tR = Board3D.tex('rock_face_03', 1).map;
-  var U = this.fieldU = { uTime: { value: 0 }, uWet: { value: 0 } };
+  var U = this.fieldU = { uTime: { value: 0 }, uWet: { value: 0 }, tLand: { value: null }, uLand: { value: 0 } }; // tLand: Landnutzung (Äcker, Wege) über 96 m, feldzug.js
 
   // ---- Gelände: Raster wird zur Mitte hin dichter ----
   var S = hi ? 200 : 120, geo = new T.PlaneGeometry(2, 2, S, S); geo.rotateX(-Math.PI / 2);
@@ -1666,9 +1666,9 @@ Board3D.prototype.buildField = function (hi) {
   this.fieldGeo = geo;
   var gm = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
   gm.onBeforeCompile = function (sh) {
-    sh.uniforms.tG = { value: tG }; sh.uniforms.tD = { value: tD }; sh.uniforms.tR = { value: tR }; sh.uniforms.tN = { value: noiseT }; sh.uniforms.uTime = U.uTime; sh.uniforms.uTint = { value: new T.Vector3().fromArray(MD.tint || [1, 1, 1]) }; sh.uniforms.uSnow = { value: MD.snow || 999 }; sh.uniforms.uWet = U.uWet;
+    sh.uniforms.tG = { value: tG }; sh.uniforms.tD = { value: tD }; sh.uniforms.tR = { value: tR }; sh.uniforms.tN = { value: noiseT }; sh.uniforms.uTime = U.uTime; sh.uniforms.uTint = { value: new T.Vector3().fromArray(MD.tint || [1, 1, 1]) }; sh.uniforms.uSnow = { value: MD.snow || 999 }; sh.uniforms.uWet = U.uWet; sh.uniforms.tLand = U.tLand; sh.uniforms.uLand = U.uLand;
     sh.vertexShader = 'attribute vec3 aMix; varying vec3 vMix; varying vec3 vWp;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vMix = aMix; vWp = (modelMatrix * vec4(position, 1.0)).xyz;');
-    sh.fragmentShader = 'uniform sampler2D tG, tD, tR, tN; uniform float uTime; uniform vec3 uTint; uniform float uSnow; uniform float uWet; varying vec3 vMix; varying vec3 vWp;\n' + sh.fragmentShader.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, mix(0.45, 0.12, wd), uWet * (1.0 - wr));').replace('#include <map_fragment>', [
+    sh.fragmentShader = 'uniform sampler2D tG, tD, tR, tN; uniform float uTime; uniform vec3 uTint; uniform float uSnow; uniform float uWet; uniform sampler2D tLand; uniform float uLand; varying vec3 vMix; varying vec3 vWp;\n' + sh.fragmentShader.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, mix(0.45, 0.12, wd), uWet * (1.0 - wr));').replace('#include <map_fragment>', [
       'vec2 wp = vWp.xz; vec4 nz = texture2D(tN, wp * 0.013); float n2 = texture2D(tN, wp * 0.09 + 0.31).r;',
       'vec3 g = mix(texture2D(tG, wp * 0.31).rgb, texture2D(tG, wp * 0.067 + 0.4).rgb, 0.5);',
       'g *= mix(vec3(0.56, 0.74, 0.4), vec3(0.98, 0.92, 0.6), smoothstep(0.35, 0.85, nz.r));', // frisch / trocken
@@ -1677,6 +1677,7 @@ Board3D.prototype.buildField = function (hi) {
       'float wd = smoothstep(0.0, 1.0, clamp(vMix.y + (n2 - 0.5) * 0.7, 0.0, 1.0)), wr = smoothstep(0.2, 0.8, vMix.z + (nz.g - 0.5) * 0.4);',
       'vec3 col = mix(mix(g, d, wd), r, wr);',
       'float sn = smoothstep(uSnow, uSnow + 5.0, vWp.y + (nz.r - 0.5) * 8.0) * (1.0 - smoothstep(0.55, 0.95, vMix.z + (n2 - 0.5) * 0.3)); col = mix(col, vec3(0.92, 0.94, 1.0), sn);',
+      'if (uLand > 0.0) { vec4 ld = texture2D(tLand, wp / 96.0 + 0.5); col = mix(col, ld.rgb * mix(0.85, 1.12, n2), ld.a * uLand); }',
       'float cl = smoothstep(0.42, 0.66, texture2D(tN, wp * 0.0065 + uTime * vec2(0.0045, 0.0022)).r);', // Wolkenschatten ziehen übers Land
       'col *= mix(1.0, 0.7, cl);',
       'diffuseColor.rgb *= col * uTint * (1.0 - uWet * 0.3);'].join('\n')); // nass = dunkler, Erde glänzt wie Pfützen (fieldfx.js)

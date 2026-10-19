@@ -82,7 +82,7 @@ var Sfx = (function () {
   function board() { try { var g = window.ShogiApp && ShogiApp.G && ShogiApp.G(), r = g && g.r; return r && r.orbit ? r : null; } catch (e) { return null; } }
   // Ambiente je Schlachtfeld-Stimmung (Pass: Wind, Flusstal: Bach, Belagerung: Feuer, Sommertag: Zikaden), Fahnen, Regen, seltene Krähen/ferne Schreie.
   // Loops mit weicher Überblendung (MP3 loopt nicht lückenlos). Stumm, Effekte 0 oder Tab im Hintergrund: nichts ansetzen.
-  var amb = { L: {}, f: 0, oneAt: 0 }, MOOD = { pass: 'amb_wind', tal: 'amb_river', belagerung: 'amb_fire', mittag: 'amb_cicada' };
+  var amb = { L: {}, f: 0, oneAt: 0 }, MOOD = { pass: 'amb_wind', tal: 'amb_river', belagerung: 'amb_fire', mittag: 'amb_cicada', feldzug: 'amb_river' };
   function ambLayer(k, want) {
     var L = amb.L[k] || (amb.L[k] = { g: null, next: 0, v: -1 }), t = ctx.currentTime;
     if (want > 0.01) load(k, 0); else if (!L.g) return;
@@ -98,7 +98,7 @@ var Sfx = (function () {
   function ambTick() {
     setTimeout(ambTick, 500);
     var r = board(), live = !vol.mute && vol.sfx > 0 && !document.hidden, on = !!(live && r && r.look === 'feld' && r.settings && r.settings.army), W = (on && r.wx) || {}, t = ctx.currentTime;
-    var base = on ? MOOD[r.settings.fieldMood || 'pass'] : null, rain = W.rain || 0;
+    var base = on ? MOOD[r.settings.fieldMood || 'feldzug'] : null, rain = W.rain || 0;
     Object.keys(MOOD).forEach(function (m) { var k = MOOD[m]; ambLayer(k, k === base ? (k === 'amb_fire' ? 0.45 + 0.07 * Math.min(8, r.firesLit || 0) : 0.55) * (1 - 0.5 * rain) : 0); });
     ambLayer('amb_flag', on ? 0.3 + 0.2 * (W.storm || 0) : 0); ambLayer('amb_rain', on ? 0.9 * rain : 0);
     if (on && W.storm > 0.1) load('thunder', 2);
