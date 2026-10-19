@@ -56,9 +56,10 @@
   function clipLift(A) {
     if (A._figLift) return A._figLift;
     var H = THREE.DataUtils.fromHalfFloat, d = A.tex.image.data, nb = A.meta.bones.length, P = A.geo.getAttribute('position'), I = A.geo.getAttribute('aSkinI'), W = A.geo.getAttribute('aSkinW');
-    // nur Fuß-Ecken (stärkster Knochen foot_*/ball_*): Waffen schwingen in Angriffen unter den Boden, Körper liegen beim Sterben
+    // nur Fuß-Ecken (stärkster Knochen foot_*/ball_*, bei Tier-Rigs *LowerLeg*): Waffen schwingen in Angriffen unter den Boden, Körper liegen beim Sterben
     var L = new Float32Array(32), y0 = Infinity, ft = [], i;
-    for (i = 0; i < P.count; i++) { var bw = 0, bn = -1; for (var q0 = 0; q0 < 4; q0++) if (W.getComponent(i, q0) > bw) { bw = W.getComponent(i, q0); bn = I.getComponent(i, q0); } if (/^(foot|ball)_/.test(A.meta.bones[bn] || '')) ft.push(i); }
+    for (i = 0; i < P.count; i++) { var bw = 0, bn = -1; for (var q0 = 0; q0 < 4; q0++) if (W.getComponent(i, q0) > bw) { bw = W.getComponent(i, q0); bn = I.getComponent(i, q0); } if (/^(foot|ball)_|LowerLeg/.test(A.meta.bones[bn] || '')) ft.push(i); }
+    if (!ft.length) return (A._figLift = L); // keine Füße gefunden: kein Ausgleich (sonst NaN, die Figur verschwindet)
     ft.forEach(function (j) { y0 = Math.min(y0, P.getY(j)); });
     Object.keys(A.ids).forEach(function (nm) {
       var c = A.clips[A.ids[nm]], mn = Infinity;
@@ -260,7 +261,7 @@
   // boom = Explosion statt Zerfall, magic = Zauberfarbe, rune = Runenkreis beim Zaubern, brawl = Raufen statt Töten (Verlierer rollt weg / läuft davon)
   Board3D.FIG_ED = {
     feudal: {},
-    mecha: { blade: 0x6fe6ff, jet: 0x7fc8ff, shot: 0x8ff0ff, boom: true, magic: 0x6fe6ff },
+    mecha: { blade: 0x6fe6ff, jet: 0x7fc8ff, shot: 0x8ff0ff, boom: true, magic: 0x6fe6ff, guns: [1, 9, 10] }, // guns: Typen mit Kanone schießen statt zu hauen
     fantasy: { magic: 0xb98aff, rune: true },
     hunde: { brawl: true }
   };
@@ -270,6 +271,7 @@
     var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.75 : 1, BT = this.BT, FD = Board3D.FIG_DUEL;
     var ed = this.figEd(), E = Board3D.FIG_ED[ed] || {}, fe = this.theme.id === 'feudal';
     if (E.brawl && (style === 'magic' || style === 'shoot' || style === 'breath')) style = 'charge'; // Hunde raufen nur
+    if (E.guns && E.guns.indexOf(typ(A)) >= 0 && A.userData.sk && style !== 'magic') style = 'shoot';
     var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
     var cell = Math.hypot(this.sqPos(1).x - this.sqPos(0).x, this.sqPos(1).z - this.sqPos(0).z) || 1;
     var colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
@@ -337,7 +339,7 @@
       var hitAt = 0.45 * sp, pair = !short && !E.brawl && has(A, 'fin_a') && has(D, 'fin_d'), left = 0;
       self.figPlay(A, pair ? 'fin_a' : 'atk4', { hitAt: hitAt, then: 'ready' });
       // fin_d trifft früher (0,33 s) als hitAt: später starten, damit beide Treffer-Frames aufeinanderliegen
-      if (pair) { var dA = kd.A, hd = dA.hit.fin_d || 0; left = dA.dur.fin_d - hd + hitAt; if (hd >= hitAt) self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }); else wait((hitAt - hd) * 1000 / sp).then(function () { self.figPlay(D, 'fin_d', { hold: true }); }); }
+      if (pair) { var dA = D.userData.sk.A, hd = dA.hit.fin_d || 0; left = dA.dur.fin_d - hd + hitAt; if (hd >= hitAt) self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }); else wait((hitAt - hd) * 1000 / sp).then(function () { self.figPlay(D, 'fin_d', { hold: true }); }); }
       snd('whoosh', 0.9, sa);
       return self.tween(hitAt * 1000, function () { }).then(function () {
         if (info.onHit) info.onHit();
