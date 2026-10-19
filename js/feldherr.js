@@ -49,6 +49,7 @@
     return parts([{ s: [0.012, 0.78, 0.012], p: [0, 0.39, 0], c: [0.15, 0.1, 0.07] }, { s: [0.11, 0.012, 0.012], p: [0.055, 0.76, 0], c: [0.15, 0.1, 0.07] },
       { s: [0.11, 0.34, 0.006], p: [0.058, 0.58, 0], c: cl, w: 1 }, { s: [0.05, 0.05, 0.008], p: [0.058, 0.62, 0], c: mon, w: 0.6 }]);
   }
+  Board3D.heerGeo = { soldier: soldierGeo, banner: bannerGeo }; // auch für kontinent.js
   Board3D.prototype.heerMat = function () {
     if (this._heerMat) return this._heerMat;
     var U = this.fieldU, m = new T.MeshLambertMaterial({ vertexColors: true });
