@@ -1075,7 +1075,7 @@ Board3D.prototype.promoFlag = function () {
   var flag = new T.Mesh(new T.PlaneGeometry(0.2, 0.45), new T.MeshStandardMaterial({ map: this._flagTex, roughness: 0.7, side: T.DoubleSide, emissive: 0x330000 })); flag.position.set(0.105, 0.7, 0); g.add(flag);
   return g;
 };
-Board3D.FIG_KANJI = { fz: -0.08, lim: 0.0, front: -0.5 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
+Board3D.FIG_KANJI = { fz: -0.08, lim: 0.07, front: -0.5 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
   var m = Models.fit(src, 1.15, 0.95), self = this; m.position.set(0, 0.2, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0);
@@ -1710,13 +1710,7 @@ Board3D.prototype.buildField = function (hi) {
     im.count = n; im.receiveShadow = true; im.raycast = function () { }; scene.add(im);
   }
 
-  // ---- Wälder auf den Hügeln (Zedern + Laubbäume, eine Instanz je Art) ----
-  function merge(parts) { // [geo, color, matrix]
-    var P = [], Nn = [], C = [];
-    parts.forEach(function (p) { var g = p[0].index ? p[0].toNonIndexed() : p[0]; g.applyMatrix4(p[2]); g.computeVertexNormals(); var pa = g.attributes.position, na = g.attributes.normal, c = new T.Color(p[1]);
-      for (var j = 0; j < pa.count; j++) { var jt = 0.85 + Math.random() * 0.3; P.push(pa.getX(j), pa.getY(j), pa.getZ(j)); Nn.push(na.getX(j), na.getY(j), na.getZ(j)); C.push(c.r * jt, c.g * jt, c.b * jt); } });
-    var o = new T.BufferGeometry(); o.setAttribute('position', new T.Float32BufferAttribute(P, 3)); o.setAttribute('normal', new T.Float32BufferAttribute(Nn, 3)); o.setAttribute('color', new T.Float32BufferAttribute(C, 3)); return o;
-  }
+  // ---- Wälder auf den Hügeln: Karten-Bäume als Instanzen, je Art eine (nahe mit Schatten, ferne ohne) ----
   function jit(g, a) { var p = g.attributes.position; for (var j = 0; j < p.count; j++) p.setXYZ(j, p.getX(j) + (Math.random() - .5) * a, p.getY(j) + (Math.random() - .5) * a, p.getZ(j) + (Math.random() - .5) * a); return g; }
   // Zedern (Sugi), Laubbäume (je Stimmung Kirsche/Ahorn/Eiche) und Kiefern (Matsu); Farbe je Baum aus der Palette der Stimmung
   var defPal = [[0xffffff, 0xe8f0e0], [0x5e8c3e, 0x6c9a44, 0x557f38, 0x7aa64e], [0xffffff, 0xeef2e4]], mf = this.mobile ? 0.6 : 1;
@@ -1731,6 +1725,7 @@ Board3D.prototype.buildField = function (hi) {
       if (Math.random() > dens) continue;
       if (MD.shape === 'tal' && (Math.abs(x - Board3D.riverX(z)) < 4.5 || (x < -10 && x > -32 && Math.abs(z + 2) < 18))) continue; // Fluss und Reisterrassen frei
       var y = H(x, z), s = (0.8 + Math.random() * 0.6) * (ti === 2 ? 1.1 : 1);
+      if (Math.abs(H(x + 1, z) - y) + Math.abs(H(x, z + 1) - y) > 1.6) continue;  // keine Bäume an Steilwänden (Pass)
       qq.setFromAxisAngle(up, Math.random() * 6.28); m4.compose(new T.Vector3(x, Y + y - 0.1, z), qq, new T.Vector3(s, s * (0.9 + Math.random() * 0.3), s));
       col.set(pal[Math.floor(Math.random() * pal.length)]).multiplyScalar(0.9 + Math.random() * 0.2);
       // nur Bäume im Schattenbereich der Sonne (±13 um das Feld) werfen Schatten, sonst zeichnet der Schattenpass den ganzen Wald

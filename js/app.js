@@ -379,7 +379,7 @@
   function view3d() { return S.army ? 'armee' : S.models === false ? 'steine' : 'figuren'; }
   function setView3d(v) { S.models = v !== 'steine'; S.army = v === 'armee'; if (v === 'armee') S.quality = 'high'; }
   function view3dSeg() {
-    return '<div class="seg n' + VIEW3D.length + '">' + VIEW3D.map(function (o) { return '<button data-v3="' + o[0] + '" class="' + (view3d() === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    return '<div class="seg">' + VIEW3D.map(function (o) { return '<button data-v3="' + o[0] + '" class="' + (view3d() === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
   }
 
   // ---------- Stil & Welt ----------
@@ -396,7 +396,7 @@
         var on = T.ready && S.scene === m.id;
         html += '<button class="sw-card sw-map' + (on ? ' on' : '') + (T.ready ? '' : ' soon') + '" data-map="' + m.id + '"' + (T.ready ? ' style="background-image:url(img/maps/' + m.id + '.webp)"' : '') + '><b>' + m.name + '</b><small>' + (T.ready ? m.sub || '' : 'bald') + '</small></button>';
       });
-      html += '</div><div class="sw-h">Brett</div><div class="seg n3">' + [['urushi', 'Schwarzlack & Gold'], ['carbon', 'Carbon & Cyan'], ['honig', 'Helles Holz']].map(function (o) { return '<button data-tone="' + o[0] + '" class="' + (S.boardTone === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+      html += '</div><div class="sw-h">Brett</div><div class="seg">' + [['urushi', 'Schwarzlack & Gold'], ['carbon', 'Carbon & Cyan'], ['honig', 'Honig'], ['walnuss', 'Walnuss'], ['rauch', 'Rauch-Eiche'], ['m_weiss', 'Marmor weiß'], ['m_grau', 'Marmor grau'], ['m_gruen', 'Marmor grün'], ['m_nero', 'Marmor schwarz']].map(function (o) { return '<button data-tone="' + o[0] + '" class="' + (S.boardTone === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
       html += '<div class="acts"><button class="btn" id="sw-ok">Fertig</button></div>';
       var box = modal(html, 'sw-box');
       box.querySelectorAll('[data-th]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); sel = b.dataset.th; render(); }; });
@@ -414,39 +414,36 @@
 
   // ---------- Einstellungen ----------
   function renderSettings() {
-    var box = $('#settings'), grp = box; box.innerHTML = '';
-    function sec(title) { box.appendChild(h('div', 'set-h', title)); grp = h('div', 'set-group'); box.appendChild(grp); }
+    var box = $('#settings'); box.innerHTML = '';
     function seg(key, label, sub, opts, cb) {
-      var d = h('div', 'set' + (opts.length > 2 ? ' stack' : '')); d.innerHTML = '<div class="l"><b>' + label + '</b><small>' + (sub || '') + '</small></div>';
-      var sg = h('div', 'seg n' + opts.length);
-      opts.forEach(function (o) { var b = h('button', S[key] === o[0] ? 'on' : '', o[1]); b.dataset.v = o[0]; b.onclick = function () { S[key] = o[0]; save(); Sfx.setVolume(S.sfx, S.music); Sfx.play('ui'); if (key === 'music') Sfx.music(S.music > 0); cb && cb(); renderSettings(); }; sg.appendChild(b); });
-      d.appendChild(sg); grp.appendChild(d);
+      var d = h('div', 'set'); d.innerHTML = '<div class="l"><b>' + label + '</b><small>' + (sub || '') + '</small></div>';
+      var sg = h('div', 'seg');
+      opts.forEach(function (o) { var b = h('button', S[key] === o[0] ? 'on' : '', o[1]); b.onclick = function () { S[key] = o[0]; save(); Sfx.setVolume(S.sfx, S.music); Sfx.play('ui'); if (key === 'music') Sfx.music(S.music > 0); cb && cb(); renderSettings(); }; sg.appendChild(b); });
+      d.appendChild(sg); box.appendChild(d);
     }
-    // Bewusst wenige Optionen (Wunsch 19.10.): Armee-Aussehen, Rückenfähnchen, Steine im 3D, Zugziele, Hot-Seat-Drehen
-    // stehen nicht mehr hier, es gelten die Werte aus DEFAULTS (bzw. der zuletzt gespeicherte Wert).
-    sec('Darstellung');
-    var sw = h('div', 'set set-sw'); sw.style.setProperty('--img', 'url(' + new URL('img/maps/' + S.scene + '.webp', location.href).href + ')'); sw.innerHTML = '<div class="l"><b>Stil & Welt</b><small>' + TH.sub + ' · ' + mapName() + '</small></div>';
-    var swb = h('button', 'btn small', '🗺 Ändern'); swb.onclick = function () { Sfx.play('ui'); styleWorld(renderSettings); }; sw.appendChild(swb); grp.appendChild(sw);
+    var sw = h('div', 'set'); sw.innerHTML = '<div class="l"><b>Stil & Welt</b><small>' + TH.sub + ' · ' + mapName() + '</small></div>';
+    var swb = h('button', 'btn small', '🗺 Ändern'); swb.onclick = function () { Sfx.play('ui'); styleWorld(renderSettings); }; sw.appendChild(swb); box.appendChild(sw);
     seg('palette', 'Farbstil', 'Menüs und Titelbild', [['abend', 'Abendrot'], ['tusche', 'Tusche & Gold'], ['lack', 'Zinnober-Lack'], ['jade', 'Mitternacht-Jade']], applyPalette);
     seg('render', 'Grafik', HAS3D ? '2D-Brett oder 3D-Schlachtfeld' : '3D nicht verfügbar (offline?)', HAS3D ? [['2d', '2D'], ['3d', '3D']] : [['2d', '2D']]);
-    sec('3D');
     seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']], function () { if (S.quality === 'low' && S.army) { setView3d('figuren'); save(); } });
-    var v3 = h('div', 'set stack'); v3.innerHTML = '<div class="l"><b>3D-Ansicht</b><small>Steine, Figur auf Stein oder Armee</small></div>' + view3dSeg();
+    var v3 = h('div', 'set'); v3.innerHTML = '<div class="l"><b>3D-Ansicht</b><small>Steine, Figur auf Stein oder Armee</small></div>' + view3dSeg();
     v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
-    grp.appendChild(v3);
+    box.appendChild(v3);
     seg('fights', 'Kampf beim Schlagen (3D)', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
+    if (S.army) seg('armyLook', 'Armee-Aussehen', 'Bemalte Soldaten oder Gold/Silber-Statuen', [['farbe', 'Bemalt'], ['statue', 'Statuen']]);
+    if (S.army) seg('armySashi', 'Rückenfähnchen', 'Sashimono in Spielerfarbe (Sente gold, Gote weiß)', [[true, 'An'], [false, 'Aus']]);
     if (S.army) { S.fieldMood = S.fieldMood || 'pass'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); }
-    sec('Ton');
-    var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); grp.appendChild(vs);
-    sec('Spiel');
+    seg('pieceStyle', 'Steine im 3D', '2D zeigt immer Kanji wie echtes Shogi', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
+    var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); box.appendChild(vs);
     if (OWNER && P.skins.length > 1) seg('skin', 'Brett', 'Freigespielt in der Kampagne', P.skins.map(function (k) { return [k, SKINS[k].name]; }));
-    if (OWNER && P.titles.length) { var tt = h('div', 'set' + (P.titles.length > 2 ? ' stack' : '')); tt.innerHTML = '<div class="l"><b>Titel</b><small>Wird im Profil gezeigt</small></div>'; var tsg = h('div', 'seg n' + P.titles.length); P.titles.forEach(function (t) { var b = h('button', P.title === t ? 'on' : '', t); b.onclick = function () { P.title = t; save(); renderSettings(); }; tsg.appendChild(b); }); tt.appendChild(tsg); grp.appendChild(tt); }
+    if (OWNER && P.titles.length) { var tt = h('div', 'set'); tt.innerHTML = '<div class="l"><b>Titel</b><small>Wird im Profil gezeigt</small></div>'; var tsg = h('div', 'seg'); P.titles.forEach(function (t) { var b = h('button', P.title === t ? 'on' : '', t); b.onclick = function () { P.title = t; save(); renderSettings(); }; tsg.appendChild(b); }); tt.appendChild(tsg); box.appendChild(tt); }
+    seg('dots', 'Zugziele anzeigen', 'Grüne Punkte beim Auswählen', [[true, 'An'], [false, 'Aus']]);
+    seg('autoFlip', 'Hot-Seat: Brett drehen', 'Nach jedem Zug zum anderen Spieler', [[true, 'An'], [false, 'Aus']]);
     if (OWNER) {
-      sec('Training');
       seg('threats', 'Gefahren-Sicht (Training)', 'Rot = hängende Figur, Lila = Schach-Drop möglich', [[true, 'An'], [false, 'Aus']]);
       seg('coach', 'Coach Hoshi (Training)', 'Bewertet deine Züge gegen die KI', [[true, 'An'], [false, 'Aus']]);
       var rs = h('div', 'set'); rs.innerHTML = '<div class="l"><b>Fortschritt</b><small>' + P.xp + ' XP, ' + Object.keys(P.lessons).length + ' Lektionen</small></div>';
-      var rb = h('button', 'btn small', 'Zurücksetzen'); rb.onclick = function () { if (confirm('Wirklich alles zurücksetzen?')) { var o = P.owner; P = load(); localStorage.removeItem(STORE); P = load(); P.owner = o; S = P.settings; save(); renderSettings(); } }; rs.appendChild(rb); grp.appendChild(rs);
+      var rb = h('button', 'btn small', 'Zurücksetzen'); rb.onclick = function () { if (confirm('Wirklich alles zurücksetzen?')) { var o = P.owner; P = load(); localStorage.removeItem(STORE); P = load(); P.owner = o; S = P.settings; save(); renderSettings(); } }; rs.appendChild(rb); box.appendChild(rs);
     }
   }
 
