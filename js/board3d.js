@@ -1277,7 +1277,7 @@ Board3D.prototype.skinShot = function (s, name, hitAt) {
   var off = hitAt != null ? Math.max(0, (A.hit[name] || 0) - hitAt) : 0;
   SkinAnim.play(A, u, name, off + 1e-4); u.shotEnd = SkinAnim.time.value - off + A.dur[name] * 0.9; u.cur = name;
 };
-Board3D.SKIN = { 1: 'models/anim/ashigaru', 2: 'models/anim/naginata', 4: 'models/anim/kenshi', 5: 'models/anim/yari', 6: 'models/anim/onmyoji', 7: 'models/anim/tengu', 8: 'models/anim/samurai', 9: 'models/anim/veteran', 12: 'models/anim/general' }; // Typen mit Skelett (nur Feudal-Statuen)
+Board3D.SKIN = { 1: 'models/anim/ashigaru', 2: 'models/anim/naginata', 3: 'models/anim/kitsune', 4: 'models/anim/kenshi', 5: 'models/anim/yari', 6: 'models/anim/onmyoji', 7: 'models/anim/tengu', 8: 'models/anim/samurai', 9: 'models/anim/veteran', 12: 'models/anim/general', 13: 'models/anim/kirin', 14: 'models/anim/ryu' }; // Typen mit Skelett (nur Feudal-Statuen)
 Board3D.ATK = ['atk1', 'atk2', 'atk3', 'atk4'];
 // Instanzen-Topf je Modell + Farbe (wächst bei Bedarf)
 Board3D.prototype.armyPool = function (key, geo, col, rim, sk, map, t) {

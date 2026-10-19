@@ -16,8 +16,65 @@
   }
   // kurz abgeben, damit das Bild nicht hängt (MessageChannel: wird auch im Hintergrund nicht gedrosselt)
   function yieldNow() { return new Promise(function (res) { var ch = new MessageChannel(); ch.port1.onmessage = function () { res(); }; ch.port2.postMessage(0); }); }
-  function transfer(d, A) {
+  // Starre Teile wie beim Rig (tools/anim/fit_args.json „rigid“, erste passende Regel gewinnt), umgerechnet in den Rig-Raum
+  // (Blender x, y, z → x, z, −y): Speer starr am Waffen-Knochen, Schwert an der Hand, Hut/Helm am Kopf, Flügel/Umhang am Rücken.
+  // Ohne das mischt der nächste-Nachbar-Abgleich Hand und Waffe, und Speer/Schwert knicken in den Clips.
+  Board3D.FIG_RIGID = {"ashigaru":[["weapon","seg",[-0.192,-0.479,0.068],[-0.187,0.493,0.133],0.022],["hand_r","seg",[-0.19,0.055,0.09],[-0.19,0.055,0.09],0.04],["weapon","pole",[[-9,-9,-9],[-0.17,-0.25,9]],[[-9,0.46,-9],[9,9,9]],0.024],["weapon","seg",[-0.188,0.367,0.125],[-0.187,0.5,0.133],0.06],["Head","ymin",0.3]],"veteran":[["weapon","seg",[-0.185,-0.49,0.177],[-0.209,0.476,0.17],0.022],["hand_r","seg",[-0.2,0.045,0.16],[-0.2,0.045,0.16],0.04],["weapon","pole",[[-9,-9,0.1],[-0.15,-0.3,0.3]],[[-9,0.38,0.1],[-0.15,9,0.3]],0.03],["weapon","seg",[-0.209,0.34,0.17],[-0.209,0.5,0.17],0.05],["spine_03","seg",[-0.045,-0.14,-0.1],[0.1,0.5,-0.18],0.03],["spine_03","box",[0.11,0.26,-0.3],[0.26,0.47,-0.12]],["hand_l","seg",[0.175,-0.05,0.02],[0.185,-0.08,0.02],0.035],["pelvis","seg",[0.11,0.02,0.13],[0.22,-0.22,-0.19],0.022],["Head","ymin",0.3]],"yari":[["weapon","seg",[-0.195,-0.5,0.104],[-0.2,0.3,0.12],0.022],["hand_r","seg",[-0.19,0.04,0.11],[-0.19,0.04,0.11],0.04],["weapon","seg",[-0.195,-0.5,0.104],[-0.2,0.3,0.12],0.03],["weapon","seg",[-0.2,0.25,0.13],[-0.2,0.5,0.12],0.07],["Head","ymin",0.3]],"kenshi":[["hand_r","seg",[-0.23,0.22,0.17],[0.06,0.49,-0.19],0.03],["hand_r","seg",[-0.24,0.25,0.1],[-0.22,0.32,0.12],0.05],["pelvis","seg",[0.07,0.03,0.05],[0.21,-0.27,-0.19],0.025],["Head","box",[-0.15,0.29,-0.2],[0.15,0.6,0.2]]],"onmyoji":[["hand_r","seg",[-0.16,0.24,0.15],[-0.14,0.39,0.15],0.06],["Head","ymin",0.3]],"tengu":[["spine_03","box",[-0.6,0.24,-0.3],[-0.17,0.5,0.2]],["spine_03","box",[0.17,0.24,-0.3],[0.6,0.5,0.2]],["spine_03","box",[-0.6,-0.2,-0.3],[-0.22,0.5,-0.03]],["spine_03","box",[0.22,-0.2,-0.3],[0.6,0.5,-0.03]],["spine_03","box",[-0.22,0.0,-0.3],[0.22,0.45,-0.08]],["Head","ymin",0.3]],"samurai":[["hand_r","seg",[-0.2,-0.05,0.06],[-0.29,-0.23,0.3],0.03],["Head","ymin",0.3]],"general":[["hand_r","seg",[-0.28,0.13,0.23],[-0.3,0.49,0.27],0.04],["hand_l","seg",[0.12,-0.02,0.15],[0.12,0.09,0.35],0.03],["spine_03","box",[-0.6,-0.35,-0.4],[0.6,0.3,-0.07]],["spine_03","box",[-0.6,-0.35,-0.4],[-0.25,-0.02,0.3]],["spine_03","box",[0.25,-0.35,-0.4],[0.6,-0.02,0.3]],["Head","ymin",0.3]],"naginata":[["hand_r","seg",[-0.34,0.3,0.34],[0.36,-0.245,-0.31],0.04],["hand_r","seg",[0.36,-0.245,-0.31],[0.22,-0.14,-0.18],0.06],["Head","ymin",0.3]]};
+  Board3D.FIG_RIGID_R = 1.0; // Radien wie beim Rig (1,25 änderte nichts sichtbar)
+  function rigidRules(A, base) {
+    var src = Board3D.FIG_RIGID[String(base || '').split('/').pop()] || [], rp = A.geo.getAttribute('position'), K = Board3D.FIG_RIGID_R;
+    function inb(x, y, z, bx) { return x >= bx[0][0] && x <= bx[1][0] && y >= bx[0][1] && y <= bx[1][1] && z >= bx[0][2] && z <= bx[1][2]; }
+    return src.map(function (r) {
+      var bi = A.meta.bones.indexOf(r[0]); if (bi < 0) return null;
+      if (r[1] === 'seg') return { b: bi, k: 'seg', p: r[2], d: [r[3][0] - r[2][0], r[3][1] - r[2][1], r[3][2] - r[2][2]], r: r[4] * K };
+      if (r[1] === 'box') return { b: bi, k: 'box', bx: [r[2], r[3]] };
+      if (r[1] === 'ymin') return { b: bi, k: 'ymin', y: r[2] };
+      // Stange durch die Schwerpunkte der Rig-Ecken in zwei Kästen (wie weights.py)
+      var c0 = [0, 0, 0, 0], c1 = [0, 0, 0, 0];
+      for (var i = 0; i < rp.count; i++) { var x = rp.getX(i), y = rp.getY(i), z = rp.getZ(i), c = inb(x, y, z, r[2]) ? c0 : inb(x, y, z, r[3]) ? c1 : null; if (c) { c[0] += x; c[1] += y; c[2] += z; c[3]++; } }
+      if (!c0[3] || !c1[3]) return null;
+      var p = [c0[0] / c0[3], c0[1] / c0[3], c0[2] / c0[3]], d = [c1[0] / c1[3] - p[0], c1[1] / c1[3] - p[1], c1[2] / c1[3] - p[2]], l = Math.hypot(d[0], d[1], d[2]);
+      return { b: bi, k: 'line', p: p, d: [d[0] / l, d[1] / l, d[2] / l], r: r[4] * K };
+    }).filter(Boolean);
+  }
+  function rigidHit(R, v) {
+    for (var i = 0; i < R.length; i++) {
+      var r = R[i], hit;
+      if (r.k === 'ymin') hit = v[1] > r.y;
+      else if (r.k === 'box') hit = v[0] >= r.bx[0][0] && v[0] <= r.bx[1][0] && v[1] >= r.bx[0][1] && v[1] <= r.bx[1][1] && v[2] >= r.bx[0][2] && v[2] <= r.bx[1][2];
+      else {
+        var ax = v[0] - r.p[0], ay = v[1] - r.p[1], az = v[2] - r.p[2], d = r.d, t = ax * d[0] + ay * d[1] + az * d[2];
+        if (r.k === 'seg') { var dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2]; t = dd > 1e-9 ? Math.max(0, Math.min(1, t / dd)) : 0; }
+        ax -= d[0] * t; ay -= d[1] * t; az -= d[2] * t; hit = ax * ax + ay * ay + az * az < r.r * r.r;
+      }
+      if (hit) return r.b;
+    }
+    return -1;
+  }
+  // Höhenausgleich je Clip: der Boden der Clips liegt etwas tiefer als die Sohle der Statue (Füße steckten im Sockel).
+  // Je Clip: tiefster Punkt des Rigs über alle Frames gegen die Ruhepose, nur anheben (Rig-Einheiten)
+  function clipLift(A) {
+    if (A._figLift) return A._figLift;
+    var H = THREE.DataUtils.fromHalfFloat, d = A.tex.image.data, nb = A.meta.bones.length, P = A.geo.getAttribute('position'), I = A.geo.getAttribute('aSkinI'), W = A.geo.getAttribute('aSkinW');
+    // nur Fuß-Ecken (stärkster Knochen foot_*/ball_*): Waffen schwingen in Angriffen unter den Boden, Körper liegen beim Sterben
+    var L = new Float32Array(32), y0 = Infinity, ft = [], i;
+    for (i = 0; i < P.count; i++) { var bw = 0, bn = -1; for (var q0 = 0; q0 < 4; q0++) if (W.getComponent(i, q0) > bw) { bw = W.getComponent(i, q0); bn = I.getComponent(i, q0); } if (/^(foot|ball)_/.test(A.meta.bones[bn] || '')) ft.push(i); }
+    ft.forEach(function (j) { y0 = Math.min(y0, P.getY(j)); });
+    Object.keys(A.ids).forEach(function (nm) {
+      var c = A.clips[A.ids[nm]], mn = Infinity;
+      for (var f = 0; f < c.y; f += 2) for (var fi = 0; fi < ft.length; fi++) { i = ft[fi];
+        var x = P.getX(i), y = P.getY(i), z = P.getZ(i), yy = 0;
+        for (var q = 0; q < 4; q++) { var w = W.getComponent(i, q); if (!w) continue; var o = (c.x + f) * nb * 12 + I.getComponent(i, q) * 12 + 4; yy += w * (H(d[o]) * x + H(d[o + 1]) * y + H(d[o + 2]) * z + H(d[o + 3])); }
+        if (yy < mn) mn = yy;
+      }
+      L[A.ids[nm]] = Math.max(0, Math.min(0.1, y0 - mn));
+    });
+    return (A._figLift = L);
+  }
+
+  function transfer(d, A, base) {
     var T = THREE, m = null; d.updateMatrixWorld(true); d.traverse(function (o) { if (o.isMesh && !m) m = o; });
+    var RR = rigidRules(A, base);
     var pa = m.geometry.getAttribute('position'), n = pa.count, P = raw(pa), rp = A.geo.getAttribute('position'), rn = rp.count, i, c, k;
     var si = A.geo.getAttribute('aSkinI'), sw = A.geo.getAttribute('aSkinW'), SI = new Int32Array(rn * 4), SW = new Float32Array(rn * 4);
     for (i = 0; i < rn; i++) { SI[i * 4] = si.getX(i); SI[i * 4 + 1] = si.getY(i); SI[i * 4 + 2] = si.getZ(i); SI[i * 4 + 3] = si.getW(i); SW[i * 4] = sw.getX(i); SW[i * 4 + 1] = sw.getY(i); SW[i * 4 + 2] = sw.getZ(i); SW[i * 4 + 3] = sw.getW(i); }
@@ -55,7 +112,10 @@
     var nb = A.meta.bones.length, acc = new Float32Array(nb), I = new Uint8Array(n * 4), W = new Uint8Array(n * 4), top = [0, 0, 0, 0], tw = [0, 0, 0, 0];
     function part(i0, i1) {
       for (var q = i0; q < i1; q++) {
-        pos(q, RN, v); var lim = search(v[0], v[1], v[2]) * 1.96 + 1e-5;
+        pos(q, RN, v);
+        var rb = RR.length ? rigidHit(RR, v) : -1;
+        if (rb >= 0) { I[q * 4] = rb; W[q * 4] = 255; I[q * 4 + 1] = I[q * 4 + 2] = I[q * 4 + 3] = W[q * 4 + 1] = W[q * 4 + 2] = W[q * 4 + 3] = 0; continue; }
+        var lim = search(v[0], v[1], v[2]) * 1.96 + 1e-5;
         acc.fill(0);
         for (var t = 0; t < nc; t++) {
           if (cd[t] > lim) continue;
@@ -70,6 +130,7 @@
     }
     var CH = Board3D.MOBILE ? 10000 : 30000, chain = Promise.resolve();
     for (k = 0; k < n; k += CH) (function (k0) { chain = chain.then(function () { part(k0, Math.min(n, k0 + CH)); return yieldNow(); }); })(k);
+    chain = chain.then(function () { clipLift(A); return yieldNow(); }); // Höhenausgleich vorab (nicht erst beim Kompilieren)
     return chain.then(function () {
       var geo = new T.BufferGeometry(); geo.setIndex(m.geometry.index);
       for (var nm in m.geometry.attributes) geo.setAttribute(nm, m.geometry.attributes[nm]);
@@ -85,7 +146,7 @@
   var queue = Promise.resolve();
   Board3D.figSkin = function (url, base) {
     if (!cache[url]) cache[url] = Promise.all([Models.load(url), SkinAnim.load(base)]).then(function (r) {
-      var job = queue.then(function () { return transfer(r[0], r[1]); }); queue = job.catch(function () { }); return job;
+      var job = queue.then(function () { return transfer(r[0], r[1], base); }); queue = job.catch(function () { }); return job;
     }).then(function (S) { return (done[url] = S); }, function (e) { done[url] = false; throw e; });
     return cache[url];
   };
@@ -117,7 +178,9 @@
     SkinAnim.patch(sh, A, depth);
     BLEND = BLEND || SkinAnim.VS_NORMAL.split('\n').filter(function (l) { return l.indexOf('skBl < 1.0') >= 0; })[0];
     // Skin-Matrizen gelten im Rig-Raum, die Ecken liegen quantisiert im Mesh-Raum: L = Node⁻¹ · Skin · Node
-    var vs = sh.vertexShader.replace('attribute vec4 iClip;', 'uniform vec4 iClip; uniform mat4 uNode; uniform mat4 uNodeI;').replace(BLEND, BLEND + '\nskM = uNodeI * skM * uNode;');
+    var vs = sh.vertexShader.replace('attribute vec4 iClip;', 'uniform vec4 iClip; uniform mat4 uNode; uniform mat4 uNodeI; uniform float uLift[32];')
+      .replace(BLEND, BLEND + '\nfloat skL = uLift[int(iClip.x)]; if (skBl < 1.0 && iClip.z >= 0.0) skL = skL * skBl + uLift[int(iClip.z)] * (1.0 - skBl);\nskM[3][1] += skL;\nskM = uNodeI * skM * uNode;');
+    sh.uniforms.uLift = { value: clipLift(A) };
     if (!depth) vs = vs.replace('objectNormal = normalize(mat3(skM) * objectNormal);', 'objectNormal = normalize(mat3(skM) * objectNormal);\n#ifdef USE_TANGENT\nobjectTangent = mat3(skM) * objectTangent;\n#endif');
     sh.vertexShader = vs; sh.uniforms.iClip = U.iClip; sh.uniforms.uNode = U.uNode; sh.uniforms.uNodeI = U.uNodeI;
     if (rim) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.12, 0.05) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2) * 1.6;');
@@ -151,7 +214,8 @@
     k.until = loop || name === 'bind' || o.hold ? 0 : now + left * (o.cut || 0.9); k.then = o.then || null; k.frz = o.freeze != null ? o.freeze : null;
     return left;
   };
-  Board3D.prototype.figRest = function (g) { var k = g && g.userData.sk; if (k && !k.busy) this.figPlay(g, k.sel ? 'ready' : 'bind'); };
+  Board3D.prototype.figRest = function (g) { var k = g && g.userData.sk; if (k && !k.busy) this.figPlay(g, k.sel ? Board3D.FIG_SEL : 'bind'); };
+  Board3D.FIG_SEL = 'idle'; // Auswahl: lebendig stehen (die Hocke 'ready' verzerrt die Statuen, Füße tief, Schulterplatten reißen)
   // jedes Bild (aus update): Einzel-Clip zu Ende → Folge-Clip
   Board3D.prototype.figTick = function (g) {
     var k = g.userData.sk;
@@ -167,7 +231,7 @@
     var g = sq != null && sq >= 0 && this.look !== 'feld' ? this.pieces[sq] : null; if (g === this._selG) return;
     var old = this._selG; this._selG = g;
     if (old && old.userData.sk) { old.userData.sk.sel = false; this.figRest(old); }
-    if (g && g.userData.sk) { g.userData.sk.sel = true; if (!g.userData.sk.busy) this.figPlay(g, 'ready'); }
+    if (g && g.userData.sk) { g.userData.sk.sel = true; if (!g.userData.sk.busy) this.figPlay(g, Board3D.FIG_SEL); }
   };
   function snd(n, a, t) { if (typeof Sfx !== 'undefined') Sfx.play(n, a, t); }
   function typ(g) { return Math.abs(g.userData.p || 0); }
