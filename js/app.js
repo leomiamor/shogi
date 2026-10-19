@@ -390,9 +390,9 @@
   // (gestreifte Äcker bzw. abgelehnt, 19.10.). Andere Editionen: Board3D.ED_MOODS (feld_*.js), Einstellung fieldMood_<edition>.
   var FEUDAL_FIELDS = [['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']];
   var FIELD_SUB = { pass: 'Abendrot, Schnee und Herbstlaub', tal: 'Kirschblüten, Nebel am Fluss', belagerung: 'Grauer Himmel, Burg unter Feuer', mittag: 'Klarer Mittag im Grünen',
-    m_oedland: 'Trümmer und Brände im Abendlicht', m_neon: 'Nachts zwischen Leuchttürmen', m_eis: 'Eis, Schnee und ein gefallener Titan',
+    m_oedland: 'Ruinen und Staub im Abendlicht', m_neon: 'Nachts zwischen Hochhäusern', m_eis: 'Schnee, Eis und Ruinen',
     f_huegel: 'Burg, Dörfer und Mühlen', f_hort: 'Glut, Fels und Drachen', f_wald: 'Riesenbaum und Irrlichter',
-    h_hof: 'Hof, Heuballen und Zäune', h_schau: 'Schauring mit Ballons', h_park: 'Park im Abendlicht' };
+    h_hof: 'Hof, Heuballen und Zäune', h_schau: 'Schauring mit Tribüne', h_park: 'Park vor der Stadt' };
   function armyFields(ed) { return ed === 'feudal' ? FEUDAL_FIELDS : (window.Board3D && Board3D.ED_MOODS && Board3D.ED_MOODS[ed]) || null; }
   function fieldKey(ed) { return ed === 'feudal' ? 'fieldMood' : 'fieldMood_' + ed; }
   function fieldOf(ed) { var L = armyFields(ed); if (!L) return null; var v = ed === 'feudal' ? S.fieldMood : Board3D.edMoodOf(ed, S); return L.some(function (o) { return o[0] === v; }) ? v : L[0][0]; }
