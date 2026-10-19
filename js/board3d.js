@@ -1240,7 +1240,7 @@ Board3D.paintPatch = function (sh, col, t) {
       '{ vec3 c0 = diffuseColor.rgb; float l0 = dot(c0, vec3(0.2126, 0.7152, 0.0722)); diffuseColor.rgb = max(mix(vec3(l0), c0, 1.18), 0.0) * 1.06;',
       fur ? '  { float mx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)), mn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b)), sat = (mx - mn) / (mx + 1e-4), hue = mx == diffuseColor.r ? mod((diffuseColor.g - diffuseColor.b) / max(mx - mn, 1e-5), 6.0) / 6.0 : 0.5;' +
         ' float w = smoothstep(0.22, 0.42, sat) * (1.0 - smoothstep(0.13, 0.17, hue));' +
-        ' float mk = 1.0 - smoothstep(0.1, 0.17, l0); vec3 fw = vec3(0.93, 0.91, 0.88) * clamp(0.62 + l0 * 1.6, 0.0, 1.0);' +
+        ' float mk = 1.0 - smoothstep(0.1, 0.17, l0); vec3 fw = vec3(0.86, 0.84, 0.8) * clamp(0.58 + l0 * 1.4, 0.0, 1.0);' +
         ' diffuseColor.rgb = mix(diffuseColor.rgb, mix(fw, ' + v3(Board3D.KUMADORI[col] || Board3D.KUMADORI[0]) + ', mk), w); }' : '',
       '  if (vFlag > 0.75) { float rr = length((vFlagUV - vec2(0.5, 0.6)) * vec2(0.45, 1.0)) / 0.15; diffuseColor.rgb = mix(' + v3(f[1]) + ', ' + v3(f[0]) + ', smoothstep(0.9, 1.0, rr)); }',
       '  else if (vFlag > 0.25) diffuseColor.rgb = vec3(0.05, 0.04, 0.035); }'].join('\n'))
@@ -1286,7 +1286,7 @@ Board3D.prototype.armyMatI = function (col, rim, map, t) {
   var key = 'armyI' + col + (rim ? 'r' : '') + (map ? map.uuid : ''); this.statueCache = this.statueCache || {};
   if (this.statueCache[key]) return this.statueCache[key];
   var mat = this.armyBase(col, map);
-  if (map && Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0) mat.normalScale.multiplyScalar(0.3); // Fell: weich statt facettiert
+  if (map && Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0) mat.normalScale.multiplyScalar(0); // Fell: ohne Normal-Map weich (mit ×0,3 glänzten die weißen Schwänze noch facettiert)
   mat.onBeforeCompile = function (sh) {
     sh.uniforms.uTime = Board3D.ARMY_TIME;
     sh.vertexShader = 'uniform float uTime;\nattribute vec4 aIdle;\nattribute vec3 iAnim;\n' + sh.vertexShader.replace('#include <begin_vertex>', Board3D.ARMY_VS);
@@ -1301,7 +1301,7 @@ Board3D.prototype.armyMatS = function (col, rim, sk, map, t) {
   var key = 'armyS' + col + (rim ? 'r' : '') + (map ? map.uuid : ''); this.statueCache = this.statueCache || {};
   if (this.statueCache[key]) return this.statueCache[key];
   var mat = this.armyBase(col, map);
-  if (map && Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0) mat.normalScale.multiplyScalar(0.3); // Fell: weich statt facettiert
+  if (map && Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0) mat.normalScale.multiplyScalar(0); // Fell: ohne Normal-Map weich (mit ×0,3 glänzten die weißen Schwänze noch facettiert)
   mat.onBeforeCompile = function (sh) {
     SkinAnim.patch(sh, sk);
     if (map) Board3D.paintPatch(sh, col, t);
@@ -1316,7 +1316,12 @@ Board3D.prototype.skinState = function (tr, g) {
   if (u.dying || u.dead) { if (!u.dieC) { u.dieC = u.heavyDeath || Math.random() < 0.5 ? 'die2' : 'die1'; SkinAnim.play(A, u, u.dieC, 1e-4); } return u.clip; }
   if (u.shotEnd > now) return u.clip;
   var w = u.u.uWalk.value, want = w > 0.95 ? 'run' : w > 0.12 ? 'walk' : g.userData.fighting ? 'ready' : 'idle';
-  if (u.cur !== want) { u.cur = want; SkinAnim.play(A, u, want, want === 'run' || want === 'walk' ? 1e-4 : Math.random() * A.dur[want]); }
+  // erst wechseln, wenn der neue Zustand 0,2 s anhält: im Gemenge sprang uWalk bei jedem Schubser zwischen Laufen und Kampfhaltung, jeder Wechsel startete den Clip neu (ruckelig)
+  if (u.cur !== want) {
+    if (u.want !== want) { u.want = want; u.wantAt = now; }
+    if ((u.cur === 'run' || u.cur === 'walk' || u.cur === 'ready') && now - u.wantAt < 0.2) return u.clip;
+    var first = !u.cur; u.cur = want; SkinAnim.play(A, u, want, want === 'run' || want === 'walk' ? 1e-4 : first ? Math.random() * A.dur[want] : 1e-4);
+  } else u.want = want;
   return u.clip;
 };
 // Einzelaktion abspielen; hitAt = Sekunden bis zum Treffer in der Simulation (Clip wird so verschoben, dass sein Treffer-Frame passt)
@@ -1328,7 +1333,7 @@ Board3D.prototype.skinShot = function (s, name, hitAt) {
 };
 Board3D.SKIN = { 1: 'models/anim/ashigaru', 2: 'models/anim/naginata', 3: 'models/anim/kitsune', 4: 'models/anim/kenshi', 5: 'models/anim/yari', 6: 'models/anim/onmyoji', 7: 'models/anim/tengu', 8: 'models/anim/samurai', 9: 'models/anim/veteran', 10: 'models/anim/hauptmann', 11: 'models/anim/kitsune5', 12: 'models/anim/general', 13: 'models/anim/kirin', 14: 'models/anim/ryu' }; // Typen mit Skelett (nur Feudal-Statuen)
 // andere Editionen: Edition -> Typ -> Clip-Datei; fehlt ein Eintrag, steht die Statue (ohne Skelett)
-Board3D.SKIN_ED = { mecha: { 1: 'models/anim/mecha_1', 3: 'models/anim/mecha_3', 4: 'models/anim/mecha_4', 5: 'models/anim/mecha_5', 8: 'models/anim/mecha_8', 9: 'models/anim/mecha_9', 10: 'models/anim/mecha_10', 11: 'models/anim/mecha_11', 12: 'models/anim/mecha_12' }, fantasy: { 1: 'models/anim/fantasy_1', 8: 'models/anim/fantasy_8', 9: 'models/anim/fantasy_9', 10: 'models/anim/fantasy_10', 11: 'models/anim/fantasy_11', 12: 'models/anim/fantasy_12' }, hunde: { 1: 'models/anim/hunde_1', 2: 'models/anim/hunde_2', 3: 'models/anim/hunde_3', 4: 'models/anim/hunde_4', 5: 'models/anim/hunde_5', 6: 'models/anim/hunde_6', 7: 'models/anim/hunde_7', 8: 'models/anim/hunde_8', 9: 'models/anim/hunde_9', 10: 'models/anim/hunde_10', 11: 'models/anim/hunde_11', 12: 'models/anim/hunde_12', 13: 'models/anim/hunde_13', 14: 'models/anim/hunde_14' } };
+Board3D.SKIN_ED = { mecha: { 1: 'models/anim/mecha_1', 3: 'models/anim/mecha_3', 4: 'models/anim/mecha_4', 5: 'models/anim/mecha_5', 8: 'models/anim/mecha_8', 9: 'models/anim/mecha_9', 10: 'models/anim/mecha_10', 11: 'models/anim/mecha_11', 12: 'models/anim/mecha_12' }, fantasy: { 1: 'models/anim/fantasy_1', 2: 'models/anim/fantasy_2', 4: 'models/anim/fantasy_4', 5: 'models/anim/fantasy_5', 6: 'models/anim/fantasy_6', 8: 'models/anim/fantasy_8', 9: 'models/anim/fantasy_9', 10: 'models/anim/fantasy_10', 11: 'models/anim/fantasy_11', 12: 'models/anim/fantasy_12' }, hunde: { 1: 'models/anim/hunde_1', 2: 'models/anim/hunde_2', 3: 'models/anim/hunde_3', 4: 'models/anim/hunde_4', 5: 'models/anim/hunde_5', 6: 'models/anim/hunde_6', 7: 'models/anim/hunde_7', 8: 'models/anim/hunde_8', 9: 'models/anim/hunde_9', 10: 'models/anim/hunde_10', 11: 'models/anim/hunde_11', 12: 'models/anim/hunde_12', 13: 'models/anim/hunde_13', 14: 'models/anim/hunde_14' } };
 Board3D.skinOf = function (ed, t) { return ed === 'feudal' ? Board3D.SKIN[t] || null : (Board3D.SKIN_ED[ed] || {})[t] || null; };
 Board3D.ATK = ['atk1', 'atk2', 'atk3', 'atk4'];
 // Instanzen-Topf je Modell + Farbe (wächst bei Bedarf)
@@ -2270,6 +2275,8 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
       m.userData.face = a0 + (goal - a0) * Math.min(1, dts * 9);
     }
     function sound(n, v) { if (self.vt - lastSnd > 70) { lastSnd = self.vt; snd(n, v); } }
+    // Stoß bei Treffer/Parade: über ~0,2 s ausrollen statt sofort versetzen (sprang sichtbar)
+    function shove(o, nx, nz, d) { o.sx = (o.sx || 0) + nx * d; o.sz = (o.sz || 0) + nz * d; }
     function kill(tg, nx, nz, heavy) { if (tg.side === 0) lostA++; write(tg); var u = U(tg.s); if (u) u.uWalk.value = 0; dieT(tg.s, nx, nz, tg.side === 0, heavy); }
     // fliehender Soldat verschwindet hinter den eigenen Linien
     function gone(o) {
@@ -2285,9 +2292,9 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
       var hp = head(tg.s);
       if (Math.random() > p) { // pariert: Funken, Gegner weicht zurück
         if (Math.random() < pf * 2) sparks(hp.x - nx * 0.04, hp.y - 0.05, hp.z - nz * 0.04, 0, 6, 0); snd('clash', 0.4, o.side);
-        tg.w.x += nx * 0.025; tg.w.z += nz * 0.025; if (tg.st === 'idle') self.skinShot(tg.s, 'block'); return;
+        shove(tg, nx, nz, 0.025); if (tg.st === 'idle') self.skinShot(tg.s, 'block'); return;
       }
-      tg.hp -= o.pw * (0.7 + Math.random() * 0.6); flash(tg.s, 0.7); tg.w.x += nx * 0.04; tg.w.z += nz * 0.04; snd(Math.random() < 0.6 ? 'hit' : 'clash', 0.55, o.side);
+      tg.hp -= o.pw * (0.7 + Math.random() * 0.6); flash(tg.s, 0.7); shove(tg, nx, nz, 0.04); snd(Math.random() < 0.6 ? 'hit' : 'clash', 0.55, o.side);
       if (tg.hp <= 0) kill(tg, nx, nz, o.pw > tg.pw * 2.2 ? Math.random() < 0.7 : heavyA && o.side === 0 && Math.random() < 0.2);
       else { self.skinShot(tg.s, Math.random() < 0.5 ? 'hit1' : 'hit2'); tg.st = 'idle'; tg.cd = Math.max(tg.cd, 0.35); }
       // Helden und schwere Krieger mähen mehrere nieder
@@ -2340,7 +2347,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
         if (!liveD.length) return finish();
         if (!routed && (el > maxT * 0.7 || liveD.length <= Math.ceil(sD.length * 0.3))) { routed = true; liveD.forEach(function (o) { o.rout = true; o.st = 'idle'; }); }
         if (el > maxT + 1500) { liveD.forEach(gone); return finish(); }
-        all.forEach(function (o) { if (alive(o)) think(o, dts); });
+        all.forEach(function (o) { if (alive(o)) think(o, dts); if (o.sx || o.sz) { var f = Math.min(1, dts * 9); o.w.x += o.sx * f; o.w.z += o.sz * f; o.sx -= o.sx * f; o.sz -= o.sz * f; } });
         // Abstand halten: Kameraden nicht ineinander, Gegner nicht durcheinander
         for (var i = 0; i < all.length; i++) { var a = all[i]; if (!alive(a)) continue;
           for (var j = i + 1; j < all.length; j++) { var b = all[j]; if (!alive(b)) continue;
@@ -2825,13 +2832,13 @@ Board3D.prototype.animate = function (info) {
     info.usesHit = true;
     var army = mover.userData.troops || capG.userData.troops;
     var fst = this.fightStyle(Shogi && info.promo ? (Shogi.BASE[Math.abs(after.board[info.to])] || 0) : after.board[info.to]);
-    return (army ? this.armyFight(info, mover, from, to, capG, fst) : mover.userData.sk ? this.figFight(info, mover, from, to, capG, fst) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
+    return (army ? this.armyFight(info, mover, from, to, capG, fst) : mover.userData.sk || this.figStatue && this.figStatue(mover) ? this.figFight(info, mover, from, to, capG, fst) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
   }
   var dist = Math.hypot(to.x - from.x, to.z - from.z), dur = info.drop ? 380 : 230 + dist * 45, height = info.drop ? 0 : 0.5 + dist * 0.12;
   // Armee: Regiment läuft über den Boden (umdrehen, laufen, wieder nach vorn) statt wie ein Spielstein zu hüpfen
   if (!info.drop && mover.userData.troops && !capG) return this.armyRun(mover, from, to).then(promoFx).then(function () { self.sync(after); });
-  // Statue mit Skelett geht/läuft hinüber; ohne Kampf fliegt die geschlagene Figur kurz vor der Ankunft weg
-  if (!info.drop && mover.userData.sk) return this.figWalk(mover, from, to, capG && function () {
+  // Statue (Figuren-Ansicht): Stein gleitet hinüber, Figur steht still; ohne Kampf fliegt die geschlagene Figur kurz vor der Ankunft weg
+  if (!info.drop && (mover.userData.sk || this.figStatue && this.figStatue(mover))) return this.figWalk(mover, from, to, capG && function () {
     self.shakeAmt = 0.3; self.emit(to.x, self.BT + 0.3, to.z, f.color, 60, 5, 1.2); var side = info.col === 0 ? 1 : -1, cs = capG.position.clone();
     return self.tween(450, function (k) { capG.position.set(cs.x + (6.5 * side - cs.x) * k, cs.y + Math.sin(k * Math.PI) * 3, cs.z + (4 * side - cs.z) * k); capG.rotation.x = k * 8; capG.scale.setScalar(1 - k * 0.7); }).then(function () { self.pieceGroup.remove(capG); });
   }).then(promoFx).then(function () { self.sync(after); });

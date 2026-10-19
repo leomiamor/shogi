@@ -1,8 +1,8 @@
 // Figuren-Ansicht lebt (wie das Schach in „No Game No Life“): die Gold/Silber-Statuen bekommen das Skelett der Armee-Truppen.
 // In Ruhe Bind-Pose (steht still, genau wie modelliert), bei Aktionen echte Clips (Quaternius UAL, gebacken in models/anim/*):
-// Gehen/Laufen zum Zielfeld, Zweikampf mit Parade und Tod, Kampfhaltung bei Auswahl, Jubel bei Beförderung, Abwurf und Sieg.
+// Zweikampf vom Sockel aus mit Parade und Tod, Jubel beim Sieg. Beim Zug, bei Auswahl, Abwurf und Beförderung steht die Figur still, der Stein gleitet (Wunsch 19.10.).
 // Die Gewichte stammen vom Low-Poly-Rig und werden beim Laden auf die Detail-Statue übertragen (nächste Rig-Ecken),
-// damit die Figur exakt wie die starre Statue aussieht. Typen ohne Rig behalten den alten Kampf (lean/faceTo in board3d.js).
+// damit die Figur exakt wie die starre Statue aussieht. Statuen ohne Rig gleiten und kämpfen ebenso vom Stein aus (Stein stößt vor).
 (function () {
   var cache = {}, done = {};
   Board3D._figTransfer = function (d, A, base) { return transfer(d, A, base); }; // für Messungen
@@ -348,21 +348,149 @@
       .replace(BLEND, BLEND + '\nfloat skL = uLift[int(iClip.x)]; if (skBl < 1.0 && iClip.z >= 0.0) skL = skL * skBl + uLift[int(iClip.z)] * (1.0 - skBl);\nskM[3][1] += skL;\nskM = uNodeI * skM * uNode;');
     sh.uniforms.uLift = { value: clipLift(A) };
     if (!depth) vs = vs.replace('objectNormal = normalize(mat3(skM) * objectNormal);', 'objectNormal = normalize(mat3(skM) * objectNormal);\n#ifdef USE_TANGENT\nobjectTangent = mat3(skM) * objectTangent;\n#endif');
-    sh.vertexShader = vs; sh.uniforms.iClip = U.iClip; sh.uniforms.uNode = U.uNode; sh.uniforms.uNodeI = U.uNodeI;
+    sh.vertexShader = vs; sh.uniforms.iClip = U.iClip; sh.uniforms.uNode = U.uNode; sh.uniforms.uNodeI = U.uNodeI; if (U.uTex) sh.uniforms.uSkinTex = U.uTex; // eigene Clip-Textur (Füße auf dem Stein)
     if (rim) sh.fragmentShader = sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += vec3(1.0, 0.12, 0.05) * pow(1.0 - clamp(dot(normal, normalize(vViewPosition)), 0.0, 1.0), 2.2) * 1.6;');
   }
+  var fixQ = Promise.resolve();
   Board3D.prototype.attachSkin = function (g, S, col) {
     var T = THREE, A = S.A, rim = Math.abs(g.userData.p || 0) >= 9 && this.settings.promoStyle === 'glanz';
     this.attachGlb(g, S.src, col);
     var m = g.userData.glb, mesh = null; m.traverse(function (o) { if (o.isMesh) mesh = o; });
-    var U = { iClip: { value: new T.Vector4(A.ids.bind, 0, -1, 0) }, uNode: { value: S.node }, uNodeI: { value: S.nodeI } };
+    var U = { iClip: { value: new T.Vector4(A.ids.bind, 0, -1, 0) }, uNode: { value: S.node }, uNodeI: { value: S.nodeI }, uTex: { value: A.tex } };
     var mat = mesh.material.clone(); mat.onBeforeCompile = function (sh) { patch(sh, A, U, false, rim); }; mat.customProgramCacheKey = function () { return rim ? 'figS-rim' : 'figS'; };
     var dm = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking }); dm.onBeforeCompile = function (sh) { patch(sh, A, U, true); }; dm.customProgramCacheKey = function () { return 'figSd'; };
     // in Ruhe zeichnet die Figur mit dem normalen Statuen-Material (Bind-Pose = Ruhepose), Skinning kostet nur während Aktionen
     g.userData.sk = { A: A, U: U, clip: [A.ids.bind, 0, -1, 0], cur: 'bind', until: 0, then: null, mats: [mat, dm], mesh: mesh, stat: mesh.material, off: 0, full: mesh.geometry };
+    var self = this; fixQ = fixQ.then(yieldNow).then(function () { if (g.parent && g.userData.sk) self.figFix(g); }).catch(function () { }); // Fußkorrektur vorab, eine Figur nach der anderen
   };
   // Figur entfernt: eigene Materialien freigeben (Programm bleibt im Cache)
   Board3D.prototype.figFree = function (g) { var k = g && g.userData.sk; if (k) { k.mats.forEach(function (x) { x.dispose(); }); k.mats = []; } };
+
+  // ---------- Füße auf dem Stein, Maße für den Kampf ----------
+  // Figuren stecken auf ihrem Stein (Wunsch 19.10.): in allen Clips außer Sterben bleiben die Füße (alles, was in der Ruhepose bis low über dem
+  // tiefsten Punkt liegt: Füße, Pfoten, Saum) in der Draufsicht innerhalb der Innenkante des Goldrands (RIM_IN, margin Abstand). Abheben ist erlaubt.
+  // Je Frame die kleinste waagrechte Verschiebung, die alle Fußpunkte hineinholt, auf alle Knochen des Frames gerechnet (eigene Kopie der
+  // Clip-Textur je Modell und Platz auf dem Stein; die Armee nutzt das Original). Dazu je Clip die Reichweite nach vorn (zur Steinspitze):
+  // core = Rumpf, Beine, Kopf (ohne Arme, Waffe, Umhang, Schwanz), reach = alles, hit = alles rund um den Treffer-Frame.
+  Board3D.FIG_FEET = { low: 0.1, margin: 0.015, free: ['die1', 'die2', 'fin_d', 'kneel'], loco: ['walk', 'run', 'sprint', 'strafe_l', 'strafe_r', 'flee', 'roll'], n: 500, nAll: 1600, win: [0.15, 0.1],
+    fwd: ['ready', 'atk1', 'atk2', 'atk3', 'atk4', 'block', 'parry2', 'hit1', 'hit2', 'hit3', 'fin_a', 'cast', 'shoot', 'jet', 'punch'], fwdMax: 0.3 }; // fwd: Kampf-Clips, in denen die Figur bis fwdMax nach vorn an die Steinspitze tritt
+  Board3D.FIG_MEASURE = ['ready', 'idle', 'atk1', 'atk2', 'atk3', 'atk4', 'block', 'parry2', 'hit1', 'hit2', 'hit3', 'fin_a', 'cast', 'shoot', 'jet', 'punch', 'cheer1'];
+  var FIG_LIMB = /arm|hand|weapon|cape|Tail|Ear|Front/;
+  function rimEdges(mg) { // Halbebenen der Innenkante, Normale nach innen: n·p + c ≥ mg heißt drinnen
+    var P = Board3D.RIM_IN;
+    return P.map(function (a, i) { var b = P[(i + 1) % P.length], nx = a[1] - b[1], nz = b[0] - a[0], l = Math.hypot(nx, nz); nx /= l; nz /= l; if (nx * -a[0] + nz * (0.1 - a[1]) < 0) { nx = -nx; nz = -nz; } return [nx, nz, -(nx * a[0] + nz * a[1]) - mg]; });
+  }
+  // kleinste Verschiebung d mit n_i·d ≥ b_i für alle Kanten (2D, wenige Bedingungen: Ecken der Lösungsmenge durchprobieren); passt nichts, kleinste Überschreitung
+  function minShift(E, b) {
+    function ok(x, z) { for (var i = 0; i < E.length; i++) if (E[i][0] * x + E[i][1] * z < b[i] - 1e-6) return false; return true; }
+    if (ok(0, 0)) return [0, 0];
+    var best = null, bl = 1e9, i, j;
+    function tryP(x, z) { var l = Math.hypot(x, z); if (l < bl && ok(x, z)) { bl = l; best = [x, z]; } }
+    for (i = 0; i < E.length; i++) if (b[i] > 0) tryP(E[i][0] * b[i], E[i][1] * b[i]);
+    for (i = 0; i < E.length; i++) for (j = i + 1; j < E.length; j++) { var det = E[i][0] * E[j][1] - E[i][1] * E[j][0]; if (Math.abs(det) > 1e-9) tryP((b[i] * E[j][1] - E[i][1] * b[j]) / det, (E[i][0] * b[j] - b[i] * E[j][0]) / det); }
+    if (best) return best;
+    var x = 0, z = 0;
+    for (var it = 0; it < 300; it++) { var w = -1, wv = 0; for (i = 0; i < E.length; i++) { var vv = b[i] - E[i][0] * x - E[i][1] * z; if (vv > wv) { wv = vv; w = i; } } if (w < 0) break; x += E[w][0] * wv * 0.3; z += E[w][1] * wv * 0.3; }
+    return [x, z];
+  }
+  function thin(a, n) { if (a.length <= n) return a; var s = a.length / n, o = []; for (var i = 0; i < n; i++) o.push(a[Math.floor(i * s)]); return o; }
+  Board3D.prototype.figFix = function (g) {
+    var k = g && g.userData.sk; if (!k) return null; if (k.fix) return k.fix;
+    var T = THREE, A = k.A, F = Board3D.FIG_FEET, mesh = k.mesh, m = g.userData.glb; if (!mesh || !mesh.parent || !m) return null;
+    var f0 = m.userData.face || 0; m.rotation.y = m.userData.ry0 || 0; g.updateMatrixWorld(true);
+    var Q = new T.Matrix4().copy(g.matrixWorld).invert().multiply(mesh.parent.matrixWorld); m.rotation.y = (m.userData.ry0 || 0) + f0;
+    var key = Q.elements.map(function (v) { return v.toFixed(3); }).join(','), C = A._figFix || (A._figFix = {});
+    if (C[key]) { k.fix = C[key]; k.U.uTex.value = k.fix.tex; return k.fix; }
+    var geo = k.full, P = geo.getAttribute('position'), SI = geo.getAttribute('aSkinI'), SW = geo.getAttribute('aSkinW'), N = k.U.uNode.value, n = P.count, v = new T.Vector3();
+    var QN = new T.Matrix4().multiplyMatrices(Q, N), ys = new Float32Array(n), ymin = Infinity, i, q;
+    for (i = 0; i < n; i++) { v.fromBufferAttribute(P, i).applyMatrix4(QN); ys[i] = v.y; if (v.y < ymin) ymin = v.y; }
+    var feetI = [], allI = [], bn = A.meta.bones, st = Math.max(1, Math.floor(n / F.nAll));
+    for (i = 0; i < n; i++) { if (ys[i] < ymin + F.low) feetI.push(i); if (i % st === 0) allI.push(i); }
+    function samp(ix) { return ix.map(function (i) { v.fromBufferAttribute(P, i).applyMatrix4(N); var I = [], W = [], bw = 0, db = 0; for (var q = 0; q < 4; q++) { I.push(SI.getComponent(i, q)); W.push(SW.getComponent(i, q)); if (W[q] > bw) { bw = W[q]; db = I[q]; } } return { x: v.x, y: v.y, z: v.z, I: I, W: W, core: !FIG_LIMB.test(bn[db] || '') }; }); }
+    var feet = samp(thin(feetI, F.n)), all = samp(allI);
+    var H = T.DataUtils.fromHalfFloat, Hh = T.DataUtils.toHalfFloat, d = A.tex.image.data, nb = bn.length, fl = new Float32Array(d.length), d2 = new Uint16Array(d);
+    for (i = 0; i < d.length; i++) fl[i] = H(d[i]);
+    var e = Q.elements, q00 = e[0], q01 = e[4], q02 = e[8], q03 = e[12], q20 = e[2], q21 = e[6], q22 = e[10], q23 = e[14];
+    var Qi = new T.Matrix3().setFromMatrix4(Q).invert().elements; // Stein → Rig (nur Richtung)
+    function skXZ(s, row, out) { // Ecke im Frame row skinnen, Stein-Raum x/z
+      var x = 0, y = 0, z = 0;
+      for (var q = 0; q < 4; q++) { var w = s.W[q]; if (!w) continue; var o = row * nb * 12 + s.I[q] * 12; x += w * (fl[o] * s.x + fl[o + 1] * s.y + fl[o + 2] * s.z + fl[o + 3]); y += w * (fl[o + 4] * s.x + fl[o + 5] * s.y + fl[o + 6] * s.z + fl[o + 7]); z += w * (fl[o + 8] * s.x + fl[o + 9] * s.y + fl[o + 10] * s.z + fl[o + 11]); }
+      out[0] = q00 * x + q01 * y + q02 * z + q03; out[1] = q20 * x + q21 * y + q22 * z + q23;
+    }
+    var E = rimEdges(F.margin), nE = E.length, p = [0, 0], out0 = {}, out = {}, fwd = {}, mix = {}, M = { core: {}, reach: {}, hit: {} };
+    var pb = new Float32Array(feet.length * 2); // Fußpunkte in Ruhe (bind = Einheitsmatrizen)
+    for (i = 0; i < feet.length; i++) { pb[i * 2] = q00 * feet[i].x + q01 * feet[i].y + q02 * feet[i].z + q03; pb[i * 2 + 1] = q20 * feet[i].x + q21 * feet[i].y + q22 * feet[i].z + q23; }
+    function bOf(P, a, s, bo) { // Überschreitung je Kante für die Fußpunkte (1 − a) · Pose + a · Ruhe + s
+      for (var j = 0; j < nE; j++) bo[j] = -1e9;
+      for (var fi = 0; fi < feet.length; fi++) { var x = P[fi * 2] * (1 - a) + pb[fi * 2] * a + s[0], z = P[fi * 2 + 1] * (1 - a) + pb[fi * 2 + 1] * a + s[1]; for (j = 0; j < nE; j++) { var vv = -(E[j][0] * x + E[j][1] * z + E[j][2]); if (vv > bo[j]) bo[j] = vv; } }
+      return bo;
+    }
+    function resid(bo, e) { var r = 0; for (var j = 0; j < nE; j++) r = Math.max(r, bo[j] - E[j][0] * e[0] - E[j][1] * e[1]); return r; }
+    Object.keys(A.meta.clips).forEach(function (nm) {
+      if (nm === 'bind' || F.free.indexOf(nm) >= 0 || F.loco.indexOf(nm) >= 0) return;
+      var c = A.meta.clips[nm], nf = c[1], Ps = [], bo = new Float32Array(nE), Bx = new Float32Array(nE).fill(-1e9), w0 = 0, w1 = 0, f, j, df, g2, z0 = [0, 0];
+      for (f = 0; f < nf; f++) { var P = new Float32Array(feet.length * 2); for (var fi = 0; fi < feet.length; fi++) { skXZ(feet[fi], c[0] + f, p); P[fi * 2] = p[0]; P[fi * 2 + 1] = p[1]; } Ps.push(P); bOf(P, 0, z0, bo); for (j = 0; j < nE; j++) { Bx[j] = Math.max(Bx[j], bo[j]); w0 = Math.max(w0, bo[j]); } }
+      // Kampf-Clips: die Figur tritt nach vorn an die Steinspitze (für den ganzen Clip gleich weit, sonst rutschen die Füße), so weit die Füße in allen Frames drinbleiben
+      var s = [0, 0];
+      if (F.fwd.indexOf(nm) >= 0) for (var zz = 0; zz <= F.fwdMax + 1e-6; zz += 0.01) {
+        var lo = -1e9, hi = 1e9, okz = true;
+        for (j = 0; j < nE; j++) { var need = Bx[j] + E[j][1] * zz; if (Math.abs(E[j][0]) < 1e-6) { if (need > 1e-6) { okz = false; break; } } else if (E[j][0] > 0) lo = Math.max(lo, need / E[j][0]); else hi = Math.min(hi, need / E[j][0]); }
+        if (okz && lo <= hi) s = [Math.max(lo, Math.min(hi, 0)), -zz];
+      }
+      // Beine weiter gespreizt als der Stein: Pose so wenig wie nötig Richtung Ruhepose mischen (wie eine Überblendung), dann glätten
+      var al = new Float32Array(nf), am2 = new Float32Array(nf), as = new Float32Array(nf);
+      for (f = 0; f < nf; f++) {
+        if (resid(bOf(Ps[f], 0, s, bo), minShift(E, bo)) <= 1e-4) continue;
+        var a0 = 0, a1 = 1;
+        for (var it = 0; it < 8; it++) { var ah = (a0 + a1) / 2; if (resid(bOf(Ps[f], ah, s, bo), minShift(E, bo)) <= 1e-4) a1 = ah; else a0 = ah; }
+        al[f] = a1;
+      }
+      for (f = 0; f < nf; f++) { var mxa = 0; for (df = -2; df <= 2; df++) { g2 = f + df; if (g2 >= 0 && g2 < nf) mxa = Math.max(mxa, al[g2]); } am2[f] = mxa; }
+      for (f = 0; f < nf; f++) { var sm = 0, cn = 0; for (df = -1; df <= 1; df++) { g2 = f + df; if (g2 >= 0 && g2 < nf) { sm += am2[g2]; cn++; } } as[f] = sm / cn; }
+      var amx = 0;
+      for (f = 0; f < nf; f++) {
+        var a = as[f], e = minShift(E, bOf(Ps[f], a, s, bo)); w1 = Math.max(w1, resid(bo, e)); amx = Math.max(amx, a);
+        var tx = s[0] + e[0], tz = s[1] + e[1]; if (!a && !tx && !tz) continue;
+        var rx = Qi[0] * tx + Qi[6] * tz, ry = Qi[1] * tx + Qi[7] * tz, rz = Qi[2] * tx + Qi[8] * tz, row = c[0] + f; // Qi spaltenweise: Spalte 0 = x, Spalte 2 = z
+        for (var bb = 0; bb < nb; bb++) {
+          var o = row * nb * 12 + bb * 12;
+          if (a) for (var r2 = 0; r2 < 3; r2++) for (var cc = 0; cc < 4; cc++) fl[o + r2 * 4 + cc] = fl[o + r2 * 4 + cc] * (1 - a) + (cc === r2 ? a : 0);
+          fl[o + 3] += rx; fl[o + 7] += ry; fl[o + 11] += rz;
+          for (var u = 0; u < 12; u++) d2[o + u] = Hh(fl[o + u]);
+        }
+      }
+      out0[nm] = w0; out[nm] = w1; fwd[nm] = -s[1]; mix[nm] = amx;
+    });
+    // Reichweiten nach vorn (−z im Stein-Raum) je Clip, nach der Korrektur
+    function reach(nm) {
+      var c = A.meta.clips[nm], fps = A.meta.fps, h = A.hit[nm], a = h != null ? Math.max(0, Math.floor((h - F.win[0]) * fps)) : 0, z = h != null ? Math.min(c[1] - 1, Math.ceil((h + F.win[1]) * fps)) : c[1] - 1, rc = -9, ra = -9, rh = -9;
+      for (var f = 0; f < c[1]; f++) for (var si = 0; si < all.length; si++) { skXZ(all[si], c[0] + f, p); var fw = -p[1]; if (fw > ra) ra = fw; if (all[si].core && fw > rc) rc = fw; if (f >= a && f <= z && fw > rh) rh = fw; }
+      M.core[nm] = rc; M.reach[nm] = ra; M.hit[nm] = rh;
+    }
+    reach('bind'); Board3D.FIG_MEASURE.forEach(function (nm) { if (A.ids[nm] != null) reach(nm); });
+    var tex = new T.DataTexture(d2, A.tex.image.width, A.tex.image.height, T.RGBAFormat, T.HalfFloatType); tex.minFilter = tex.magFilter = T.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
+    k.fix = C[key] = { tex: tex, M: M, out0: out0, out: out, fwd: fwd, mix: mix, feet: feet.length }; k.U.uTex.value = tex;
+    return k.fix;
+  };
+  // Maße einer Figur ohne Rig (starre Statue): Vorderkante in Ruhe
+  Board3D.prototype.figFit = function (g) {
+    var f = this.figFix(g); if (f) return f.M;
+    var m = g.userData.glb, T = THREE; if (!m) return { core: { bind: 0.3 }, reach: { bind: 0.3 }, hit: { bind: 0.3 } };
+    if (m.userData.figM) return m.userData.figM;
+    var f0 = m.userData.face || 0; m.rotation.y = m.userData.ry0 || 0; g.updateMatrixWorld(true);
+    var inv = new T.Matrix4().copy(g.matrixWorld).invert(), L = new T.Matrix4(), v = new T.Vector3(), fw = -9;
+    m.traverse(function (o) { if (!o.isMesh) return; L.multiplyMatrices(inv, o.matrixWorld); var pa = o.geometry.attributes.position, st = Math.max(1, Math.floor(pa.count / 3000)); for (var i = 0; i < pa.count; i += st) { v.fromBufferAttribute(pa, i).applyMatrix4(L); if (-v.z > fw) fw = -v.z; } });
+    m.rotation.y = (m.userData.ry0 || 0) + f0;
+    return (m.userData.figM = { core: { bind: fw }, reach: { bind: fw }, hit: { bind: fw } });
+  };
+  // Steinspitze: wie weit der Stein (ohne Figur) nach vorn reicht
+  Board3D.prototype.figTip = function (g) {
+    if (this._figTip) return this._figTip;
+    var T = THREE, m = g.userData.glb, bb = new T.Box3(), b1 = new T.Box3(); g.updateMatrixWorld(true);
+    var inv = new T.Matrix4().copy(g.matrixWorld).invert(), L = new T.Matrix4();
+    g.children.forEach(function (c) { if (c === m) return; c.traverse(function (o) { if (!o.isMesh || !o.geometry) return; if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); b1.copy(o.geometry.boundingBox).applyMatrix4(L.multiplyMatrices(inv, o.matrixWorld)); bb.union(b1); }); });
+    return (this._figTip = bb.isEmpty() ? 0.46 : -bb.min.z);
+  };
 
   // ---------- Clips ----------
   // Clip abspielen. o: hitAt = Sekunden bis zum Treffer (Clip wird so verschoben, dass sein Treffer-Frame passt),
@@ -371,6 +499,7 @@
     var k = g && g.userData.sk; if (!k) return 0; o = o || {};
     if (Array.isArray(name)) name = name[Math.floor(Math.random() * name.length)];
     var A = k.A; if (A.ids[name] == null) return 0;
+    if (name !== 'bind' && !k.fix) this.figFix(g);
     var loop = A.meta.clips[name][2], now = SkinAnim.time.value;
     if (loop && k.cur === name) { k.until = 0; return 0; }
     var off = o.hitAt != null ? Math.max(0, (A.hit[name] || 0) - o.hitAt) : 0;
@@ -381,7 +510,7 @@
     return left;
   };
   Board3D.prototype.figRest = function (g) { var k = g && g.userData.sk; if (k && !k.busy) this.figPlay(g, k.sel ? Board3D.FIG_SEL : 'bind'); };
-  Board3D.FIG_SEL = 'idle'; // Auswahl: lebendig stehen (die Hocke 'ready' verzerrt die Statuen, Füße tief, Schulterplatten reißen)
+  Board3D.FIG_SEL = 'bind'; // Auswahl: steinstill wie eine Statue (Wunsch 19.10.; vorher 'idle')
   // jedes Bild (aus update): Einzel-Clip zu Ende → Folge-Clip
   Board3D.prototype.figTick = function (g) {
     var k = g.userData.sk;
@@ -392,7 +521,7 @@
     k.until = 0; var nx = k.then; k.then = null;
     if (nx) this.figPlay(g, nx); else if (!k.busy) this.figRest(g);
   };
-  // Auswahl: Kampfhaltung einnehmen, abgewählt wieder still
+  // Auswahl: Figur bleibt still (FIG_SEL), abgewählt ebenso
   Board3D.prototype.figSelect = function (sq) {
     var g = sq != null && sq >= 0 && this.look !== 'feld' ? this.pieces[sq] : null; if (g === this._selG) return;
     var old = this._selG; this._selG = g;
@@ -402,26 +531,48 @@
   function snd(n, a, t) { if (typeof Sfx !== 'undefined') Sfx.play(n, a, t); }
   function typ(g) { return Math.abs(g.userData.p || 0); }
 
-  // ---------- Zug: zur Zielfläche gehen/laufen (Stein trägt die Figur, Füße passen zum Tempo) ----------
-  Board3D.FIG_GAIT = { walk: 1.0, run: 2.1, sprint: 3.6 }; // Felder pro Sekunde, passend zur Schrittlänge der Clips
-  // onNear: kurz vor der Ankunft (geschlagene Figur ohne Kampf wegräumen), Promise
-  Board3D.prototype.figWalk = function (g, from, to, onNear) {
-    var self = this, k = g.userData.sk, dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1e-4;
-    var gait = dist <= 1.5 ? 'walk' : dist <= 3.2 ? 'run' : 'sprint', ms = Math.min(1600, dist / Board3D.FIG_GAIT[gait] * 1000); // mit Beförderung unter der 2,5-s-Notbremse in app.js
-    k.busy = true; this.figPlay(g, gait); snd('march', ms + 150, typ(g));
-    var turn = this.faceTo(g, to.x, to.z, 200), near = null;
-    function ease(x) { return x < 0.12 ? x * x / 0.24 : x > 0.88 ? 1 - (1 - x) * (1 - x) / 0.24 : x - 0.06; } // weich an- und auslaufen
-    return turn.then(function () { return self.tween(ms, function (q) { var e = ease(q) / 0.88; g.position.x = from.x + dx * e; g.position.z = from.z + dz * e; g.position.y = self.BT; if (onNear && !near && q > 0.45) near = onNear(); }); })
-      .then(function () { return near; })
-      .then(function () { k.busy = false; self.figRest(g); var m = g.userData.glb, a0 = m.userData.face || 0; self.tween(260, function (q) { m.userData.face = a0 * (1 - q * q * (3 - 2 * q)); }); }); // Zurückdrehen läuft nebenher
+  // ---------- Zug: der Stein gleitet, die Figur steht still wie eine Statue (Wunsch 19.10.: kein Gehen, kein Drehen) ----------
+  // Schwerer Stein (Wunsch 19.10.: „Spielsteine mit Gewicht“): zieht träge an, kippt beim Anfahren leicht zurück und beim Bremsen nach vorn
+  // (Drehpunkt an der Unterkante), schießt minimal über, wippt nach und setzt mit Staub und kleinem Ruck auf. yaw: Drehung nebenher (Ziel), w: Stärke 0–1
+  Board3D.FIG_HEAVY = { tilt: 0.075, over: 0.035, edge: 0.45, settle: 0.22, dust: 8, thud: 0.06 };
+  Board3D.prototype.figGlide = function (g, tx, tz, ms, yaw, w) {
+    var self = this, T = THREE, H = Board3D.FIG_HEAVY, x0 = g.position.x, z0 = g.position.z, dx = tx - x0, dz = tz - z0, L = Math.hypot(dx, dz); w = w == null ? 1 : w;
+    var r0 = g.rotation.y, r1 = yaw == null ? r0 : yaw; while (r1 - r0 > Math.PI) r1 -= Math.PI * 2; while (r1 - r0 < -Math.PI) r1 += Math.PI * 2;
+    if (L < 0.004 && Math.abs(r1 - r0) < 1e-3) return Promise.resolve();
+    var y0 = this.BT, ax = new T.Vector3(L ? dz / L : 0, 0, L ? -dx / L : 0), qy = new T.Quaternion(), qt = new T.Quaternion(), up = new T.Vector3(0, 1, 0), amp = H.tilt * w * Math.min(1, L / 0.8), ov = Math.min(H.over * w, L * 0.04), mainK = 1 - H.settle;
+    function smooth(x) { return x * x * x * (x * (x * 6 - 15) + 10); } // weich an- und auslaufen (träge)
+    return this.tween(ms, function (q) {
+      var k = Math.min(1, q / mainK), tilt = -amp * Math.sin(k * Math.PI * 2), bump = k > 0.75 ? Math.pow(Math.sin((k - 0.75) / 0.25 * Math.PI / 2), 2) : 0;
+      if (q > mainK) { var s2 = (q - mainK) / H.settle; bump = Math.cos(s2 * Math.PI * 1.5) * (1 - s2); tilt = amp * 0.35 * Math.sin(s2 * Math.PI * 2) * (1 - s2); } // Überschießen und Nachwippen
+      var p = smooth(k) + (L > 1e-4 ? ov / L * bump : 0);
+      g.position.x = x0 + dx * p; g.position.z = z0 + dz * p; g.position.y = y0 + Math.abs(Math.sin(tilt)) * H.edge; // Kante bleibt auf dem Brett
+      qy.setFromAxisAngle(up, r0 + (r1 - r0) * smooth(Math.min(1, q / mainK))); qt.setFromAxisAngle(ax, tilt); g.quaternion.copy(qt).multiply(qy);
+    }).then(function () {
+      g.position.set(tx, y0, tz); g.rotation.set(0, r1, 0); delete g.userData.q0;
+      if (L > 0.15 && w > 0.5) { self.emit(tx, y0 + 0.04, tz, 0xd8c8a0, H.dust * (Board3D.MOBILE ? 0.5 : 1), 1.0, 0.25); self.shakeAmt = Math.max(self.shakeAmt || 0, H.thud * w); }
+    });
   };
+  // onNear: kurz vor der Ankunft (geschlagene Figur ohne Kampf wegräumen), Promise. Auch für Statuen ohne Rig.
+  Board3D.prototype.figWalk = function (g, from, to, onNear) {
+    var self = this, k = g.userData.sk, dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz), ms = Math.min(1250, 380 + dist * 130), near = null;
+    if (k) { k.busy = true; this.figPlay(g, 'bind'); }
+    var m = g.userData.glb; if (m) m.userData.face = 0;
+    if (onNear) this.tween(ms * 0.45, function () { }).then(function () { near = onNear(); });
+    g.position.set(from.x, this.BT, from.z);
+    return this.figGlide(g, to.x, to.z, ms, null, 1)
+      .then(function () { return near; })
+      .then(function () { if (k) { k.busy = false; self.figRest(g); } });
+  };
+  // Statue auf dem Stein (Figuren-Ansicht), auch ohne Rig: gleitet und kämpft vom Sockel aus
+  Board3D.prototype.figStatue = function (g) { return !!(g && this.settings.figSet === 'statue' && this.look !== 'feld' && (g.userData.sk || g.userData.glb) && !g.userData.troops); };
 
-  // ---------- Kampf mit Skelett (Angreifer hat ein Rig) ----------
-  // Heldenduell (Vorbild: Duelle in Total War: Three Kingdoms, Lords/Monster in Warhammer): Anlauf, Umkreisen, 3–5 Schläge
-  // mit Paraden (einer streift), gepaarter Finisher (fin_a/fin_d, sonst atk4 + Sterbe-Clip), Staub. König, Turm und Läufer
-  // schlagen mit mehr Wucht (Zeitlupe, Druckwelle, Kameraschwenk). Alles im Zeitbudget der Notbremse in app.js (8 s).
-  // Kampfregie je Edition: blade = Farbe der Energieklinge (Funken), jet = Düsenstoß beim Anlauf (Abgasfarbe), shot = Laserfarbe,
-  // boom = Explosion statt Zerfall, magic = Zauberfarbe, rune = Runenkreis beim Zaubern, brawl = Raufen statt Töten (Verlierer rollt weg / läuft davon)
+  // ---------- Kampf vom Sockel aus (Wunsch 19.10.: Figuren stecken auf ihren Steinen, leben aber) ----------
+  // Beide Steine drehen sich samt Figur, bis die Spitzen zueinander zeigen, der Angreifer-Stein gleitet bis knapp vor den Gegner
+  // (Steine berühren sich nicht, Körper schneiden sich nicht), dann 3–5 Schläge mit Paraden (einer streift) und Finisher von den Sockeln aus.
+  // Vor jedem Schlag rückt der Stein des Schlagenden auf den Abstand, bei dem seine Waffe im Treffer-Frame den Rumpf des Gegners gerade berührt
+  // (Maße je Figur und Clip aus figFix). Der Verlierer stirbt auf seinem Sockel, der Sieger-Stein gleitet aufs Feld und dreht zurück.
+  // Kampfregie je Edition: blade = Farbe der Energieklinge (Funken), jet = Düsenstoß beim Heranrücken (Abgasfarbe), shot = Laserfarbe,
+  // boom = Explosion statt Zerfall, magic = Zauberfarbe, rune = Runenkreis beim Zaubern, brawl = Raufen statt Töten (Verlierer-Stein rutscht weg)
   Board3D.FIG_ED = {
     feudal: {},
     mecha: { blade: 0x6fe6ff, jet: 0x7fc8ff, shot: 0x8ff0ff, boom: true, magic: 0x6fe6ff, guns: [1, 9, 10] }, // guns: Typen mit Kanone schießen statt zu hauen
@@ -429,7 +580,8 @@
     hunde: { brawl: true }
   };
   Board3D.prototype.figEd = function () { return Board3D.FIG_ED_TEST || this.theme.id; }; // FIG_ED_TEST: Regie einer Edition mit Feudal-Rigs ausprobieren
-  Board3D.FIG_DUEL = { budget: 7200, swing: 480, circle: 800, heroes: [6, 7, 8] };
+  // body: Luft zwischen den Rümpfen, stone: Luft zwischen den Steinspitzen, turn: Drehen der Steine (ms)
+  Board3D.FIG_DUEL = { budget: 7200, swing: 480, heroes: [6, 7, 8], body: 0.03, stone: 0.04, turn: 300 };
   Board3D.prototype.figFight = function (info, A, from, to, D, style) {
     var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.75 : 1, BT = this.BT, FD = Board3D.FIG_DUEL;
     var ed = this.figEd(), E = Board3D.FIG_ED[ed] || {}, fe = this.theme.id === 'feudal';
@@ -438,22 +590,42 @@
     var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
     var cell = Math.hypot(this.sqPos(1).x - this.sqPos(0).x, this.sqPos(1).z - this.sqPos(0).z) || 1;
     var colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
-    var ka = A.userData.sk, kd = D.userData.sk, ta = typ(A), td = typ(D), hero = !short && FD.heroes.indexOf(ta) >= 0, pm = Board3D.MOBILE ? 0.5 : 1;
-    var sa = fe ? ta : null, sd = fe ? td : null; // Stimmen je Typ gibt es nur in Feudal
+    var ka = A.userData.sk, kd = D.userData.sk, ta = typ(A), hero = !short && FD.heroes.indexOf(ta) >= 0, pm = Board3D.MOBILE ? 0.5 : 1;
+    var sa = fe ? ta : null, sd = fe ? typ(D) : null; // Stimmen je Typ gibt es nur in Feudal
     function tt(g) { return fe ? typ(g) : null; }
-    ka.busy = true; if (kd) kd.busy = true;
+    if (ka) ka.busy = true; if (kd) kd.busy = true;
+    [A, D].forEach(function (g) { var m = g.userData.glb; if (m) m.userData.face = 0; delete g.userData.q0; }); // Figur dreht nie allein
+    var MA = this.figFit(A), MD = this.figFit(D), tip = this.figTip(A), rA0 = A.rotation.y;
     function has(g, n) { var k = g.userData.sk; return !!(k && k.A.ids[n] != null); }
     function wait(ms) { return self.tween(ms * sp, function () { }); }
     function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
-    // Duell-Nahsicht wie beim Armee-Kampf: Ausschnitt passend zu beiden Feldern, Blick von der Seite (Profil), flach, ohne Bildverschiebung
-    var o = this.orbit, cam0 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
+    // Abstand der Steinmitten: Steine berühren sich nicht, Rümpfe schneiden sich nicht, Waffe des Schlagenden (rund um den Treffer) berührt den Rumpf
+    // des Gegners gerade, Arme/Waffe des Abwehrenden stecken nicht im Rumpf des Schlagenden
+    function mz(g) { return g === A ? MA : MD; }
+    function core(g, c) { var M = mz(g); return M.core[c] != null ? M.core[c] : M.core.bind; }
+    function reach(g, c, h) { var M = mz(g), t = h ? M.hit : M.reach; return t[c] != null ? t[c] : M.reach.bind; }
+    function gap(att, def, ca, cd) { return Math.max(2 * tip + FD.stone, core(att, ca) + core(def, cd) + FD.body, reach(att, ca, true) + core(def, cd), reach(def, cd) + core(att, ca)); }
+    // Stein samt Figur drehen (Spitze zum Punkt), Stein zum Gegner auf Abstand gleiten lassen
+    function yawTo(g, x, z) { return Math.atan2(-(x - g.position.x), -(z - g.position.z)); }
+    function turn(g, goal, ms) {
+      var a0 = g.rotation.y; while (goal - a0 > Math.PI) goal -= Math.PI * 2; while (goal - a0 < -Math.PI) goal += Math.PI * 2;
+      if (Math.abs(goal - a0) < 1e-3) return Promise.resolve();
+      return self.tween(ms, function (k) { g.rotation.y = a0 + (goal - a0) * ease(k); });
+    }
+    function slideTo(g, other, d, ms) {
+      var x0 = g.position.x, z0 = g.position.z, vx = x0 - other.position.x, vz = z0 - other.position.z, l = Math.hypot(vx, vz) || 1, tx = other.position.x + vx / l * d, tz = other.position.z + vz / l * d;
+      if (Math.hypot(tx - x0, tz - z0) < 0.004) return Promise.resolve();
+      return self.figGlide(g, tx, tz, Math.max(90, ms), null, 0.45); // kurzes Nachrücken: wenig Kippen, kein Staub
+    }
+    // Duell-Nahsicht: Ausschnitt passend zu beiden Feldern, Blick von der Seite (Profil), flach, ohne Bildverschiebung
+    var o = this.orbit, cam0 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi }, mx = (from.x + to.x) / 2, mzz = (from.z + to.z) / 2;
     var ext = (style === 'magic' ? dist / 2 : Math.min(dist / 2, cell * 1.2)) + cell * 0.9, vfh = this.camera.fov * Math.PI / 360, hfh = Math.atan(Math.tan(vfh) * this.camera.aspect);
-    if (style !== 'magic' && dist > cell * 2.4) { mx = to.x - ux * cell * 1.2; mz = to.z - uz * cell * 1.2; } // weiter Anlauf: Kamera beim Ziel
+    if (style !== 'magic' && dist > cell * 2.4) { mx = to.x - ux * cell * 1.2; mzz = to.z - uz * cell * 1.2; } // weiter Weg: Kamera beim Ziel
     var cr = Math.max(2.4, Math.min(9, ext / Math.tan(Math.min(vfh, hfh)) * 1.05)), cdx = Math.sin(o.theta), cdz = Math.cos(o.theta), px = -uz, pz = ux;
     if (px * cdx + pz * cdz < 0) { px = -px; pz = -pz; }
     var th1 = Math.atan2(px * 0.85 + cdx * 0.55 - ux * 0.25, pz * 0.85 + cdz * 0.55 - uz * 0.25), vs0 = this.viewShift == null ? 0.17 : this.viewShift;
     while (th1 - o.theta > Math.PI) th1 -= Math.PI * 2; while (th1 - o.theta < -Math.PI) th1 += Math.PI * 2;
-    if (!short) this.tween(600, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.3 - cam0.y) * e; o.radius = cam0.r + (cr - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; self.viewShift = vs0 * (1 - e); });
+    if (!short) this.tween(600, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mzz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.3 - cam0.y) * e; o.radius = cam0.r + (cr - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; self.viewShift = vs0 * (1 - e); });
     function camBack() {
       if (short) return; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi };
       while (c1.th - cam0.th > Math.PI) c1.th -= Math.PI * 2; while (c1.th - cam0.th < -Math.PI) c1.th += Math.PI * 2;
@@ -467,14 +639,6 @@
     }
     function mid() { return { x: (A.position.x + D.position.x) / 2, z: (A.position.z + D.position.z) / 2 }; }
     function dir() { var x = D.position.x - A.position.x, z = D.position.z - A.position.z, l = Math.hypot(x, z) || 1; return [x / l, z / l]; }
-    // Blick sofort auf einen Punkt (wie faceTo, ohne Tween)
-    function look(g, x, z) {
-      var m = g.userData.glb; if (!m) return;
-      var r = g.rotation.y, wx = x - g.position.x, wz = z - g.position.z, lx = wx * Math.cos(r) - wz * Math.sin(r), lz = wx * Math.sin(r) + wz * Math.cos(r), goal = Math.atan2(-lx, -lz), a0 = m.userData.face || 0;
-      while (goal - a0 > Math.PI) goal -= Math.PI * 2; while (goal - a0 < -Math.PI) goal += Math.PI * 2; m.userData.face = goal;
-    }
-    // Verteidiger ohne Rig reagiert mit dem ganzen Körper (wie bisher)
-    function leanD(ang, ms) { if (kd) return Promise.resolve(); var a0 = D.userData.ang || 0, u = dir(); return self.tween(ms * sp, function (k) { D.userData.ang = a0 + (ang - a0) * ease(k); self.lean(D, u[0], u[1], D.userData.ang); }); }
     // Wucht der Helden beim tödlichen Treffer: Zeitlupe, Druckwelle aus Staub und Funken, Kamera ruckt heran und schwenkt
     function wucht(x, z) {
       if (!hero) return;
@@ -484,34 +648,40 @@
       var r0 = o.radius, t0 = o.thetaGoal, sw = (Math.random() < 0.5 ? -1 : 1) * 0.22;
       self.tween(260, function (k) { var e = 1 - Math.pow(1 - k, 3); o.radius = r0 * (1 - 0.12 * e); o.thetaGoal = o.theta = t0 + sw * e; });
     }
-    // ein Schlag: beim Treffer-Frame pariert der Gegner; graze = Treffer streift (Taumeln, kein Tod), brk = Abwehr bricht (vor dem Finisher)
+    function pick(g, l) { l = l.filter(function (n) { return has(g, n); }); return l.length ? l[Math.floor(Math.random() * l.length)] : 'bind'; }
+    // ein Schlag: der Stein des Schlagenden rückt auf Abstand, beim Treffer-Frame pariert der Gegner; graze = Treffer streift (Taumeln, kein Tod),
+    // brk = Abwehr bricht (vor dem Finisher). Ohne Rig: der ganze Stein stößt vor und zurück.
     function strike(att, def, graze, brk) {
       var hitAt = 0.32 * sp, ka2 = att.userData.sk, kd2 = def.userData.sk;
-      if (ka2) self.figPlay(att, ['atk1', 'atk2'], { hitAt: hitAt, then: 'ready' });
-      else leanD(-0.3, hitAt * 700);
-      if (kd2 && !graze) self.figPlay(def, brk && has(def, 'parry2') ? 'parry2' : 'block', { hitAt: hitAt, then: 'ready' });
+      var ca = ka2 ? pick(att, ['atk1', 'atk2']) : 'bind', cd = !kd2 || graze ? 'ready' : brk && has(def, 'parry2') ? 'parry2' : 'block', dS = gap(att, def, ca, cd);
+      if (ka2) { slideTo(att, def, dS, hitAt * 750); self.figPlay(att, ca, { hitAt: hitAt, then: 'ready' }); }
+      else slideTo(att, def, dS + 0.14, hitAt * 450).then(function () { return slideTo(att, def, dS, hitAt * 450); });
+      if (kd2 && !graze) self.figPlay(def, cd, { hitAt: hitAt, then: 'ready' });
       snd('whoosh', 0.7, tt(att));
       return self.tween(hitAt * 1000, function () { }).then(function () {
-        var p = mid();
-        if (graze) { if (kd2) self.figPlay(def, has(def, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); snd('hit', 0.5, tt(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return; }
-        snd(E.brawl ? 'hit' : 'clash', E.brawl ? 0.4 : 0.8); if (E.blade) snd('zap', 0.4); sparks(p.x, p.z, 0xffffff, 22, 0.14); if (!kd2 && def === D) return leanD(-0.25, 140).then(function () { return leanD(0, 160); });
+        var p = mid(), back = ka2 ? null : slideTo(att, def, dS + 0.1, 180);
+        if (!kd2) { var v = dir(), s = def === D ? 1 : -1, x0 = def.position.x, z0 = def.position.z; self.tween(220, function (k) { var e = Math.sin(k * Math.PI) * 0.06 * s; def.position.x = x0 + v[0] * e; def.position.z = z0 + v[1] * e; }); } // Statue ohne Rig: Stein ruckt zurück
+        if (graze) { if (kd2) self.figPlay(def, has(def, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); snd('hit', 0.5, tt(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return back; }
+        snd(E.brawl ? 'hit' : 'clash', E.brawl ? 0.4 : 0.8); if (E.blade) snd('zap', 0.4); sparks(p.x, p.z, 0xffffff, 22, 0.14); return back;
       });
     }
     // Todesstoß: gepaarter Finisher, wenn beide Clips da sind; sonst atk4 und danach der Sterbe-Clip
     function finisher() {
-      var hitAt = 0.45 * sp, pair = !short && !E.brawl && has(A, 'fin_a') && has(D, 'fin_d'), left = 0;
-      self.figPlay(A, pair ? 'fin_a' : 'atk4', { hitAt: hitAt, then: 'ready' });
+      var hitAt = 0.45 * sp, pair = !short && !E.brawl && has(A, 'fin_a') && has(D, 'fin_d'), left = 0, ca = pair ? 'fin_a' : has(A, 'atk4') ? 'atk4' : ka ? pick(A, ['atk1', 'atk2']) : 'bind';
+      var dF = gap(A, D, ca, 'ready');
+      if (ka) { slideTo(A, D, dF, hitAt * 700); self.figPlay(A, ca, { hitAt: hitAt, then: 'ready' }); }
+      else slideTo(A, D, dF + 0.18, hitAt * 450).then(function () { return slideTo(A, D, dF, hitAt * 500); });
       // fin_d trifft früher (0,33 s) als hitAt: später starten, damit beide Treffer-Frames aufeinanderliegen
       if (pair) { var dA = D.userData.sk.A, hd = dA.hit.fin_d || 0; left = dA.dur.fin_d - hd + hitAt; if (hd >= hitAt) self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }); else wait((hitAt - hd) * 1000 / sp).then(function () { self.figPlay(D, 'fin_d', { hold: true }); }); }
       snd('whoosh', 0.9, sa);
       return self.tween(hitAt * 1000, function () { }).then(function () {
         if (info.onHit) info.onHit();
         snd('hit', 0.9, sa); sparks(D.position.x, D.position.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(D.position.x, D.position.z);
-        if (E.brawl) { if (kd) self.figPlay(D, has(D, 'hit2') ? 'hit2' : 'hit1'); return wait(260).then(function () { return self.figFlee(D, A.position.x, A.position.z, sp); }); } // Hunde: umgerannt, dann weg
+        if (E.brawl) { if (kd) self.figPlay(D, has(D, 'hit2') ? 'hit2' : 'hit1', { hold: true }); var u = dir(); return wait(200).then(function () { return self.figSlide(D, u[0], u[1], sp); }); } // Hunde: umgerannt, Stein rutscht weg
         return pair ? crumble(wait(Math.min(E.boom ? 700 : 1150, Math.max(0, left - hitAt) * 1000 * 0.9))) : die();
       });
     }
-    // Verteidiger stirbt: Sterbe-Animation (oder Umkippen ohne Rig), dann zerfällt er zu Staub
+    // Verteidiger stirbt auf seinem Sockel: Sterbe-Animation (oder Umkippen samt Stein ohne Rig), dann zerfällt er zu Staub
     function die() {
       var p0 = D.position.clone(), u = dir(), fall;
       if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, sd); fall = wait(Math.min(E.boom ? 700 : 1150, left * 1000 * 0.8)); }
@@ -527,45 +697,21 @@
         return self.tween(320 * sp, function (k) { D.scale.setScalar(1 - k); D.position.y = p0.y - k * 0.3; });
       }).then(function () { self.pieceGroup.remove(D); self.figFree(D); });
     }
-    // Sieger geht (kurz: läuft) aufs Feld und steht wieder still
+    // Sieger-Stein gleitet aufs Feld und dreht zurück in die Blickrichtung seiner Seite, die Figur steht wieder still
     function stepIn() {
-      var x0 = A.position.x, z0 = A.position.z, d2 = Math.hypot(to.x - x0, to.z - z0), g2 = d2 <= 0.5 ? 'walk' : d2 <= 3.2 ? 'run' : 'sprint';
-      var ms = Math.max(250, Math.min(1700, d2 / Board3D.FIG_GAIT[g2] * 1000)); // nach dem Zauber ggf. weiter Weg: laufen statt schleichen
-      self.figPlay(A, g2);
-      return self.faceTo(A, to.x, to.z, 160).then(function () { return self.tween(ms, function (k) { A.position.x = x0 + (to.x - x0) * k; A.position.z = z0 + (to.z - z0) * k; A.position.y = BT; }); })
-        .then(function () { ka.busy = false; self.figRest(A); camBack(); self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); var m = A.userData.glb, a0 = m.userData.face || 0; return self.tween(260, function (k) { m.userData.face = a0 * (1 - k); }); });
+      var x0 = A.position.x, z0 = A.position.z, d2 = Math.hypot(to.x - x0, to.z - z0), ms = Math.max(300, Math.min(900, 250 + d2 * 160));
+      if (ka) { ka.busy = false; self.figRest(A); }
+      camBack();
+      return self.figGlide(A, to.x, to.z, ms + 150, rA0, 1);
     }
-    // Umkreisen: beide drehen sich um ihre Mitte (seitlich gehend, Blick auf den Gegner), danach Kampfhaltung
-    function circle() {
-      var m0 = mid(), a0 = [A.position.x - m0.x, A.position.z - m0.z], d0 = [D.position.x - m0.x, D.position.z - m0.z], ph = (Math.random() < 0.5 ? -1 : 1) * 0.6;
-      function rot(v, a) { return [v[0] * Math.cos(a) + v[1] * Math.sin(a), -v[0] * Math.sin(a) + v[1] * Math.cos(a)]; }
-      var strafe = has(A, 'strafe_l') && has(A, 'strafe_r') && has(D, 'strafe_l') && has(D, 'strafe_r');
-      [[A, a0], [D, d0]].forEach(function (e) {
-        var g = e[0], v1 = rot(e[1], ph), mvx = v1[0] - e[1][0], mvz = v1[1] - e[1][1], fx = -e[1][0], fz = -e[1][1];
-        self.figPlay(g, !strafe ? 'walk' : mvx * -fz + mvz * fx > 0 ? 'strafe_r' : 'strafe_l');
-      });
-      snd('march', FD.circle, sa);
-      // ohne Seitwärts-Clip: in Gehrichtung schauen (Tangente), am Ende zum Gegner drehen
-      var cpr = 0; // Kamera dreht mit, damit das Profil bleibt
-      return self.tween(FD.circle, function (k) {
-        var e = ease(k); o.thetaGoal += ph * e - cpr; o.theta += ph * e - cpr; cpr = ph * e;
-        var va = rot(a0, ph * e), vd = rot(d0, ph * e), vb = rot(a0, ph * e + ph * 0.05), wb = rot(d0, ph * e + ph * 0.05);
-        A.position.x = m0.x + va[0]; A.position.z = m0.z + va[1]; D.position.x = m0.x + vd[0]; D.position.z = m0.z + vd[1];
-        if (strafe) { look(A, D.position.x, D.position.z); look(D, A.position.x, A.position.z); }
-        else { look(A, m0.x + vb[0] + (vb[0] - va[0]) * 20, m0.z + vb[1] + (vb[1] - va[1]) * 20); look(D, m0.x + wb[0] + (wb[0] - vd[0]) * 20, m0.z + wb[1] + (wb[1] - vd[1]) * 20); }
-      }).then(function () {
-        self.figPlay(A, 'ready'); self.figPlay(D, 'ready');
-        return Promise.all([self.faceTo(A, D.position.x, D.position.z, 180), self.faceTo(D, A.position.x, A.position.z, 180)]);
-      });
-    }
-    // beide drehen sich zueinander, nehmen Kampfhaltung ein
-    var face = Promise.all([this.faceTo(A, to.x, to.z, 180), this.faceTo(D, from.x, from.z, 180)]).then(function () { if (kd) self.figPlay(D, 'ready'); });
+    // beide Steine drehen sich zueinander (Spitze an Spitze), Kampfhaltung
+    var face = Promise.all([turn(A, yawTo(A, to.x, to.z), FD.turn), turn(D, yawTo(D, from.x, from.z), FD.turn)]).then(function () { delete D.userData.q0; self.figPlay(A, 'ready'); self.figPlay(D, 'ready'); });
 
     if (style === 'magic' || style === 'shoot' || style === 'breath') {
-      // Fernkampf: Zauber (Onmyōji, Fantasy-Magier mit Runenkreis), Salven (Mecha-Laser), Feueratem (Drache); Gegner fällt, Läufer als Held mit Druckwelle
+      // Fernkampf vom eigenen Feld aus: Zauber (Onmyōji, Fantasy-Magier mit Runenkreis), Salven (Mecha-Laser), Feueratem (Drache); Gegner fällt, Läufer als Held mit Druckwelle
       var head = BT + 0.95, mc = E.magic || colA;
-      function hitAnim(g) { if (g.userData.sk) self.figPlay(g, has(g, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); }
-      function magic() {
+      var hitAnim = function (g) { if (g.userData.sk) self.figPlay(g, has(g, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); };
+      var magic = function () {
         var ring = null, bolt;
         if (E.rune) { ring = new T.Mesh(new T.RingGeometry(0.32, 0.46, 40), new T.MeshBasicMaterial({ color: mc, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.set(from.x, BT + 0.04, from.z); self.scene.add(ring); }
         self.figPlay(A, has(A, 'cast') ? 'cast' : ['atk1', 'atk2'], { hitAt: 0.25 });
@@ -575,9 +721,9 @@
           self.scene.add(bolt);
           return self.tween((300 + dist * 40) * sp, function (k) { var x = from.x + dx * k, z = from.z + dz * k, y = head + Math.sin(k * Math.PI) * 0.8; bolt.position.set(x, y, z); bolt.scale.setScalar(1 + Math.sin(k * 30) * 0.2); self.emitDir(x, y, z, mc, 3 * pm, 0, 0, 0, 0.6); if (ring) { ring.material.opacity = 0.9 * (1 - k); ring.rotation.z = 2 + k * 3; } });
         }).then(function () { self.scene.remove(bolt); bolt.geometry.dispose(); bolt.material.dispose(); if (ring) { self.scene.remove(ring); ring.geometry.dispose(); ring.material.dispose(); } });
-      }
+      };
       // Salve: Mündungsblitz, Leuchtspur, Einschlag; der letzte Schuss trifft tödlich
-      function volley() {
+      var volley = function () {
         var shots = short ? 2 : 3, chain = Promise.resolve(), sc = E.shot || 0xfff0a0;
         for (var s = 0; s < shots; s++) (function (s) {
           chain = chain.then(function () {
@@ -590,42 +736,31 @@
           });
         })(s);
         return chain;
-      }
-      function breath() {
+      };
+      var breath = function () {
         self.figPlay(A, 'atk2'); snd('fire', 0.9); hitAnim(D);
         return self.tween(700 * sp, function (k) { self.emitDir(from.x + ux * 0.4, head, from.z + uz * 0.4, k < .5 ? 0xffb030 : 0xff5a20, 6 * pm, ux * 6.5, -0.8, uz * 6.5, 1.4); });
-      }
-      return face.then(function () { self.figPlay(A, 'ready'); return wait(220); }).then(function () { return style === 'shoot' ? volley() : style === 'breath' ? breath() : magic(); })
+      };
+      return face.then(function () { return wait(220); }).then(function () { return style === 'shoot' ? volley() : style === 'breath' ? breath() : magic(); })
         .then(function () { if (info.onHit) info.onHit(); sparks(to.x, to.z, style === 'shoot' ? E.shot || colA : mc, big ? 90 : 60, big ? 0.5 : 0.35); wucht(to.x, to.z); if (kd) self.figPlay(D, 'hit1'); return die(); }).then(stepIn);
     }
-    // Nahkampf: Anlauf (Laufen bzw. Sprint beim Ansturm), Umkreisen, Schlagabtausch, Finisher
-    var stand = cell * (style === 'thrust' ? 0.95 : 0.85), stx = to.x - ux * stand, stz = to.z - uz * stand, run = Math.hypot(stx - from.x, stz - from.z);
-    var gait = style === 'charge' || run > 2.5 ? 'sprint' : run > 0.9 ? 'run' : 'walk', ms = Math.max(260, Math.min(1200, run / Board3D.FIG_GAIT[gait] * 1000));
-    var jet = !!E.jet && gait !== 'walk', leap = style === 'leap' && run > 0.5; // Mecha gleitet mit Düsen heran, Springer/Tiere springen den Gegner an
-    if (jet) ms = Math.max(260, ms * 0.7);
-    // Zeitbudget (Voll, Notbremse in app.js bei 8 s): fester Teil ohne Schläge (Drehen, Anlauf, Finisher, Fall, Zerfall, Schritt aufs Feld,
-    // Bild-Takt der Tweens; an Messungen geeicht), daraus 3–5 Schläge (zufällig, so viele das Budget erlaubt); reicht es nicht, entfällt das Umkreisen
-    var circ = !short && !!kd, fixed = ms + 3955 + (hero ? 300 : 0) + (E.brawl ? 150 : 0);
-    function fit(c) { return Math.max(2, Math.min(5, Math.floor((FD.budget - fixed - (c ? FD.circle + 180 : 0)) / FD.swing))); }
-    var want = 3 + Math.floor(Math.random() * 3); // gewünschte Wechsel; für 5 entfällt notfalls das Umkreisen
-    if (circ && (fit(true) < 3 || fit(true) < want && fit(false) >= want)) circ = false;
-    var nMax = fit(circ), n = short ? 1 : Math.min(nMax, want), graze = n >= 3 ? 1 + Math.floor(Math.random() * (n - 1)) : -1;
+    // Nahkampf: Angreifer-Stein gleitet heran (Mecha mit Düsenstoß), Schlagabtausch, Finisher. Steht der Gegner schon zu nah (große Figuren
+    // auf Nachbarfeldern), weicht dessen Stein zurück.
+    var d0 = gap(A, D, 'ready', 'ready'), run = dist - d0, ms = Math.max(260, Math.min(900, Math.abs(run) / 2.6 * 1000)), jet = !!E.jet && run > 0.4;
+    // Zeitbudget (Voll, Notbremse in app.js bei 8 s): fester Teil ohne Schläge (Drehen, Heranrücken, Finisher, Fall, Zerfall, Gleiten aufs Feld,
+    // Bild-Takt der Tweens), daraus 3–5 Schläge (zufällig, so viele das Budget erlaubt)
+    var fixed = ms + FD.turn + 4000 + (hero ? 300 : 0) + (E.brawl ? 150 : 0);
+    var nMax = Math.max(2, Math.min(5, Math.floor((FD.budget - fixed) / FD.swing))), want = 3 + Math.floor(Math.random() * 3);
+    var n = short ? 1 : Math.min(nMax, want), graze = n >= 3 ? 1 + Math.floor(Math.random() * (n - 1)) : -1;
     var seq = face.then(function () {
-      self.figPlay(A, jet ? (has(A, 'jet') ? 'jet' : 'ready') : leap ? 'run' : gait); snd('march', ms, sa); if (gait === 'sprint' && !jet) snd('roar', 0.5, sa);
-      if (jet) snd('fire', 0.5); if (leap) snd('whoosh', 0.8, sa);
-      return self.tween(ms, function (k) {
-        var e = k < 0.85 ? k / 0.85 * 0.92 : 0.92 + (k - 0.85) / 0.15 * 0.08; A.position.x = from.x + (stx - from.x) * e; A.position.z = from.z + (stz - from.z) * e;
-        A.position.y = BT + (leap ? Math.sin(k * Math.PI) * (0.5 + run * 0.12) : jet ? Math.sin(Math.min(1, k * 1.3) * Math.PI) * 0.22 : 0);
-        if (jet) self.emitDir(A.position.x - ux * 0.25, BT + 0.55, A.position.z - uz * 0.25, E.jet, 2 * pm, -ux * 2.5, 0.2, -uz * 2.5, 0.35);
-      });
-    }).then(function () {
-      if (leap || jet) { self.emit(A.position.x, BT + 0.05, A.position.z, 0xd8c8a0, (leap ? 26 : 14) * pm, 2, 0.4); if (leap) { snd('clash', 0.5); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15); } }
-      self.figPlay(A, 'ready'); return wait(120);
-    });
-    if (circ) seq = seq.then(circle);
+      if (jet) snd('fire', 0.5);
+      var g = run >= 0 ? A : D, other = run >= 0 ? D : A, x0 = g.position.x, z0 = g.position.z, v = [other.position.x - x0, other.position.z - z0], l = Math.hypot(v[0], v[1]) || 1, tx = other.position.x - v[0] / l * d0, tz = other.position.z - v[1] / l * d0;
+      if (jet) self.tween(ms * 0.8, function () { self.emitDir(A.position.x - ux * 0.3, BT + 0.4, A.position.z - uz * 0.3, E.jet, 2 * pm, -ux * 2.5, 0.2, -uz * 2.5, 0.35); });
+      return self.figGlide(g, tx, tz, ms + 120, null, 1);
+    }).then(function () { return wait(100); });
     var brk = (n - 1) % 2 ? n - 2 : n - 1; // letzter Angriff vor dem Finisher: Abwehr des Verteidigers bricht
     for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze, i === brk); }).then(function () { return wait(i === n - 1 ? 200 : 160); }); })(i);
-    this._duel = { n: n, nMax: nMax, circ: circ, hero: hero }; // für Tests
+    this._duel = { n: n, nMax: nMax, hero: hero, d0: d0 }; // für Tests
     return seq.then(finisher).then(stepIn);
   };
 
@@ -633,7 +768,7 @@
   Board3D.prototype.figDie = function (D, dust, sp, ux, uz) {
     var self = this, k = D.userData.sk, p0 = D.position.clone(), E = Board3D.FIG_ED[this.figEd()] || {}; k.busy = true;
     if (D.userData.q0) D.quaternion.copy(D.userData.q0);
-    if (E.brawl) { this.figPlay(D, 'hit2' in k.A.ids ? 'hit2' : 'hit1'); return this.tween(260 * sp, function () { }).then(function () { return self.figFlee(D, p0.x - ux, p0.z - uz, sp); }); }
+    if (E.brawl) { this.figPlay(D, 'hit2' in k.A.ids ? 'hit2' : 'hit1'); return this.tween(260 * sp, function () { }).then(function () { return self.figSlide(D, ux, uz, sp); }); }
     var left = this.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, this.theme.id === 'feudal' ? typ(D) : null);
     if (E.boom) return this.tween(Math.min(700, left * 850) * sp, function () { }).then(function () { return self.figBoom(D, dust, sp); });
     return this.tween(Math.min(1500, left * 850) * sp, function () { }).then(function () {
@@ -653,35 +788,30 @@
     return this.tween(300 * sp, function (k) { D.scale.setScalar(Math.max(0.001, 1 - k * 1.4)); D.position.y = p0.y + k * 0.08; ball.scale.setScalar(0.6 + k * 1.6); ball.material.opacity = 0.9 * (1 - k) * (1 - k); })
       .then(function () { self.scene.remove(ball); ball.geometry.dispose(); ball.material.dispose(); self.pieceGroup.remove(D); self.figFree(D); });
   };
-  // Hunde: wer verliert, rollt sich weg (Clip roll, falls da) und läuft davon (flee, sonst run), wird dabei klein und verschwindet in einer Staubwolke
-  Board3D.prototype.figFlee = function (D, ax, az, sp) {
-    var self = this, BT = this.BT, k = D.userData.sk, pm = Board3D.MOBILE ? 0.5 : 1, a = Math.atan2(D.position.x - ax, D.position.z - az) + (Math.random() - 0.5) * 1.2;
-    var ux = Math.sin(a), uz = Math.cos(a), roll = k && k.A.ids.roll != null && Math.random() < 0.5;
+  // Hunde: wer verliert, dessen Stein rutscht samt Figur weg (dreht sich dabei), wird klein und verschwindet in einer Staubwolke
+  Board3D.prototype.figSlide = function (D, ux, uz, sp) {
+    var self = this, BT = this.BT, k = D.userData.sk, pm = Board3D.MOBILE ? 0.5 : 1, a = Math.atan2(ux, uz) + (Math.random() - 0.5) * 0.8, vx = Math.sin(a), vz = Math.cos(a);
+    var x0 = D.position.x, z0 = D.position.z, r0 = D.rotation.y, spin = (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random());
     if (k) k.busy = true; snd('whoosh', 0.5);
-    var first = Promise.resolve();
-    if (roll) { var x0 = D.position.x, z0 = D.position.z, rd = this.figPlay(D, 'roll'); first = this.tween(Math.min(550, rd * 800) * sp, function (q) { D.position.x = x0 + ux * 0.5 * q; D.position.z = z0 + uz * 0.5 * q; }); }
-    return first.then(function () {
-      var xs = D.position.x, zs = D.position.z;
-      if (k) self.figPlay(D, k.A.ids.flee != null ? 'flee' : 'run');
-      self.faceTo(D, xs + ux * 5, zs + uz * 5, 150);
-      return self.tween(800 * sp, function (q) { D.position.x = xs + ux * 1.8 * q; D.position.z = zs + uz * 1.8 * q; D.scale.setScalar(q < 0.55 ? 1 : Math.max(0.001, 1 - (q - 0.55) / 0.45)); if (Math.random() < 0.35) self.emit(D.position.x, BT + 0.05, D.position.z, 0xd8c8a0, 2 * pm, 0.6, 0.3); });
+    return this.tween(900 * sp, function (q) {
+      var e = 1 - (1 - q) * (1 - q); D.position.x = x0 + vx * 1.8 * e; D.position.z = z0 + vz * 1.8 * e; D.rotation.y = r0 + spin * e;
+      D.scale.setScalar(q < 0.55 ? 1 : Math.max(0.001, 1 - (q - 0.55) / 0.45)); if (Math.random() < 0.35) self.emit(D.position.x, BT + 0.05, D.position.z, 0xd8c8a0, 2 * pm, 0.6, 0.3);
     }).then(function () { self.emit(D.position.x, BT + 0.15, D.position.z, 0xd8c8a0, 16 * pm, 1.2, 0.5); self.pieceGroup.remove(D); self.figFree(D); });
   };
 
   // ---------- Auftritte ----------
-  // Beförderung: kurzer Jubel, Lichtblitz, neue Figur (eigenes Modell) jubelt weiter
+  // Beförderung: die Figur bleibt still, Lichtblitz, neue Figur (eigenes Modell) steht in Ruhepose (kein Jubel, Wunsch 19.10.)
   Board3D.prototype.figPromo = function (mover, np0, to) {
-    var self = this, k = mover.userData.sk; if (k) { k.busy = true; this.figPlay(mover, 'cheer1'); }
-    return this.tween(k ? 420 : 200, function () { }).then(function () {
+    var self = this, k = mover.userData.sk; if (k) k.busy = true;
+    return this.tween(200, function () { }).then(function () {
       var np = self.makePiece(np0); np.position.copy(mover.position); self.pieceGroup.remove(mover); self.figFree(mover); self.pieceGroup.add(np);
       if (self._lastMove && self._lastMove.g === mover) self._lastMove.g = np;
       self.emit(to.x, self.BT + 0.9, to.z, 0xffd76a, 80, 4, 1.4); self.emit(to.x, self.BT + 0.2, to.z, 0xff5a3a, 40, 2.5, 0.8);
-      if (np.userData.sk) self.figPlay(np, 'cheer3');
       return np;
     });
   };
-  // Abwurf: landet, fängt sich, kurzer Ruf
-  Board3D.prototype.figLand = function (g) { if (g.userData.sk) this.figPlay(g, 'cheer1'); };
+  // Abwurf: die Figur landet still auf dem Stein (kein Jubel), der schwere Stein setzt mit Ruck und Staub auf
+  Board3D.prototype.figLand = function (g) { if (!this.figStatue(g)) return; this.emit(g.position.x, this.BT + 0.04, g.position.z, 0xd8c8a0, 14 * (Board3D.MOBILE ? 0.5 : 1), 1.4, 0.3); this.shakeAmt = Math.max(this.shakeAmt || 0, 0.1); };
   // Matt: Sieger jubeln (versetzt), Verlierer sinken nieder
   Board3D.prototype.figMate = function () {
     var self = this, st = this.state; if (!st || this.look === 'feld') return;
