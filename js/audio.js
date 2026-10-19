@@ -219,7 +219,7 @@ var Sfx = (function () {
     }
     mus.timer = setTimeout(musTick, 400);
   }
-  // Koto: Wanderung in der In-Skala (G3–A4), Ton aus der näheren Aufnahme (C4 oder G4) umgestimmt; Shakuhachi-Phrase alle 25–50 s
+  // Koto: Wanderung in der In-Skala (A3–B♭4), Ton aus der näheren Aufnahme (C4 oder G4) umgestimmt; Shakuhachi-Phrase alle 25–50 s
   function musCalm(t) {
     var g = mus.g[0];
     if (t >= mus.shakuAt && has('mus_shaku')) {
@@ -227,10 +227,10 @@ var Sfx = (function () {
       musPlay(L[i], g, t + 0.05, 0, 0.5); mus.shakuAt = t + L[i].duration + 25 + Math.random() * 25; mus.calmAt = t + L[i].duration * 0.6; return;
     }
     if (has('mus_koto1') && has('mus_koto2')) {
-      mus.deg = Math.max(-3, Math.min(4, mus.deg + [-2, -1, 1, 2][Math.floor(Math.random() * 4)]));
+      mus.deg = Math.max(-2, Math.min(4, mus.deg + [-2, -1, 1, 2][Math.floor(Math.random() * 4)] + (mus.deg < 0 ? 1 : mus.deg > 2 ? -1 : 0)));
       var kn = function (d, at, v) { var f = note(d), c = Math.abs(Math.log(f / 261.63)) < Math.abs(Math.log(f / 392)); musPlay(buf[c ? 'mus_koto1' : 'mus_koto2'][0], g, at, 0, v, f / (c ? 261.63 : 392)); };
-      kn(mus.deg, t + 0.03, 0.45 + Math.random() * 0.15);
-      if (Math.random() < 0.3) kn(mus.deg - 2, t + 0.21, 0.3);
+      kn(mus.deg, t + 0.03, 0.6 + Math.random() * 0.2);
+      if (Math.random() < 0.3) kn(mus.deg - 2, t + 0.21, 0.4);
     }
     mus.calmAt = t + (mus.lv[2] > 0.3 ? 2.4 : 1.3) + Math.random() * 2.2;
   }
