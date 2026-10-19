@@ -1,5 +1,5 @@
 // Schlachtfeld „Grenzland“ im Armee-Modus: Shogi als Übersicht eines großen Krieges zwischen zwei Ländern.
-// Die 81 Felder sind Äcker, Reis und Wiesen, getrennt von Feldwegen auf den Rasterlinien (Feld bleibt flach und lesbar).
+// Das Spielfeld ist echtes Gelände mit sanften Hügeln (Truppen steigen mit), das Raster liegt als Linie im Gelände-Shader.
 // Drumherum: Dörfer an Straßen, Flusstal mit Brücke, Felswand mit Höhle, Wälder und Hügel, Burgen beider Seiten.
 // Alles als Instanzen bzw. ein Mesh je Art (wenige Draw Calls), am Handy weniger Häuser und kleinere Texturen.
 (function () {
@@ -18,7 +18,7 @@
   Board3D.VILLAGES = [[0, -23, 3, 9], [-12, -24, 3.2, 9], [11, -19.5, 2.6, 7], [-26, -4, 3, 8], [23, 5, 3, 7], [-11, 21, 3, 8], [11, 22, 3, 8], [0, 29, 3.4, 10]];
   // Straßen als Polylinien (vom Feld in beide Länder und zu den Seiten)
   Board3D.ROADS = [[[0, -5], [0, -14], [0.5, -20], [0, -26], [0, -31]], [[0, 5], [0, 14], [-0.5, 22], [0, 31]],
-    [[-4.8, 0.5], [-10, 1], [-19, 1.5], [-26, -2], [-32, -6]], [[4.8, -0.5], [10, -1], [17, 1], [23, 4], [30, 9]],
+    [[-4.8, 2.6], [-10, 2.5], [-19, 2], [-26, -2], [-32, -6]], [[4.8, -2.6], [10, -2.5], [17, 0.5], [23, 4], [30, 9]],
     [[0.5, -20], [-6, -22.5], [-12, -24]], [[0.5, -20], [6, -19], [11, -19.5], [14, -22]], [[-0.5, 22], [-6, 21.5], [-11, 21]], [[-0.5, 22], [6, 22.5], [11, 22]]];
   Board3D.TEMPLE = [-27, -27]; Board3D.MILL = -9; // Tempel im Wald (x, z), Mühle am Fluss (z)
   // Fluss im Tal links (Lauf x über z)
@@ -50,17 +50,45 @@
   Board3D.terrCell = function (x, z) { var wx = Board3D.riverG(z) - x - 3.8; if (wx < 0 || wx >= 9) return null; var b = Math.floor(wx / 1.5); return [b, Math.floor((z + 30) / 5.5 + (b % 2) * 0.5)]; };
   Board3D.terrZ = function (k, b) { return (k - (b % 2) * 0.5 + 0.5) * 5.5 - 30; }; // Mitte des Abschnitts
   Board3D.terraceQ = function (x, z) { var wx = Board3D.riverG(z) - x; return sm(3.6, 5, wx) * (1 - sm(11, 13.5, wx)) * (1 - sm(14, 19, Math.abs(z + 2))); };
+  // Hügel auf dem Spielfeld [x, z, Radius, Höhe]: sanft genug, dass jedes Feld lesbar bleibt (max. ~0,6 = 4–5 m)
+  // [x, z, Radius quer, Radius längs, Höhe]: lange Rücken in Blickrichtung der Spieler, Täler zwischen den Spalten. Hänge quer zur Kamera bleiben flach,
+  // sonst verdeckt ein Hügel die Felder dahinter (Kamera ~20° über dem Boden: Hang > 0,35 versteckt Boden)
+  Board3D.HILLS = [[-3.1, -2.2, 1.5, 3.2, 0.6], [3.2, 2.4, 1.5, 3.2, 0.6], [3.3, -3.2, 1.1, 2.2, 0.32], [-3.3, 3.1, 1.1, 2.2, 0.32], [0.2, -4.4, 1.6, 1.2, 0.18], [-0.2, 4.4, 1.6, 1.2, 0.18]];
+  // Grenzbach quer durchs Tal zwischen den Anhöhen (Lauf z über x), Felsgrat mit Höhle an der linken Flanke (Gote-Seite)
+  Board3D.streamZ = function (x) { return 0.35 * Math.sin(x * 0.7 + 1) + 0.15 * Math.sin(x * 1.9); };
+  // Gelände-Raster: innen linear (PC 0,14 m, Handy 0,15 m bis x = 8 bzw. 6,75), außen wachsend bis 150 m
+  Board3D.fieldWarp = function (shape, mob) {
+    if (shape !== 'feldzug') return null;
+    var S = mob ? 200 : 280, L = mob ? 15 : 20, u0 = mob ? 0.45 : 0.4, K = (150 - L) / Math.pow(1 - u0, 2.5);
+    return { S: S, f: function (u) { var a = Math.abs(u); return Math.sign(u) * (L * a + (a > u0 ? K * Math.pow(a - u0, 2.5) : 0)); } };
+  };
+  Board3D.streamW = function (x) { return 1 - sm(7.5, 9.5, Math.abs(x)); };
+  Board3D.ridgeX = function (z) { return -5.6 - 0.3 * Math.sin(z * 0.8); };
+  Board3D.ridgeH = function (x, z) { return 2.2 * sm(0, 1.1, Board3D.ridgeX(z) - x) * (1 - sm(1.6, 2.5, Math.abs(z + 2.7))) * (1 - sm(9, 13, -x)); };
+  function hillS(x, z) {
+    var h = 0; Board3D.HILLS.forEach(function (q) { var dx = (x - q[0]) / q[2], dz = (z - q[1]) / q[3]; h += q[4] * Math.exp(-(dx * dx + dz * dz) * 1.4); });
+    h += (Board3D.noise(x * 0.21 + 7, z * 0.21 - 2, 2) - 0.45) * 0.16;
+    h *= 0.35 + 0.65 * sm(0.3, 2.6, Math.abs(z - Board3D.streamZ(x))); // Tal am Bach
+    return Math.max(0, h) * (1 - sm(4.5, 11, Board3D.fieldE(x, z)));
+  }
+  // Im Spielfeld Plateau je Feld: Mitte eben (Regiment steht gerade), Hang nur im Randstreifen an den Rasterlinien
+  var cellH = null;
+  Board3D.fieldHill = function (x, z) {
+    if (!cellH) { cellH = []; for (var j = -1; j <= 9; j++) for (var i = -1; i <= 9; i++) cellH.push(hillS(i - 4, j - 4)); }
+    var ex = Math.max(Math.abs(x), Math.abs(z)), hs = hillS(x, z); if (ex > 5.6) return hs;
+    var ci = Math.max(-1, Math.min(9, Math.round(x + 4))), cj = Math.max(-1, Math.min(9, Math.round(z + 4))), ux = x + 4 - ci, uz = z + 4 - cj;
+    var ni = Math.max(-1, Math.min(9, ci + (ux < 0 ? -1 : 1))), nj = Math.max(-1, Math.min(9, cj + (uz < 0 ? -1 : 1)));
+    var wx = sm(0.25, 0.5, Math.abs(ux)) * 0.5, wz = sm(0.25, 0.5, Math.abs(uz)) * 0.5, C = function (i, j) { return cellH[(j + 1) * 11 + i + 1]; };
+    var hp = (C(ci, cj) * (1 - wx) + C(ni, cj) * wx) * (1 - wz) + (C(ci, nj) * (1 - wx) + C(ni, nj) * wx) * wz;
+    return hp + (hs - hp) * sm(4.6, 5.6, ex);
+  };
   Board3D.fieldH = function (x, z) {
     if (Board3D.FIELD_SHAPE !== 'feldzug') return H0(x, z);
-    var h = baseH(x, z);
+    var h = baseH(x, z) + Board3D.fieldHill(x, z);
     Board3D.VILLAGES.forEach(function (v, i) { var d = Math.hypot(x - v[0], z - v[1]); if (d > v[2] + 6) return; var hc = villH[i] != null ? villH[i] : (villH[i] = baseH(v[0], v[1])); h += (hc - h) * (1 - sm(v[2] + 2.5, v[2] + 6, d)); });
+    if (x < -4.5 && x > -14 && z > -6 && z < 0.5) h += Board3D.ridgeH(x, z) * (0.85 + Board3D.noise(x * 0.7, z * 0.7, 2) * 0.3);
+    if (Math.abs(x) < 9.5) h -= 0.2 * Board3D.streamW(x) * (1 - sm(0.16, 0.62, Math.abs(z - Board3D.streamZ(x))));
     return h;
-  };
-  Board3D.CROPS = function () {
-    // je Feld eine Nutzung (fest, damit es bei jedem Aufbau gleich aussieht): 0 Wiese, 1 Weizen, 2 Reis, 3 Gemüse, 4 Brache
-    var r = Board3D.rnd(81), out = [];
-    for (var i = 0; i < 81; i++) { var v = r(); out.push(v < 0.3 ? 0 : v < 0.5 ? 1 : v < 0.68 ? 2 : v < 0.86 ? 3 : 4); }
-    return out;
   };
 
   var mood0 = Board3D.prototype.buildMood;
@@ -70,7 +98,7 @@
   };
 
   Board3D.prototype.buildFeldzug = function (hi) {
-    var self = this, scene = this.scene, Y = this.BT, H = Board3D.fieldH, N = Board3D.noise, mob = this.mobile, rnd = Board3D.rnd(23), V = Board3D.VILLAGES, crops = Board3D.CROPS(), RX = Board3D.riverG;
+    var self = this, scene = this.scene, Y = this.BT, H = Board3D.fieldH, N = Board3D.noise, mob = this.mobile, rnd = Board3D.rnd(23), V = Board3D.VILLAGES, RX = Board3D.riverG;
     // Grundfarben (sRGB) je Nutzung und Musterfarbe der Reihen
     var CROP = [null, { b: [150, 120, 58], r: [186, 156, 88] }, { b: [64, 98, 84], r: [88, 132, 60] }, { b: [90, 70, 48], r: [76, 106, 50] }, { b: [116, 94, 68], r: [98, 78, 56] }];
     function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
@@ -84,23 +112,10 @@
       g.restore();
     }
 
-    // ---- Spielfeld als Flickenteppich: Äcker in den Feldern, Feldwege auf den Rasterlinien ----
-    var n = mob ? 1024 : 2048, c = document.createElement('canvas'); c.width = c.height = n; var g = c.getContext('2d'), q = n / 9, k, t;
-    crops.forEach(function (kk, i) {
-      if (!kk) return;
-      var rot = (i * 7 + (i / 9 | 0)) % 2;
-      plot(g, kk, (i % 9 + 0.5) * q, ((i / 9 | 0) + 0.5) * q, q, q, rot ? Math.PI / 2 : 0, kk === 2 ? 8 : 11, 0.92);
-    });
-    for (k = 0; k <= 9; k++) for (t = 0; t < n; t += 5) {
-      var w = q * (0.075 + Math.sin(t * 0.04 + k * 2) * 0.012 + (Math.random() - 0.5) * 0.01), a = k * q;
-      g.fillStyle = 'rgba(112,92,62,0.4)'; g.fillRect(a - w, t, w * 2, 6); g.fillRect(t, a - w, 6, w * 2);
-      g.fillStyle = 'rgba(160,136,98,0.95)'; g.fillRect(a - w / 2, t, w, 6); g.fillRect(t, a - w / 2, 6, w);
-    }
-    var ft = new T.CanvasTexture(c); ft.colorSpace = T.SRGBColorSpace; ft.anisotropy = 8;
-    var patch = new T.Mesh(new T.PlaneGeometry(9, 9), new T.MeshStandardMaterial({ map: ft, transparent: true, depthWrite: false, roughness: 1 }));
-    patch.rotation.x = -Math.PI / 2; patch.position.y = Y + 0.002; patch.receiveShadow = true; patch.renderOrder = -1; patch.raycast = function () { }; scene.add(patch);
-    this.fieldPatch = patch;
-    if (this.fieldGrid) this.fieldGrid.material.opacity = 0.18; // Wege zeigen das Raster schon
+    // ---- Spielfeld: Wiese auf Hügeln, Raster als Linie im Gelände-Shader (uGrid), flache Rastertextur aus ----
+    if (this.fieldGrid) this.fieldGrid.visible = false;
+    if (this.fieldU.uGrid) this.fieldU.uGrid.value = 1;
+    this.buildHeights();
 
     // ---- Landnutzung ums Feld (Textur im Gelände-Shader, 96 m): Äcker in Streifen, Hecken, Straßen, Dorfplätze ----
     var L = mob ? 1024 : 2048, lc = document.createElement('canvas'); lc.width = lc.height = L; var lg = lc.getContext('2d'), px = L / 96;
@@ -174,7 +189,9 @@
       if (Math.abs(x - RX(z)) < (tree ? 4.6 : 3)) return true;
       if (Board3D.roadD(x, z) < (tree ? 1.6 : 0.8)) return true;
       if (V.some(function (v) { return Math.hypot(x - v[0], z - v[1]) < v[2] + (tree ? 3.2 : 0.4); })) return true;
-      if (Math.abs(x) < 4.6 && Math.abs(z) < 4.6) { var ix = Math.floor(x + 4.5), iz = Math.floor(z + 4.5); return ix < 0 || iz < 0 || ix > 8 || iz > 8 || crops[iz * 9 + ix] !== 0; }
+      if (Math.abs(x) < 9.5 && Math.abs(z - Board3D.streamZ(x)) < (tree ? 0.9 : 0.42) * Board3D.streamW(x)) return true; // Grenzbach
+      if (!tree && x < -5 && x > -10 && z < 0 && z > -5.5) { var rh = Board3D.ridgeH(x, z); if (rh > 0.2 && rh < 2.0) return true; } // Steilwand des Grats
+      if (Math.abs(x) < 4.9 && Math.abs(z) < 4.9) return tree; // Spielfeld: Gras ja, Bäume nein
       if (!tree && Math.abs(x) < 42 && Math.abs(z) < 42 && farmAt(x, z)) return true;
       var tdx = x - TP[0], tdz = z - TP[1], td = Math.hypot(tdx, tdz);
       if (td < (tree ? 5 : 3.4)) return true;
@@ -314,5 +331,84 @@
       for (var j = 0; j < (mob ? 3 : 4); j++) { var s2 = new T.Sprite(self.smokeMat()); s2.material.color.set(0xc8c4bc); s2.userData.t = j / 4; scene.add(s2); puffs.push(s2); }
       self.campFires.push({ x: x, y: Y + H(x, z) + 0.9, z: z, fl: new T.Object3D(), puffs: puffs, big: 0.8, rise: 3.2 });
     });
+  };
+})();
+
+// Höhe über der Spielebene für alles auf dem Spielfeld (Soldaten in armyDraw, Fahnen, Markierungen, Klick).
+// Tabelle 0,125 m über x ±10, z ±16 (bilinear), außerhalb direkt fieldH.
+(function () {
+  if (typeof Board3D === 'undefined') return;
+  var T = THREE, X0 = -10, Z0 = -16, ST = 0.125, NX = 161, NZ = 257;
+  Board3D.prototype.buildHeights = function () {
+    var H = Board3D.fieldH, tab = new Float32Array(NX * NZ), i, j;
+    for (j = 0; j < NZ; j++) for (i = 0; i < NX; i++) tab[j * NX + i] = H(X0 + i * ST, Z0 + j * ST);
+    this.gH = function (x, z) {
+      var fx = (x - X0) / ST, fz = (z - Z0) / ST, i = Math.floor(fx), j = Math.floor(fz);
+      if (i < 0 || j < 0 || i >= NX - 1 || j >= NZ - 1) return H(x, z);
+      fx -= i; fz -= j; var k = j * NX + i;
+      return (tab[k] * (1 - fx) + tab[k + 1] * fx) * (1 - fz) + (tab[k + NX] * (1 - fx) + tab[k + NX + 1] * fx) * fz;
+    };
+  };
+  // Markierungen schmiegen sich ans Gelände: Feld-Kacheln als eigenes Gitter, Punkte und Ringe angehoben (Kacheln entstehen erst nach buildField)
+  Board3D.prototype.fitTiles = function () {
+    if (this._tilesFit || !this.tiles || this.tiles.length < 81) return; this._tilesFit = true;
+    var self = this, BT = this.BT, gh = this.gH;
+    this.tiles.forEach(function (tm, q) {
+      var p = self.sqPos(q), g = new T.PlaneGeometry(0.97, 0.97, 6, 6); g.rotateX(-Math.PI / 2);
+      var pa = g.attributes.position; for (var v = 0; v < pa.count; v++) pa.setY(v, gh(p.x + pa.getX(v), p.z + pa.getZ(v)) + 0.025);
+      tm.geometry = g; tm.rotation.x = 0; tm.position.y = BT;
+      var d = self.dots[q], h0 = gh(p.x, p.z); d.dot.position.y = BT + h0 + 0.04; d.ring.position.y = BT + h0 + 0.4;
+    });
+  };
+  var setH0 = Board3D.prototype.setHighlights;
+  Board3D.prototype.setHighlights = function (h) {
+    if (this.gH) this.fitTiles();
+    var r = setH0.apply(this, arguments);
+    if (this.gH && this.checkRing.visible) this.checkRing.position.y = this.BT + 0.02 + this.gH(this.checkRing.position.x, this.checkRing.position.z);
+    return r;
+  };
+  var tag0 = Board3D.prototype.showTag;
+  Board3D.prototype.showTag = function (sq) {
+    var r = tag0.apply(this, arguments);
+    if (this.gH && this.tag) this.tag.position.y = this.BT + 0.02 + this.gH(this.tag.position.x, this.tag.position.z);
+    return r;
+  };
+  var emit0 = Board3D.prototype.emit;
+  Board3D.prototype.emit = function (x, y, z) {
+    if (this.gH && y < this.BT + 1.5 && Math.abs(x) < 10 && Math.abs(z) < 16) { var a = Array.prototype.slice.call(arguments); a[1] = y + this.gH(x, z); return emit0.apply(this, a); }
+    return emit0.apply(this, arguments);
+  };
+  // Klick: Strahl gegen das Gelände
+  var pick0 = Board3D.prototype.pickSq;
+  Board3D.prototype.pickSq = function (cx, cy) {
+    if (!this.gH) return pick0.apply(this, arguments);
+    var rect = this.renderer.domElement.getBoundingClientRect(), ray = new T.Raycaster();
+    ray.setFromCamera(new T.Vector2((cx - rect.left) / rect.width * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1), this.camera);
+    var hits = ray.intersectObjects(this.pieceGroup.children, true), x, z;
+    if (hits.length) { var o = hits[0].object; while (o.parent && o.parent !== this.pieceGroup) o = o.parent; x = o.position.x; z = o.position.z; }
+    else {
+      // Strahl in 5-cm-Schritten abtasten bis unter das Gelände, dann halbieren (Nachführen über die Höhe schwingt an Hängen auf)
+      var o0 = ray.ray.origin, d0 = ray.ray.direction, BT = this.BT, gh = this.gH, under = function (t) { return o0.y + d0.y * t <= BT + gh(o0.x + d0.x * t, o0.z + d0.z * t); };
+      if (d0.y >= 0) return null;
+      var tMax = (o0.y - BT + 1) / -d0.y, t0 = 0, t1 = -1;
+      for (var t = 0; t <= tMax; t += 0.05) { if (under(t)) { t1 = t; break; } t0 = t; }
+      if (t1 < 0) return null;
+      for (var k = 0; k < 10; k++) { var tm = (t0 + t1) / 2; if (under(tm)) t1 = tm; else t0 = tm; }
+      x = o0.x + d0.x * t1; z = o0.z + d0.z * t1;
+    }
+    var c = Math.round(x + 4), r = Math.round(z + 4);
+    return c < 0 || c > 8 || r < 0 || r > 8 ? null : r * 9 + c;
+  };
+  // Fahnen stehen auf dem Gelände (Soldaten hebt armyDraw an)
+  var tick0 = Board3D.prototype.fieldTick;
+  Board3D.prototype.fieldTick = function (now, dt) {
+    var r = tick0.apply(this, arguments), gh = this.gH;
+    if (gh) this.fitTiles();
+    if (gh && this.pieceGroup) this.pieceGroup.children.forEach(function (g) {
+      var b = g.userData.banner; if (!b) return;
+      var c = Math.cos(g.rotation.y), s = Math.sin(g.rotation.y), bx = b.position.x, bz = b.position.z;
+      b.position.y = gh(g.position.x + bx * c + bz * s, g.position.z - bx * s + bz * c);
+    });
+    return r;
   };
 })();
