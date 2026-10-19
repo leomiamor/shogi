@@ -1075,45 +1075,60 @@ Board3D.prototype.promoFlag = function () {
   var flag = new T.Mesh(new T.PlaneGeometry(0.2, 0.45), new T.MeshStandardMaterial({ map: this._flagTex, roughness: 0.7, side: T.DoubleSide, emissive: 0x330000 })); flag.position.set(0.105, 0.7, 0); g.add(flag);
   return g;
 };
-Board3D.FIG_KANJI = { fz: -0.08, lim: 0.0, shift: 0.18, maxD: 0.6 };
-// Tiefe des Körpers einer Figur (ohne dünne Ausreißer wie Speere): 5. und 95. Perzentil der z-Werte, im Raum des Elternteils
-Board3D.coreZ = function (m) {
-  var v = new THREE.Vector3(), zs = []; m.updateMatrixWorld(true);
-  var inv = m.parent ? m.parent.matrixWorld.clone().invert() : null;
-  m.traverse(function (o) {
-    if (!o.isMesh) return; var pa = o.geometry.attributes.position, st = Math.max(1, Math.floor(pa.count / 3000));
-    for (var i = 0; i < pa.count; i += st) { v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld); if (inv) v.applyMatrix4(inv); zs.push(v.z); }
-  });
-  zs.sort(function (a, b) { return a - b; });
-  return zs.length ? [zs[Math.floor(zs.length * 0.05)], zs[Math.floor(zs.length * 0.95)]] : [0, 0];
-}; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
-// Verdeckung des Kanji (Fläche x ±0,15, z 0,055–0,345 im Stein-Raum): Anteil belegter Zellen von oben und aus Sicht des Besitzers (Kamera auf seiner Seite, ~40° hoch), dazu z der Füße (5. Perzentil)
-Board3D.kanjiCov = function (m) {
-  var v = new THREE.Vector3(), N = 10, top = {}, own = {}, feet = [], tn = 1 / Math.tan(0.7); m.updateMatrixWorld(true); var inv = m.parent ? m.parent.matrixWorld.clone().invert() : null;
+Board3D.FIG_KANJI = { fz: -0.08 }; // Figuren-Ansicht: Startversatz der Figur (Kanji sitzt an der eigenen Sockelkante)
+// Platz auf dem Stein (Figuren-Ansicht): Größe = Editionsgröße (FIG_ED_SCALE). Gesucht wird die Verschiebung (vor/zurück, etwas seitlich), bei der
+// (a) alles, was den Stein berührt (bis 0,12 hoch: Füße, Pfoten, Schwanzspitzen, Saum), innerhalb der Innenkante des Goldrands bleibt (2 cm Abstand, höchstens 2 Punkte im Streifen, nie darüber),
+// (b) bis 0,4 hoch (Umhang, Schwänze, Flügelspitzen) nichts über den Goldrand ragt (≤ 1 % der Punkte, dünne Speere) und (c) das Kanji frei ist
+// (≤ 15 % der Zeichenfläche von oben, ≤ 3 % aus Sicht des Besitzers). Nur wenn keine Verschiebung reicht, wird die Figur einzeln in 5-%-Schritten kleiner.
+Board3D.FIG_FIT = { low: 0.12, margin: 0.02, out: 2, top: 0.15, own: 0.03, minS: 0.4, maxD: 0.6, high: 0.4, over: 0.01, overN: 0.01, v: 10 }; // maxD: Grundgröße langer Tiere (Körper höchstens 0,6 tief statt 1,15 hoch)
+// Kanji auf dem Stein (Figuren-Ansicht): Schriftgröße/Mitte im 256er-Canvas und daraus die Fläche im Stein-Raum (Ebene 0,66 breit bei z 0,04)
+Board3D.KANJI_PX = 96; Board3D.KANJI_CY = 198;
+Board3D.kanjiRect = function () { var k = 0.66 / 256; return { x: Board3D.KANJI_PX / 2 * k, z0: 0.04 - 0.33 + (Board3D.KANJI_CY - Board3D.KANJI_PX / 2) * k, z1: 0.04 - 0.33 + (Board3D.KANJI_CY + Board3D.KANJI_PX / 2) * k }; };
+// eine Größe je Edition (Wunsch 19.10.: alle Figuren einer Edition gleich groß, so groß wie die engste es zulässt), getrennt für Menschen/Mechs (Grundgröße 1,15 hoch)
+// und lange Tiere (Grundgröße 0,6 Körpertiefe); gemessen mit test/kanjicov.js → KCOV_NEED() (T = Tier). Nur wer selbst darunter muss, wird einzeln kleiner.
+Board3D.FIG_ED_SCALE = { feudal: { mensch: 0.74, tier: 0.6 }, mecha: { mensch: 0.54, tier: 0.6 }, fantasy: { mensch: 0.77, tier: 0.57 }, hunde: { mensch: 0.6, tier: 0.6 } }; // Ausreißer 19.10.: Mecha 11 (Ritter-Mech, Arme mit Klingen weit gespreizt) 44 %, Feudal-Drache 70 %
+Board3D.RIM_IN = [[0, -0.405], [0.303, -0.223], [0.37, 0.405], [-0.37, 0.405], [-0.303, -0.223]]; // Innenkante des Goldrands (Stein-Raum x/z)
+Board3D.placeFig = function (m, edF) {
+  var F = Board3D.FIG_FIT, P = Board3D.RIM_IN, KR = Board3D.kanjiRect(), v = new THREE.Vector3(), pts = [];
+  m.updateMatrixWorld(true); var x0 = m.position.x, y0 = m.position.y, z0 = m.position.z, s0 = m.scale.x;
   m.traverse(function (o) {
     if (!o.isMesh) return; var pa = o.geometry.attributes.position, st = Math.max(1, Math.floor(pa.count / 6000));
-    for (var k = 0; k < pa.count; k += st) {
-      v.fromBufferAttribute(pa, k).applyMatrix4(o.matrixWorld); if (inv) v.applyMatrix4(inv);
-      if (v.y < 0.26) { feet.push(v.z); continue; }
-      var cx = Math.floor((v.x + 0.15) / 0.3 * N); if (cx < 0 || cx >= N) continue;
-      var a = Math.floor((v.z - 0.055) / 0.29 * N), b = Math.floor((v.z - (v.y - 0.225) * tn - 0.055) / 0.29 * N);
-      if (a >= 0 && a < N) top[cx * N + a] = 1; if (b >= 0 && b < N) own[cx * N + b] = 1;
-    }
+    for (var k = 0; k < pa.count; k += st) { v.fromBufferAttribute(pa, k).applyMatrix4(o.matrixWorld); pts.push((v.x - x0) / s0, (v.y - y0) / s0, (v.z - z0) / s0); }
   });
-  feet.sort(function (a, b) { return a - b; });
-  return { top: Object.keys(top).length / N / N, own: Object.keys(own).length / N / N, foot: feet.length ? feet[Math.floor(feet.length * 0.05)] : 0 };
-};
-// Grenzen: so viel darf verdeckt sein (Grundfiguren Feudal lagen bei ≤ 15 % von oben); zum Freimachen Füße höchstens bis z −0,34 nach vorn (Sockel verjüngt sich zur Spitze),
-// nie über die Steinspitze hinaus (−0,48, zählt alles unter 0,26 Höhe: Pfoten, Schwänze), höchstens auf 68 % verkleinern
-Board3D.KANJI_FREE = { top: 0.15, own: 0.03, step: 0.03, foot: -0.34, tip: -0.48, shrink: 0.94, minS: 0.68, v: 3 };
-Board3D.kanjiFree = function (m) {
-  var K = Board3D.KANJI_FREE, s0 = m.scale.x;
-  for (var i = 0; i < 24; i++) {
-    var c = Board3D.kanjiCov(m);
-    if (c.foot < K.tip) { m.position.z += Math.min(K.step, K.tip - c.foot); continue; }
-    if (c.top <= K.top && c.own <= K.own) return;
-    if (c.foot - K.step >= K.foot) m.position.z -= K.step; else if (m.scale.x > s0 * K.minS) m.scale.multiplyScalar(K.shrink); else return;
+  // Grundgröße: 1,15 hoch; lange Tiere (Dackel, Fuchs, Greif, Kirin) stattdessen höchstens 0,6 Körpertiefe (5.–95. Perzentil, Speere zählen nicht)
+  var beast, zs = []; for (var q = 2; q < pts.length; q += 3) zs.push(pts[q]); zs.sort(function (a, b) { return a - b; });
+  var dep = zs.length ? (zs[Math.floor(zs.length * 0.95)] - zs[Math.floor(zs.length * 0.05)]) * s0 : 0, beast = dep > F.maxD; if (edF && typeof edF === 'object') edF = beast ? edF.tier : edF.mensch; var base = (beast ? s0 * F.maxD / dep : s0) * (edF || 1);
+  var E = P.map(function (a, i) { // Halbebenen der Innenkante, Normale nach innen: n·p + c = Abstand zur Kante
+    var b = P[(i + 1) % P.length], nx = a[1] - b[1], nz = b[0] - a[0], l = Math.hypot(nx, nz); nx /= l; nz /= l;
+    if (nx * -a[0] + nz * (0.1 - a[1]) < 0) { nx = -nx; nz = -nz; } return [nx, nz, -(nx * a[0] + nz * a[1])];
+  });
+  var N = 10, tn = 1 / Math.tan(0.7), n = pts.length / 3;
+  function fits(sc, dx, dz, score) { // score: statt ja/nein die Summe der Überschreitungen (für den Notfall)
+    var bad = 0, ov = 0, lov = F.overN * n, top = {}, own = {}, nt = 0, no = 0, lim = F.out, lt = F.top * N * N, lo = F.own * N * N;
+    for (var i = 0; i < pts.length; i += 3) {
+      var x = x0 + dx + pts[i] * sc, h = pts[i + 1] * sc, z = z0 + dz + pts[i + 2] * sc;
+      if (h < F.low) { for (var e = 0; e < 5; e++) { var d = E[e][0] * x + E[e][1] * z + E[e][2]; if (d < F.margin) { if ((++bad > lim || d < 0) && !score) return false; if (d < 0) bad += 4; break; } } } // Ausreißer nur im Abstandsstreifen, nie über den Rand
+      else if (h < F.high) { for (e = 0; e < 5; e++) if (E[e][0] * x + E[e][1] * z + E[e][2] < F.over) { if (++ov > lov && !score) return false; break; } } // Umhang, Schwanz, Flügelspitzen: nicht über den Goldrand (dünne Speere dürfen)
+      if (h < 0.007) continue;
+      var cx = Math.floor((x + KR.x) / (2 * KR.x) * N); if (cx < 0 || cx >= N) continue;
+      var a = Math.floor((z - KR.z0) / (KR.z1 - KR.z0) * N), c = Math.floor((z - (y0 + h - 0.225) * tn - KR.z0) / (KR.z1 - KR.z0) * N);
+      if (a >= 0 && a < N && !top[cx * N + a]) { top[cx * N + a] = 1; if (++nt > lt && !score) return false; }
+      if (c >= 0 && c < N && !own[cx * N + c]) { own[cx * N + c] = 1; if (++no > lo && !score) return false; }
+    }
+    return score ? Math.max(0, bad - lim) * 0.5 + Math.max(0, ov - lov) * 0.05 + Math.max(0, nt - lt) + 2 * Math.max(0, no - lo) : true;
   }
+  for (var k = 0, sc = base; sc >= base * F.minS - 1e-6; k++, sc = base * Math.pow(0.95, k)) {
+    var best = null;
+    for (var dz = 0.12; dz >= -0.5; dz -= 0.02) for (var dx = -0.09; dx <= 0.091; dx += 0.03) {
+      var cost = Math.abs(dz) + 2 * Math.abs(dx); if (best && cost >= best[2]) continue;
+      if (fits(sc, dx, dz)) best = [dx, dz, cost];
+    }
+    if (best) { m.scale.setScalar(sc); m.position.x = x0 + best[0]; m.position.z = z0 + best[1]; m.userData.beast = beast; return sc / base * (edF || 1); }
+  }
+  // nichts passt ganz: kleinste Größe, Lage mit den wenigsten Überschreitungen
+  var sm = base * F.minS, bs = null;
+  for (dz = 0.12; dz >= -0.5; dz -= 0.02) for (dx = -0.09; dx <= 0.091; dx += 0.03) { var sco = fits(sm, dx, dz, true) + Math.abs(dz) * 0.1; if (!bs || sco < bs[2]) bs = [dx, dz, sco]; }
+  m.scale.setScalar(sm); m.position.x = x0 + bs[0]; m.position.z = z0 + bs[1]; m.userData.beast = beast; return F.minS * (edF || 1);
 };
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
@@ -1123,17 +1138,11 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   if (this.settings.figSet === 'statue' && Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0))) m.scale.multiplyScalar(1.1);
   // TRELLIS-Modelle schauen nach +z (zur eigenen Seite), also umdrehen, damit sie zum Gegner blicken
   m.userData.ry0 = this.settings.figSet === 'statue' ? Math.PI : 0; m.rotation.y = m.userData.ry0;
-  // Schwänze/Umhänge, die nach hinten ragen, nicht übers Kanji: Figur so weit nach vorn, bis die Rückseite vor dem Zeichen endet
+  // Platz auf dem Stein suchen (innerhalb des Goldrands, Kanji frei, Größe nur wenn nötig); Ergebnis je Modell gemerkt
   if (this.settings.figSet === 'statue') {
-    // alle gleich hoch; gemessen wird der Körper (5.–95. Perzentil der Tiefe), dünne Stäbe/Speere zählen nicht.
-    // Nur was als Körper tiefer als ein Feld ist (Kitsune mit Schwänzen), wird kleiner; verschoben wird höchstens so weit, dass die Füße auf dem Sockel bleiben
-    var K = Board3D.FIG_KANJI, cz = Board3D.coreZ(m), d = cz[1] - cz[0];
-    if (d > K.maxD) { m.scale.multiplyScalar(K.maxD / d); cz = Board3D.coreZ(m); }
-    m.position.z += Math.max(-K.shift, Math.min(0, K.lim - cz[1]));
-    // Kanji frei halten (von oben und aus Sicht des Besitzers): messen, nach vorn schieben (Füße bleiben auf dem Sockel), notfalls verkleinern; Ergebnis je Modell gemerkt
-    var fp = src.userData.figPlace || (src.userData.figPlace = {}), fk = (Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0)) ? 'p' : 'n') + Board3D.KANJI_FREE.v;
-    if (fp[fk]) { m.scale.multiplyScalar(fp[fk][0]); m.position.z += fp[fk][1]; }
-    else { var s0 = m.scale.x, z0 = m.position.z; Board3D.kanjiFree(m); fp[fk] = [m.scale.x / s0, m.position.z - z0]; }
+    var fp = src.userData.figPlace || (src.userData.figPlace = {}), fk = (Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0)) ? 'p' : 'n') + Board3D.FIG_FIT.v + ':' + this.theme.id + ':' + JSON.stringify(Board3D.FIG_ED_SCALE[this.theme.id] || 1) + ':' + Board3D.KANJI_PX;
+    if (fp[fk]) { m.scale.multiplyScalar(fp[fk][0]); m.position.x += fp[fk][1]; m.position.z += fp[fk][2]; }
+    else { var s0 = m.scale.x, x0 = m.position.x, z0 = m.position.z, need = Board3D.placeFig(m, Board3D.FIG_ED_SCALE[this.theme.id]); fp[fk] = [m.scale.x / s0, m.position.x - x0, m.position.z - z0, need, m.userData.beast]; }
   }
   g.add(m); g.userData.glb = m;
 };
@@ -1210,7 +1219,7 @@ Board3D.SASHI = [[[0.85, 0.55, 0.12], [0.02, 0.018, 0.015]], [[0.8, 0.82, 0.85],
 Board3D.WHITE_FUR = [3]; // Kitsune (Springer): weißes Fell wie die Inari-Füchse statt Orange
 // je Edition: Kitsune-Fell nur bei Feudal (sonst würde der Sprung-Mech/Greif/Jack Russell umgefärbt); Rückenfähnchen nur bei Menschen/Mechs, nie bei Kreaturen, Fliegern und Hunden
 Board3D.WHITE_FUR_ED = { feudal: [3] };
-Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 3, 7, 13, 14], fantasy: [1, 3, 7, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] };
+Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 3, 7, 13, 14], fantasy: [1, 3, 7, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14] };
 Board3D.edLists = function (ed) { Board3D.WHITE_FUR = Board3D.WHITE_FUR_ED[ed] || []; Board3D.NO_SASHI = Board3D.NO_SASHI_ED[ed] || Board3D.NO_SASHI_ED.feudal; };
 Board3D.KUMADORI = [[0.85, 0.52, 0.1], [0.62, 0.05, 0.03]]; // Zeichnung im Fell (dunkle Partien des Originals): Sente Gold, Gote Zinnober
 Board3D.paintPatch = function (sh, col, t) {
@@ -2480,7 +2489,7 @@ Board3D.prototype.faceTexture = function (t, col) {
     if (style.indexOf('statue') === 0) {
       // eingraviert: Holz schwarzer Lack, Stein Goldeinlage, Metall dunkel; befördert immer rot
       var KC = { 'statue-holz': ['#1a0e08', '#b0140c'], 'statue-stein': ['#e3b65a', '#ff4a30'], 'statue-metall': ['#2a1c10', '#a01008'] }[style] || ['#1a0e08', '#b0140c'];
-      g.fillStyle = KC[t >= 9 ? 1 : 0]; g.font = 'bold 112px "Noto Serif JP", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(kan, 128, 190);
+      g.fillStyle = KC[t >= 9 ? 1 : 0]; g.font = 'bold ' + Board3D.KANJI_PX + 'px "Noto Serif JP", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(kan, 128, Board3D.KANJI_CY);
     } else if (style === 'kanji') {
       g.fillStyle = t >= 9 ? '#c41e1e' : '#1a1008'; g.font = 'bold 150px "Noto Serif JP", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(kan, 128, 140);
     } else {
