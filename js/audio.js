@@ -22,9 +22,39 @@ var Sfx = (function () {
     reverb = ctx.createConvolver(); var len = ctx.sampleRate * 2.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (var c = 0; c < 2; c++) { var ch = ir.getChannelData(c); for (i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
     reverb.buffer = ir; revGain = ctx.createGain(); revGain.gain.value = 0.25; reverb.connect(revGain); revGain.connect(master);
+    loadSamples();
     return true;
   }
   var reverb, revGain;
+  // Echte Kampfklänge (CC0, snd/credits.txt) statt Synthesizer. Wie in Strategiespielen:
+  // Varianten, Tonhöhe ±8 %, nie zweimal dieselbe, Mindestabstand je Art, höchstens 6 gleichzeitig, Schlacht-Teppich als Loop.
+  var SMP = { clash: 3, hit: 2, cry: 2, impact: 0, drum: 0, fall: 0, whoosh: 0, cheer: 0, bed: 0 }, buf = {}, lastVar = {}, lastAt = {}, voices = 0, bedSrc = null, bedGain = null, bedTimer = null;
+  var GAP = { clash: 70, hit: 70, fall: 110, whoosh: 90, cry: 400, impact: 120, drum: 120, cheer: 1500 };
+  function loadSamples() {
+    if (loadSamples.done) return; loadSamples.done = true;
+    Object.keys(SMP).forEach(function (k) {
+      var n = SMP[k]; (n ? Array.from({ length: n }, function (_, i) { return k + (i + 1); }) : [k]).forEach(function (f) {
+        fetch('snd/' + f + '.mp3').then(function (r) { return r.arrayBuffer(); }).then(function (a) { return new Promise(function (ok, no) { ctx.decodeAudioData(a, ok, no); }); })
+          .then(function (b) { (buf[k] = buf[k] || []).push(b); }).catch(function () { });
+      });
+    });
+  }
+  function has(k) { return buf[k] && buf[k].length; }
+  function smp(k, v, opt) {
+    if (!has(k)) return false; opt = opt || {};
+    var now = ctx.currentTime * 1000; if (lastAt[k] && now - lastAt[k] < (GAP[k] || 60)) return true; if (voices >= 6 && !opt.force) return true; lastAt[k] = now;
+    var list = buf[k], i = Math.floor(Math.random() * list.length); if (list.length > 1 && i === lastVar[k]) i = (i + 1) % list.length; lastVar[k] = i;
+    var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = list[i];
+    src.playbackRate.value = (opt.rate || 1) * (0.92 + Math.random() * 0.16); g.gain.value = (v == null ? 0.8 : v) * (0.75 + Math.random() * 0.25);
+    src.connect(g); g.connect(sfxGain); if (opt.wet) g.connect(reverb);
+    voices++; src.onended = function () { voices--; }; src.start(ctx.currentTime + 0.005); return true;
+  }
+  // Teppich kurz absenken (Schrei, Aufprall)
+  function duck(ms) { if (!bedGain) return; var t = ctx.currentTime; bedGain.gain.cancelScheduledValues(t); bedGain.gain.setTargetAtTime(bedGain._lvl * 0.55, t, 0.03); bedGain.gain.setTargetAtTime(bedGain._lvl, t + ms / 1000, 0.15); }
+  function bedStop(fade) {
+    if (bedTimer) { clearTimeout(bedTimer); bedTimer = null; } if (!bedSrc) return;
+    var t = ctx.currentTime, s0 = bedSrc; bedGain.gain.cancelScheduledValues(t); bedGain.gain.setTargetAtTime(0.0001, t, (fade || 0.6) / 3); s0.stop(t + (fade || 0.6) + 0.1); bedSrc = null;
+  }
   function t0() { return ctx.currentTime + 0.005; }
   function env(g, t, a, peak, dec) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + dec); }
   function osc(type, f, t, dur, peak, out, f2, wet) {
@@ -51,6 +81,7 @@ var Sfx = (function () {
     error: function () { var t = t0(); osc('square', 140, t, 0.12, 0.08); osc('square', 110, t + 0.08, 0.14, 0.08); },
     // Schlagen: dumpfer Einschlag mit Knirschen, ohne Glocken-Obertöne (klang wie „Ding“)
     capture: function (big) {
+      if (smp('impact', big ? 1 : 0.8, { force: true })) return;
       var t = t0(); noise(t, 0.16, 0.6, 'bandpass', 900, 1.1, 300);
       noise(t + 0.02, 0.3, 0.35, 'lowpass', 700, 0.8, 120, null, true);
       osc('sine', 85, t, 0.4, big ? 0.95 : 0.65, null, 38);
@@ -60,12 +91,14 @@ var Sfx = (function () {
     // Kampf: Klingen-Klirren, Luftzug, Magie/Schuss, Feuer, Zerbröseln der Statue
     // Hieb: kurzes Krachen von Stahl auf Rüstung/Holz, jedes Mal leicht anders, kein Nachklingen
     clash: function (v) {
+      if (smp('clash', (v || 0.8) * 0.9)) return;
       var t = t0(), k = v || 0.8, r = 0.75 + Math.random() * 0.5;
       noise(t, 0.05, 0.9 * k, 'bandpass', 1900 * r, 1.6); noise(t, 0.025, 0.4 * k, 'highpass', 5200 * r, 0.7);
       noise(t + 0.01, 0.09, 0.45 * k, 'bandpass', 520 * r, 1.2, 260); osc('sine', 120 * r, t, 0.08, 0.35 * k, null, 60);
     },
     // Schlachtruf der Armee: viele Stimmen „Uooo!“ (Sägezahn durch Vokal-Formanten), dazu Atemrauschen
     roar: function (v) {
+      if (smp('cry', v || 1, { force: true, wet: true })) { duck(500); return; }
       var t = t0(), k = v || 1;
       for (var i = 0; i < 9; i++) {
         var f = 95 + Math.random() * 110, d = 0.9 + Math.random() * 0.5, st = t + Math.random() * 0.18;
@@ -78,16 +111,25 @@ var Sfx = (function () {
       }
       noise(t, 1.1, 0.25 * k, 'bandpass', 800, 0.7, 500, null, true);
     },
+    hit: function (v) { if (!smp('hit', v || 0.7)) S.clash(v); },
+    fall: function (v) { smp('fall', v || 0.6); },
+    cheer: function (v) { bedStop(1.2); smp('cheer', v || 0.8, { force: true, wet: true }); },
+    bedStop: function () { bedStop(0.8); },
     // Taiko-Schlag beim Aufprall der Linien
-    taiko: function (v) { var t = t0(), k = v || 1; osc('sine', 78, t, 0.55, 1 * k, null, 42, true); noise(t, 0.12, 0.5 * k, 'lowpass', 380, 0.8, 120); noise(t, 0.02, 0.25 * k, 'bandpass', 2500, 1); },
+    taiko: function (v) { if (smp('drum', v || 1, { force: true, wet: true })) { smp('impact', (v || 1) * 0.8, { force: true }); duck(300); return; } var t = t0(), k = v || 1; osc('sine', 78, t, 0.55, 1 * k, null, 42, true); noise(t, 0.12, 0.5 * k, 'lowpass', 380, 0.8, 120); noise(t, 0.02, 0.25 * k, 'bandpass', 2500, 1); },
     // Gemenge im Hintergrund: Klappern, Stampfen, Rufe, ein paar Sekunden
     melee: function (sec) {
+      if (has('bed')) {
+        bedStop(0.2); var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf.bed[0]; src.loop = true; g._lvl = 0.7;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.setTargetAtTime(g._lvl, ctx.currentTime, 0.12); src.connect(g); g.connect(sfxGain);
+        src.start(ctx.currentTime, Math.random() * 6); bedSrc = src; bedGain = g; bedTimer = setTimeout(function () { bedStop(0.8); }, (sec || 3) * 1000); return;
+      }
       var t = t0(), n = Math.round((sec || 3) * 14);
       for (var i = 0; i < n; i++) { var u = t + Math.random() * (sec || 3), r = 0.7 + Math.random() * 0.6; noise(u, 0.04, 0.25 + Math.random() * 0.25, 'bandpass', 1600 * r, 1.4); if (Math.random() < 0.3) noise(u, 0.08, 0.3, 'lowpass', 300 * r, 0.8); }
       for (var j = 0; j < (sec || 3) * 1.5; j++) { var w = t + Math.random() * (sec || 3), f = 120 + Math.random() * 120; osc('sawtooth', f * 1.1, w, 0.25, 0.025, null, f * 0.75, true); }
       noise(t, sec || 3, 0.12, 'bandpass', 700, 0.5, 400, null, true);
     },
-    whoosh: function () { var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
+    whoosh: function (v) { if (smp('whoosh', (v || 0.6) * 0.8)) return; var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
     zap: function () { var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
     fire: function () { var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
     crumble: function () { var t = t0(); noise(t, 0.6, 0.6, 'lowpass', 1800, 0.7, 200, null, true); for (var i = 0; i < 5; i++) noise(t + i * 0.06 + Math.random() * 0.04, 0.05, 0.4, 'bandpass', 1500 + Math.random() * 2000, 4); },

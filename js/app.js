@@ -356,7 +356,7 @@
     });
     var leg = h('div', 'card', '<h3>Legende</h3><p><span style="color:var(--good)">■</span> 1 Feld &nbsp; <span style="color:#2fa8d8">■</span> beliebig weit &nbsp; <span style="color:#ff9a3c">■</span> Sprung</p><p>Alle beförderten kleinen Einheiten (Ashigaru, Lanze, Späher, Silber) ziehen wie die Goldwache.</p>');
     list.appendChild(leg);
-    var cred = h('div', 'card', '<h3>Credits</h3><p>Figuren, Karte und Porträts: lokal generiert mit TRELLIS.2 (Microsoft, MIT) und FLUX.2 klein.</p><p>2D-Steinschrift: „kanji_light“ von Ka-hu (lishogi.org, CC BY 4.0).</p><small id="cred-env" style="color:var(--mute)"></small>');
+    var cred = h('div', 'card', '<h3>Credits</h3><p>Figuren, Karte und Porträts: lokal generiert mit TRELLIS.2 (Microsoft, MIT) und FLUX.2 klein.</p><p>2D-Steinschrift: „kanji_light“ von Ka-hu (lishogi.org, CC BY 4.0).</p><p>Kampfklänge (CC0): Kenney (Impact Sounds, RPG Audio), StarNinjas (OpenGameArt), craigsmith, joelcarrsound, PearceWilsonKing, leonelmail (Freesound).</p><small id="cred-env" style="color:var(--mute)"></small>');
     list.appendChild(cred);
     fetch('models/env/credits.json').then(function (r) { return r.json(); }).then(function (cs) {
       $('#cred-env').innerHTML = 'Umgebung (Poly Pizza): ' + cs.map(function (c) { return c.title + ' von ' + c.author + ' (' + c.licence + ')'; }).join(' · ');

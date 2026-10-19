@@ -1662,10 +1662,10 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
       self.lean(d, ld.x, ld.z, heavy ? tp * flip - (k > .87 ? (k - .87) / .13 * (flip - fall) : 0) : tp * fall); d.position.x = p0.x + ld.x * e * kb; d.position.z = p0.z + ld.z * e * kb; d.position.y = p0.y + Math.sin(k * Math.PI) * air;
       if (m) m.userData.face = f0 + spin * e; if (u) u.uAct.value = -0.9 * (1 - k) + 0.4 * k;
     }).then(function () {
-      var w = wp(d); self.emit(w.x + nx * 0.08, BT + 0.06, w.z + nz * 0.08, dust, heavy ? 18 : many ? 6 : 14, heavy ? 1.6 : 1.1, 0.6);
+      var w = wp(d); self.emit(w.x + nx * 0.08, BT + 0.06, w.z + nz * 0.08, dust, heavy ? 18 : many ? 6 : 14, heavy ? 1.6 : 1.1, 0.6); snd('fall', heavy ? 0.8 : 0.5);
       if (heavy) { var y1 = d.position.y; self.tween(160 * sp, function (k) { d.position.y = y1 + Math.sin(k * Math.PI) * 0.04; }); }
       if (!att && ++killed === total) {
-        snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.16); if (!short) self.slowmo(420, 0.3);
+        snd('fall', 0.9); if (!short) snd('cheer'); else snd('bedStop'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.16); if (!short) self.slowmo(420, 0.3);
         // Feldzeichen fällt mit dem letzten Mann
         var ban = D.userData.banner; if (ban) { var bl = ldir(D, nx, nz); self.tween(520 * sp, function (k) { self.lean(ban, bl.x, bl.z, k * k * 1.5); }); }
       }
@@ -1762,10 +1762,10 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
       if (o.side === 1 && lostA >= capA) p = 0;
       var hp = head(tg.s);
       if (Math.random() > p) { // pariert: Funken, Gegner weicht zurück
-        if (Math.random() < pf * 2) sparks(hp.x - nx * 0.04, hp.y - 0.05, hp.z - nz * 0.04, 0, 6, 0); sound('clash', 0.35);
+        if (Math.random() < pf * 2) sparks(hp.x - nx * 0.04, hp.y - 0.05, hp.z - nz * 0.04, 0, 6, 0); snd('clash', 0.4);
         tg.w.x += nx * 0.025; tg.w.z += nz * 0.025; return;
       }
-      tg.hp -= o.pw * (0.7 + Math.random() * 0.6); flash(tg.s, 0.7); tg.w.x += nx * 0.04; tg.w.z += nz * 0.04; sound('clash', 0.5);
+      tg.hp -= o.pw * (0.7 + Math.random() * 0.6); flash(tg.s, 0.7); tg.w.x += nx * 0.04; tg.w.z += nz * 0.04; snd(Math.random() < 0.6 ? 'hit' : 'clash', 0.55);
       if (tg.hp <= 0) kill(tg, nx, nz, o.pw > tg.pw * 2.2 ? Math.random() < 0.7 : heavyA && o.side === 0 && Math.random() < 0.2);
       // Helden und schwere Krieger mähen mehrere nieder
       if (o.pw >= 2.4) {
@@ -1915,10 +1915,10 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   if (style === 'magic' || style === 'shoot' || style === 'breath') battle = face.then(function () { return each(volley); });
   else if (style === 'leap') battle = face.then(function () { return each(leapAt); });
   else if (style === 'charge') battle = face.then(function () {
-    snd('whoosh');
+    snd('roar', 1);
     return march(x0, z0, x0 - ux * 0.15, z0 - uz * 0.15, 200).then(function () { return march(x0 - ux * 0.15, z0 - uz * 0.15, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 120, true); });
   }).then(impact).then(brawl);
-  else battle = face.then(function () { if (!short) snd('whoosh', 0.7); return Promise.all(at.map(function (a, j) { return wait(j * 12).then(function () { return act(a, -1.1, 200, null); }); }).concat(dt.map(function (d, j) { return wait(60 + j * 15).then(function () { return act(d, -0.8, 200, null); }); }))); })
+  else battle = face.then(function () { if (!short) snd('roar', many ? 1 : 0.7); return Promise.all(at.map(function (a, j) { return wait(j * 12).then(function () { return act(a, -1.1, 200, null); }); }).concat(dt.map(function (d, j) { return wait(60 + j * 15).then(function () { return act(d, -0.8, 200, null); }); }))); })
     .then(function () { return Promise.all([march(x0, z0, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 200, true), meet(160 + stopD * 200)]); })
     .then(impact)
     .then(brawl);
@@ -1937,6 +1937,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
     return wait(120);
   }
   return battle.then(function () {
+    snd('bedStop');
     self.cineDrift = 0; self.hlGroup.visible = true; var mine = corpses.filter(function (c) { return at.indexOf(c) >= 0; }), theirs = corpses.filter(function (c) { return at.indexOf(c) < 0; });
     if (mine.length) bury(mine);
     if (theirs.length) bury(theirs, function () { if (D.parent) self.pieceGroup.remove(D); });
