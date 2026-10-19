@@ -1152,7 +1152,7 @@ Board3D.prototype.armyBase = function (col, map) {
 // Bemalte Soldaten: Originalfarben des KI-Designs (gebackene Farb- und Normal-Map). Spieler erkennt man am Randschein der Silhouette
 // (Sente Gold, Gote Silber, wie die Statuen), an Formation und Fahnen, optional am Sashimono (Sente gold mit schwarzem Mon, Gote silberweiß mit rotem Mon)
 Board3D.RIM = [[1.0, 0.62, 0.16], [0.75, 0.85, 1.0]];
-Board3D.NO_SASHI = [3, 13, 14]; // Kreaturen (Fuchs, Hirsch, Drache) tragen kein Rückenfähnchen
+Board3D.NO_SASHI = [1, 3, 13, 14]; // Bauern (Fähnchen sah wie eine zweite Waffe aus, Speer soll lesbar sein) und Kreaturen (Fuchs, Hirsch, Drache) ohne Rückenfähnchen
 Board3D.SASHI = [[[0.85, 0.55, 0.12], [0.02, 0.018, 0.015]], [[0.8, 0.82, 0.85], [0.6, 0.04, 0.03]]]; // Tuch, Mon: Sente Gold/schwarz, Gote Silberweiß/rot
 Board3D.WHITE_FUR = [3]; // Kitsune (Springer): weißes Fell wie die Inari-Füchse statt Orange
 Board3D.KUMADORI = [[0.85, 0.52, 0.1], [0.62, 0.05, 0.03]]; // Zeichnung im Fell (dunkle Partien des Originals): Sente Gold, Gote Zinnober
@@ -2163,7 +2163,7 @@ Board3D.prototype.makePiece = function (p, cap) {
     var url = this.figUrl(t, col); if (army) url = url.replace(/\.glb$/, Board3D.armyHero(t) ? '_lo.glb' : '_lo2.glb');
     var skb = army && this.theme.id === 'feudal' && this.settings.skel !== false && window.SkinAnim && Board3D.SKIN[t], ska = skb ? SkinAnim.cached(skb) : null;
     if (ska === false) skb = null;
-    var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, c) { this.attachGlb(g, s, c); }.bind(this);
+    var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, tt, c) { this.attachGlb(g, s, c); }.bind(this);
     if (ska) this.buildSquad(g, ska.src, t, col, ska);
     else if (skb) {
       // Skelett-Modell nachladen, solange Platzhalter; schlägt es fehl, normales Statuen-Regiment
@@ -2332,7 +2332,7 @@ Board3D.prototype.update = function (now, dt) {
   if (this.checkRing.visible) { var k = 1 + Math.sin(now / 120) * 0.15; this.checkRing.scale.set(k, k, k); this.checkRing.material.opacity = 0.6 + Math.sin(now / 120) * 0.3; }
   // Figuren-Details
   var t = now / 1000, me = this; Board3D.ARMY_TIME.value = t;
-  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) { m.position.y = 0.2 + Math.max(0, Math.sin(t * 1.6 + sd)) * 0.025; m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0) + Math.sin(t * 0.7 + sd) * 0.08; } });
+  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0); });
   // Tweens (laufen auf einer eigenen Uhr, damit Zeitlupe geht)
   var self = this;
   if (this.slowUntil && now > this.slowUntil) { this.timeScale = 1; this.slowUntil = 0; }
