@@ -2,9 +2,6 @@ Sounds fuer den Armee-Kampf-Modus. Alle Quellen CC0 (Creative Commons Zero / Pub
 Bearbeitet (Schnitt, Mono, 44.1 kHz, MP3 80 kbps, Lautheit normalisiert, Fades; Klingen-Clashes mit Lowpass 7 kHz und -3 dB High-Shelf ab 3.5 kHz).
 
 bed.mp3     craigsmith - "S30-21 Large crowd fighting outdoors with swords in BG" - https://freesound.org/people/craigsmith/sounds/675094/ - CC0
-cry1.mp3    joelcarrsound - "Middle Ages War Cry 3" - https://freesound.org/people/joelcarrsound/sounds/521831/ - CC0
-cry2.mp3    joelcarrsound - "Middle Ages War Cry" + "Middle Ages War Cry 2" (gemischt) - https://freesound.org/people/joelcarrsound/sounds/521830/ , https://freesound.org/people/joelcarrsound/sounds/521832/ - CC0
-drum.mp3    PearceWilsonKing - "War Drum Loop" - https://freesound.org/people/PearceWilsonKing/sounds/274223/ - CC0
 impact.mp3  Kenney - "Impact Sounds" (impactSoft_heavy_001 + impactPunch_heavy_000 + impactPlate_heavy_001) - https://kenney.nl/assets/impact-sounds - CC0
 clash1.mp3  StarNinjas - "20 Sword Sound Effects (Attacks and Clashes)" (sword_clash.8) - https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes - CC0
 clash2.mp3  StarNinjas - "20 Sword Sound Effects (Attacks and Clashes)" (sword_clash.2) - https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes - CC0
@@ -13,7 +10,6 @@ hit1.mp3    Kenney - "Impact Sounds" (impactPunch_medium_001) - https://kenney.n
 hit2.mp3    Kenney - "Impact Sounds" (impactPunch_heavy_003) - https://kenney.nl/assets/impact-sounds - CC0
 fall.mp3    leonelmail - "BODY FALL - V HVY - DIRT" - https://freesound.org/people/leonelmail/sounds/504626/ - CC0
 whoosh.mp3  Kenney - "RPG Audio" (knifeSlice) - https://kenney.nl/assets/rpg-audio - CC0
-cheer.mp3   craigsmith - "S12-03 Small group men cheering; encouraging" - https://freesound.org/people/craigsmith/sounds/675103/ - CC0
 
 Klänge je Truppentyp (Armee-Modus, Feudal). Alle CC0, Freesound-Vorschauen geschnitten, mono 44.1 kHz MP3 64 kbps (Loops 48 kbps), Lautheit angeglichen, Fades.
 ofuda1-3 sind gemischt (Papier + Magie). Loops (paws, flap, hooves, march) an leisen Stellen geschnitten.
@@ -22,8 +18,6 @@ yip1-3         Simon Spiers - "Fox Cry.wav" - https://freesound.org/s/431302/ - 
 foxcry1-2      nielstii - "Fox scream in the forest" - https://freesound.org/s/554308/ - CC0
 snarl1-2       SmallQuadruped - "snarl.wav" - https://freesound.org/s/42201/ - CC0
 snarl3         Reitanna - "hiss2.wav" - https://freesound.org/s/343927/ - CC0
-yelp1-2        unfa - "Dog's Yelping 7" - https://freesound.org/s/160478/ - CC0
-yelp3          haulaway - "Small Dog Cry" - https://freesound.org/s/735365/ - CC0
 paws (Loop)    IENBA - "Animal Footsteps" - https://freesound.org/s/658429/ - CC0
 thrust1-2      qubodup - "Multi-Swing Bamboo Staff Weapon Attack" - https://freesound.org/s/60010/ - CC0
 thrust3        Sadiquecat - "Whoosh - Long Bamboo stick - OS ST 13" - https://freesound.org/s/855844/ - CC0
@@ -52,10 +46,7 @@ dragon1        JoelAudio - "DRAGON_ROAR.wav" - https://freesound.org/s/85568/ - 
 dragon2        qubodup - "Dragon Roar" - https://freesound.org/s/442964/ - CC0
 dgrowl1-2      Breviceps - "Dragon: Several roars, growls and snarls" - https://freesound.org/s/479380/ - CC0
 flame          LookIMadeAThing - "Basic Fire whoosh" - https://freesound.org/s/260554/ - CC0
-kiai1-2        oldedgar - "Kung Fu Yell.aif" - https://freesound.org/s/97977/ - CC0
-kiai3-4        WannyManny - "Ninja Vocalizations, Several Types.wav" - https://freesound.org/s/632075/ - CC0
 warcry1        florianreichelt - "People screaming in agony when charging into battle" - https://freesound.org/s/563011/ - CC0
-warcry2        Jace - "Men Shouting Hey.wav" - https://freesound.org/s/57204/ - CC0
 die1           tonsil5 - "Grunt2 - Death Pain.wav" - https://freesound.org/s/416838/ - CC0
 die2           tonsil5 - "Grunt1 - Death Pain.wav" - https://freesound.org/s/416839/ - CC0
 die3           Replix - "Death sound (male)" - https://freesound.org/s/173126/ - CC0
@@ -70,3 +61,31 @@ mus_koto2      --DeletedUser-- - "Koto G4.wav" - https://freesound.org/s/223956/
 mus_shaku1-5   makenoisemusic - "Todd Barton Shakuhachi Ro Reel" - https://freesound.org/s/470651/ - CC0
 mus_taiko1     Xinematix - "Taiko Drumloop 001 (120)" - https://freesound.org/s/491277/ - CC0
 mus_taiko2     szegvari - "Taiko Body Vocal Beat 120BPM Loop Action Mood Cinematic.wav" - https://freesound.org/s/625518/ - CC0
+
+
+Total-War-Nachbesserung (19.10.2026, geschnitten, mono, normalisiert):
+Japanische Stimmen, lokal erzeugt mit Qwen3-TTS-12Hz-1.7B-VoiceDesign (Alibaba Qwen, Apache-2.0, Ausgabe frei nutzbar), Inhalt per Whisper geprüft:
+kiai1-6        Kendo-Kiai „Ya! To! Men! Iya! Sei! Ha!“
+cry1-3         Angriffsrufe „Kakare!“, „Totsugeki!“, „Uchitore!“
+warcry2-3      „Susume!“, „Uooo!“
+die6-8         Schmerzlaute „Guaa!“, „Ugu…“, „Gaha!“
+cheer          Kachidoki „Ei! Ei! Oh!“ als Chor (2 Aufnahmen x 3–4 Stimmen, Tonhöhe ±, Versatz, Hall)
+drum1-2        dirtydowntowner - "Taiko.wav" - https://freesound.org/s/261468/ - CC0
+mus_sham1-2    claywh - "shamisen" - https://freesound.org/s/721267/ - CC0
+wood1          michorvath - "Bamboo hit" - https://freesound.org/s/386888/ - CC0
+wood2          thomasjaunism - "Wood block hit" - https://freesound.org/s/218460/ - CC0
+wood3          Qat - "whack02.mp3" - https://freesound.org/s/114683/ - CC0
+body1          Flem0527 - "Clothed Body Hit 1 .wav" - https://freesound.org/s/629977/ - CC0
+body2          insanity54 - "body_hit.wav" - https://freesound.org/s/276600/ - CC0
+body3          newagesoup - "PUNCH-BOXING-04.wav" - https://freesound.org/s/348241/ - CC0
+yelp1          Simon Spiers - "Fox Cry.wav" - https://freesound.org/s/431302/ - CC0
+yelp2          nielstii - "Fox scream in the forest" - https://freesound.org/s/554308/ - CC0
+yelp3          Setzilla - "foxBark2.wav" - https://freesound.org/s/173208/ - CC0
+amb_wind       lwdickens - "windy winter day, wind in trees, from distance.wav" - https://freesound.org/s/259968/ - CC0
+amb_river      VKProduktion - "Creek 06 (loop)" - https://freesound.org/s/231536/ - CC0
+amb_fire       laptaper - "fire roar and crackle.flac" - https://freesound.org/s/386560/ - CC0
+amb_cicada     Nimlos - "forest_cicada_loop.flac" - https://freesound.org/s/422048/ - CC0
+amb_flag       IENBA - "Fabric Flapping" - https://freesound.org/s/701647/ - CC0
+amb_rain       unfa - "Slowly Raining Loop" - https://freesound.org/s/177479/ - CC0
+thunder1       netaj - "thunder" - https://freesound.org/s/193170/ - CC0
+thunder2       lennyboy - "Thunder.ogg" - https://freesound.org/s/244053/ - CC0

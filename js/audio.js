@@ -22,17 +22,22 @@ var Sfx = (function () {
     reverb = ctx.createConvolver(); var len = ctx.sampleRate * 2.2, ir = ctx.createBuffer(2, len, ctx.sampleRate);
     for (var c = 0; c < 2; c++) { var ch = ir.getChannelData(c); for (i = 0; i < len; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3); }
     reverb.buffer = ir; revGain = ctx.createGain(); revGain.gain.value = 0.25; reverb.connect(revGain); revGain.connect(master);
-    loadSamples();
+    // Kampf-Bus: nah trocken und hell, aus der Übersicht dumpf und hallig (Tiefpass, leiser, mehr Hall); ferner Bus für Schreie/Krähen
+    busF = ctx.createBiquadFilter(); busF.type = 'lowpass'; busF.frequency.value = 20000; busF.Q.value = 0.5; bus = ctx.createGain(); busF.connect(bus); bus.connect(sfxGain);
+    busRev = ctx.createGain(); busRev.gain.value = 0.15; busF.connect(busRev); busRev.connect(reverb);
+    far = ctx.createBiquadFilter(); far.type = 'lowpass'; far.frequency.value = 900; var fg = ctx.createGain(); fg.gain.value = 0.7; far.connect(fg); fg.connect(sfxGain); var fr = ctx.createGain(); fr.gain.value = 0.9; far.connect(fr); fr.connect(reverb);
+    ambBus = ctx.createGain(); ambBus.gain.value = 0.5; ambBus.connect(sfxGain);
+    loadSamples(); ambTick();
     return true;
   }
-  var reverb, revGain;
+  var reverb, revGain, busF, busRev, bus, far, ambBus;
   // Echte Kampfklänge (CC0, snd/credits.txt) statt Synthesizer. Wie in Strategiespielen:
   // Varianten, Tonhöhe ±8 %, nie zweimal dieselbe, Mindestabstand je Art, höchstens 6 gleichzeitig, Schlacht-Teppich als Loop.
-  var SMP = { clash: 3, hit: 2, cry: 2, impact: 0, drum: 0, fall: 0, whoosh: 0, cheer: 0, bed: 0 }, buf = {}, lastVar = {}, lastAt = {}, voices = 0, bedSrc = null, bedGain = null, bedTimer = null;
-  var GAP = { clash: 70, hit: 70, fall: 110, whoosh: 90, cry: 400, impact: 120, drum: 120, cheer: 1500, yip: 220, snarl: 160, foxcry: 500, yelp: 260, horn: 20000,
+  var SMP = { clash: 3, hit: 2, cry: 3, impact: 0, drum: 2, fall: 0, whoosh: 0, cheer: 0, bed: 0, wood: 3, body: 3 }, buf = {}, lastVar = {}, lastAt = {}, voices = 0, bedSrc = null, bedGain = null, bedTimer = null;
+  var GAP = { clash: 70, hit: 70, fall: 110, whoosh: 90, cry: 400, impact: 120, drum: 120, cheer: 1500, wood: 80, body: 80, thunder: 3000, yip: 220, snarl: 160, foxcry: 500, yelp: 260, horn: 20000,
     thrust: 90, stab: 90, slash: 90, cut: 90, kiai: 300, warcry: 600, die: 230, ofuda: 140, wing: 160, caw: 280, stag: 500, snort: 300, dragon: 900, dgrowl: 250, flame: 400 };
   // Klänge je Truppentyp (nur Feudal): Waffe, Stimme, Kreatur, Laufen. Sets laden erst, wenn der Typ zum ersten Mal klingt (Handy).
-  var XS = { yip: 3, foxcry: 2, snarl: 3, yelp: 3, paws: 0, horn: 0, thrust: 3, stab: 2, slash: 4, cut: 2, kiai: 4, warcry: 2, die: 5, march: 0, ofuda: 3, wing: 3, caw: 3, flap: 0,
+  var XS = { yip: 3, foxcry: 2, snarl: 3, yelp: 3, paws: 0, horn: 0, thrust: 3, stab: 2, slash: 4, cut: 2, kiai: 6, warcry: 3, die: 8, thunder: 2, march: 0, ofuda: 3, wing: 3, caw: 3, flap: 0,
     stag: 3, snort: 2, hooves: 0, dragon: 2, dgrowl: 2, flame: 0 }, loaded = {};
   var KIND = { 1: 'speer', 2: 'speer', 5: 'speer', 9: 'speer', 10: 'speer', 4: 'schwert', 8: 'schwert', 12: 'schwert', 3: 'fuchs', 11: 'fuchs', 6: 'ofuda', 7: 'tengu', 13: 'hirsch', 14: 'drache' };
   // Ereignis -> [Sample, Lautstärke, Tonhöhe]: swing Ausholen/Sprung, hit Treffer, parry Parade, shout Zwischenruf beim Treffer, cry Schlachtruf (pack = mehrstimmig),
@@ -65,13 +70,58 @@ var Sfx = (function () {
   }
   function vplay(t, ev, k, opt) { var e = vx(t, ev); if (!e) return false; opt = opt || {}; opt.rate = (opt.rate || 1) * (e[2] || 1); return smp(e[0], e[1] * (k == null ? 1 : k), opt); }
   function has(k) { return buf[k] && buf[k].length; }
+  // Kreaturen (Warhammer): Tengu, Kirin, Drache rumpeln beim Aufprall und gehen im Stimmenlimit vor
+  var CREA = { 7: 1, 13: 1, 14: 1 }, heroAt = -99;
+  // Heldenduell (Three Kingdoms): kämpft König oder Drache, kommt ein Taiko-Stich (mit Musik eine Shamisen-Phrase), das Gemenge tritt zurück
+  function hero(t) {
+    if (t !== 8 && t !== 14) return; var now = ctx.currentTime; if (now - heroAt < 8) return; heroAt = now;
+    smp('drum', 1, { force: true, nogap: true, out: sfxGain }); smp('drum', 0.8, { force: true, nogap: true, delay: 0.3, rate: 0.85, out: sfxGain }); duck(1800);
+    if (mus && has('mus_sham')) musPlay(buf.mus_sham[buf.mus_sham.length - 1], mus.out, now + 0.6, 0, 0.6);
+  }
+  // Brett der laufenden Partie (nur lesen): Schlachtfeld-Stimmung, Wetter, Brände, Kameraabstand
+  function board() { try { var g = window.ShogiApp && ShogiApp.G && ShogiApp.G(), r = g && g.r; return r && r.orbit ? r : null; } catch (e) { return null; } }
+  // Ambiente je Schlachtfeld-Stimmung (Pass: Wind, Flusstal: Bach, Belagerung: Feuer, Sommertag: Zikaden), Fahnen, Regen, seltene Krähen/ferne Schreie.
+  // Loops mit weicher Überblendung (MP3 loopt nicht lückenlos). Stumm, Effekte 0 oder Tab im Hintergrund: nichts ansetzen.
+  var amb = { L: {}, f: 0, oneAt: 0 }, MOOD = { pass: 'amb_wind', tal: 'amb_river', belagerung: 'amb_fire', mittag: 'amb_cicada' };
+  function ambLayer(k, want) {
+    var L = amb.L[k] || (amb.L[k] = { g: null, next: 0, v: -1 }), t = ctx.currentTime;
+    if (want > 0.01) load(k, 0); else if (!L.g) return;
+    if (!L.g) { L.g = ctx.createGain(); L.g.gain.value = 0; L.g.connect(ambBus); }
+    if (Math.abs(want - L.v) > 0.01) { L.v = want; L.g.gain.cancelScheduledValues(t); L.g.gain.setTargetAtTime(want, t, 1.2); }
+    if (want <= 0.01) { L.next = 0; return; }
+    if (has(k) && t + 0.6 >= L.next) {
+      var b = buf[k][0], X = 1.5, at = Math.max(t + 0.05, L.next), sc = ctx.createBufferSource(), sg = ctx.createGain(), d = b.duration;
+      sc.buffer = b; sg.gain.setValueAtTime(0, at); sg.gain.linearRampToValueAtTime(1, at + X); sg.gain.setValueAtTime(1, at + d - X); sg.gain.linearRampToValueAtTime(0, at + d);
+      sc.connect(sg); sg.connect(L.g); sc.start(at); sc.stop(at + d + 0.05); L.next = at + d - X;
+    }
+  }
+  function ambTick() {
+    setTimeout(ambTick, 500);
+    var r = board(), live = !vol.mute && vol.sfx > 0 && !document.hidden, on = !!(live && r && r.look === 'feld' && r.settings && r.settings.army), W = (on && r.wx) || {}, t = ctx.currentTime;
+    var base = on ? MOOD[r.settings.fieldMood || 'pass'] : null, rain = W.rain || 0;
+    Object.keys(MOOD).forEach(function (m) { var k = MOOD[m]; ambLayer(k, k === base ? (k === 'amb_fire' ? 0.45 + 0.07 * Math.min(8, r.firesLit || 0) : 0.55) * (1 - 0.5 * rain) : 0); });
+    ambLayer('amb_flag', on ? 0.3 + 0.2 * (W.storm || 0) : 0); ambLayer('amb_rain', on ? 0.9 * rain : 0);
+    if (on && W.storm > 0.1) load('thunder', 2);
+    // seltene Einzelklänge aus der Ferne: Krähen, bei der Belagerung Schreie
+    if (on && t > amb.oneAt) {
+      if (amb.oneAt) {
+        var k = base === 'amb_fire' && Math.random() < 0.6 ? ['die', 'warcry', 'cry'][Math.floor(Math.random() * 3)] : base !== 'amb_cicada' ? 'caw' : null;
+        if (k) { load(k, XS[k] != null ? XS[k] : SMP[k]); smp(k, 0.35, { force: true, nogap: true, out: far, rate: 0.9 }); }
+      }
+      amb.oneAt = t + 14 + Math.random() * 24;
+    }
+    if (!on) amb.oneAt = 0;
+    // Kameraabstand: 0 = Kino-Nahsicht (trocken, hell), 1 = Übersicht (dumpf, hallig, Teppich trägt)
+    var f = on ? sstep(r.orbit.radius, 12, 32) : 0;
+    if (Math.abs(f - amb.f) > 0.02 || (f === 0 && amb.f)) { amb.f = f; busF.frequency.setTargetAtTime(20000 * Math.pow(0.1, f), t, 0.3); bus.gain.setTargetAtTime(1 - 0.35 * f, t, 0.3); busRev.gain.setTargetAtTime(0.15 + 0.45 * f, t, 0.3); }
+  }
   function smp(k, v, opt) {
     if (!has(k)) return false; opt = opt || {};
     var now = ctx.currentTime * 1000; if (!opt.nogap && lastAt[k] && now - lastAt[k] < (GAP[k] || 60)) return true; if (voices >= 6 && !opt.force) return true; lastAt[k] = now;
     var list = buf[k], i = Math.floor(Math.random() * list.length); if (list.length > 1 && i === lastVar[k]) i = (i + 1) % list.length; lastVar[k] = i;
     var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = list[i];
     src.playbackRate.value = (opt.rate || 1) * (0.92 + Math.random() * 0.16); g.gain.value = (v == null ? 0.8 : v) * (0.75 + Math.random() * 0.25);
-    src.connect(g); g.connect(sfxGain); if (opt.wet) g.connect(reverb);
+    src.connect(g); g.connect(opt.out || busF); if (opt.wet) g.connect(reverb);
     voices++; src.onended = function () { voices--; }; src.start(ctx.currentTime + 0.005 + (opt.delay || 0)); return true;
   }
   var stepSrc = null, stepG = null;
@@ -81,7 +131,7 @@ var Sfx = (function () {
     var b = buf[k][0], src = ctx.createBufferSource(), g = ctx.createGain(), t = ctx.currentTime, d = Math.max(0.3, ms / 1000);
     src.buffer = b; src.loop = true; src.playbackRate.value = (rate || 1) * (0.95 + Math.random() * 0.1);
     g.gain.setValueAtTime(0.0001, t); g.gain.setTargetAtTime(v, t, 0.08); g.gain.setTargetAtTime(0.0001, t + d - 0.25, 0.08);
-    src.connect(g); g.connect(sfxGain); src.start(t, Math.random() * b.duration); src.stop(t + d + 0.3); stepSrc = src; stepG = g;
+    src.connect(g); g.connect(busF); src.start(t, Math.random() * b.duration); src.stop(t + d + 0.3); stepSrc = src; stepG = g;
   }
   // Teppich kurz absenken (Schrei, Aufprall)
   function duck(ms) { if (!bedGain) return; var t = ctx.currentTime; bedGain.gain.cancelScheduledValues(t); bedGain.gain.setTargetAtTime(bedGain._lvl * 0.55, t, 0.03); bedGain.gain.setTargetAtTime(bedGain._lvl, t + ms / 1000, 0.15); }
@@ -125,6 +175,7 @@ var Sfx = (function () {
     // Kampf: Klingen-Klirren, Luftzug, Magie/Schuss, Feuer, Zerbröseln der Statue
     // Hieb: kurzes Krachen von Stahl auf Rüstung/Holz, jedes Mal leicht anders, kein Nachklingen
     clash: function (v, t) {
+      hero(t); if (KIND[t] === 'speer' && Math.random() < 0.6) smp('wood', (v || 0.8) * 0.6); // Speerschaft aus Holz
       if (t && vplay(t, 'parry', v || 0.8)) return;
       if (smp('clash', (v || 0.8) * 0.9)) return;
       var t = t0(), k = v || 0.8, r = 0.75 + Math.random() * 0.5;
@@ -149,23 +200,28 @@ var Sfx = (function () {
       noise(t, 1.1, 0.25 * k, 'bandpass', 800, 0.7, 500, null, true);
     },
     hit: function (v, t) {
+      // Treffer in Schichten: Aufprall + Material (Stoff/Körper, oft Lackrüstung aus Holz); Kreaturen: tiefes Rumpeln, Vorrang, Teppich weicht
+      hero(t); smp('body', (v || 0.7) * 0.55); if (Math.random() < 0.5) smp('wood', (v || 0.7) * 0.4, { delay: 0.01 });
+      if (CREA[t]) { smp('drum', (v || 0.7) * 0.9, { force: true, nogap: true, rate: 0.55 }); duck(400); vplay(t, 'hit', v || 0.7, { force: true }); if (Math.random() < 0.3) vplay(t, 'shout', 1, { force: true }); return; }
       if (t && vplay(t, 'hit', v || 0.7)) { if (Math.random() < 0.4) smp('hit', (v || 0.7) * 0.45); if (Math.random() < 0.2) vplay(t, 'shout'); return; }
       if (!smp('hit', v || 0.7)) S.clash(v);
     },
-    fall: function (v, t) { smp('fall', v || 0.6); if (t && Math.random() < 0.55) vplay(t, 'die', v ? 0.6 + v * 0.5 : 1, { force: true }); },
+    fall: function (v, t) { smp('fall', v || 0.6); if (CREA[t]) smp('drum', 0.8, { force: true, nogap: true, rate: 0.5 }); if (t && Math.random() < 0.55) vplay(t, 'die', v ? 0.6 + v * 0.5 : 1, { force: true }); },
     // Laufen je Typ (Schritte, Pfoten, Hufe, Flügel) als Loop über die Zugdauer
     march: function (ms, t) { var e = vx(t, 'step'); if (e) stepLoop(e[0], ms, e[1], e[2]); },
     // Horagai (Muschelhorn) zum Schlachtbeginn, höchstens alle 20 s
     horn: function (v, t) { vx(t, 'cry'); smp('horn', v || 0.7, { force: true, wet: true }); },
     cheer: function (v) { bedStop(1.2); smp('cheer', v || 0.8, { force: true, wet: true }); },
     bedStop: function () { bedStop(0.8); },
+    // Donner (Gewitter aus fieldfx.js): v = Stärke 0–1
+    thunder: function (v) { load('thunder', 2); smp('thunder', 0.5 + 0.5 * (v || 1), { force: true, wet: true, out: sfxGain }); },
     // Taiko-Schlag beim Aufprall der Linien
     taiko: function (v) { if (smp('drum', v || 1, { force: true, wet: true })) { smp('impact', (v || 1) * 0.8, { force: true }); duck(300); return; } var t = t0(), k = v || 1; osc('sine', 78, t, 0.55, 1 * k, null, 42, true); noise(t, 0.12, 0.5 * k, 'lowpass', 380, 0.8, 120); noise(t, 0.02, 0.25 * k, 'bandpass', 2500, 1); },
     // Gemenge im Hintergrund: Klappern, Stampfen, Rufe, ein paar Sekunden
     melee: function (sec) {
       if (has('bed')) {
-        bedStop(0.2); var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf.bed[0]; src.loop = true; g._lvl = 0.7;
-        g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.setTargetAtTime(g._lvl, ctx.currentTime, 0.12); src.connect(g); g.connect(sfxGain);
+        bedStop(0.2); var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf.bed[0]; src.loop = true; g._lvl = 0.7 * (1 + 0.6 * amb.f); // aus der Ferne trägt der Teppich
+        g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.setTargetAtTime(g._lvl, ctx.currentTime, 0.12); src.connect(g); g.connect(busF);
         src.start(ctx.currentTime, Math.random() * 6); bedSrc = src; bedGain = g; bedTimer = setTimeout(function () { bedStop(0.8); }, (sec || 3) * 1000); return;
       }
       var t = t0(), n = Math.round((sec || 3) * 14);
@@ -174,8 +230,9 @@ var Sfx = (function () {
       noise(t, sec || 3, 0.12, 'bandpass', 700, 0.5, 400, null, true);
     },
     whoosh: function (v, t) { if (t && vplay(t, 'swing', v ? v * 1.6 : 1)) return; if (smp('whoosh', (v || 0.6) * 0.8)) return; var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
-    zap: function (v, k) { if (k && vplay(k, 'mag', v ? v * 1.6 : 1, { wet: true })) return; var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
-    fire: function (v, k) { if (k && vplay(k, 'mag', 1, { force: true, wet: true })) { vplay(k, 'cry', 0.8, { force: true, delay: 0.05 }); return; } var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
+    // Fernkampf: ferne Salven kommen später und dumpfer an (Empire/Napoleon)
+    zap: function (v, k) { if (k && vplay(k, 'mag', v ? v * 1.6 : 1, { wet: true, delay: 0.03 + 0.12 * amb.f })) return; var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
+    fire: function (v, k) { if (k && vplay(k, 'mag', 1, { force: true, wet: true, delay: 0.03 + 0.12 * amb.f })) { vplay(k, 'cry', 0.8, { force: true, delay: 0.05 }); return; } var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
     crumble: function () { var t = t0(); noise(t, 0.6, 0.6, 'lowpass', 1800, 0.7, 200, null, true); for (var i = 0; i < 5; i++) noise(t + i * 0.06 + Math.random() * 0.04, 0.05, 0.4, 'bandpass', 1500 + Math.random() * 2000, 4); },
     check: function () { var t = t0(); osc('sine', 90, t, 0.5, 1, null, 45, true); noise(t, 0.12, 0.5, 'lowpass', 400, 1); osc('sine', 90, t + 0.22, 0.45, 0.8, null, 45, true); },
     win: function () { var t = t0(); [0, 2, 4, 5, 7, 9, 10].forEach(function (d, i) { osc('triangle', note(d + 5), t + i * 0.12, 0.9, 0.18, null, null, true); }); for (var i = 0; i < 6; i++) osc('sine', 80, t + i * 0.15, 0.3, 0.6, null, 50); },
@@ -204,7 +261,7 @@ var Sfx = (function () {
   function musMix(tc) {
     if (!mus) return; var i = musLevel(), t = ctx.currentTime;
     mus.lv = [1 - 0.55 * sstep(i, 0.3, 0.9), 0.75 * sstep(i, 0.22, 0.5), 0.8 * sstep(i, 0.6, 0.85)];
-    if (i > 0.15) TAIKO.forEach(function (k) { load(k, 0); });
+    if (i > 0.15) { TAIKO.forEach(function (k) { load(k, 0); }); load('mus_sham', 2); }
     mus.g.forEach(function (g, k) { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(mus.lv[k], t, tc || 1.2); if (k && mus.lv[k] > 0.02) taiko(k, Math.max(t + 0.03, mus.c0)); });
     mus.fight = i >= 0.8 && intensity < 0.8;
   }
@@ -215,6 +272,7 @@ var Sfx = (function () {
       if (t + 0.6 >= mus.next) { mus.c0 = Math.max(mus.next, t + 0.05); mus.next = mus.c0 + 8; mus.cyc++; }
       for (var j = 1; j < 3; j++) if (mus.lv[j] > 0.02) taiko(j, Math.max(t + 0.05, mus.c0)); // auch wenn die Aufnahme gerade erst geladen ist
       if (t >= mus.calmAt) musCalm(t);
+      if (mus.lv[1] > 0.25 && t >= mus.shamAt && has('mus_sham')) { var sb = buf.mus_sham[Math.floor(Math.random() * buf.mus_sham.length)]; musPlay(sb, mus.g[1], t + 0.05, 0, 0.7); mus.shamAt = t + sb.duration + 14 + Math.random() * 20; }
       if (mus.fight && musLevel() < 0.8) musMix(2.5); // Kampf vorbei: Taiko langsam zurück
     }
     mus.timer = setTimeout(musTick, 400);
@@ -240,7 +298,7 @@ var Sfx = (function () {
     load('mus_koto1', 0); load('mus_koto2', 0); load('mus_shaku', 5);
     var out = ctx.createGain(); out.gain.value = 0; out.gain.setTargetAtTime(1, t, 0.6); out.connect(musicGain);
     var g = [0, 1, 2].map(function (k) { var x = ctx.createGain(); x.gain.value = 0; x.connect(out); return x; });
-    mus = { out: out, g: g, lv: [1, 0, 0], src: [], on: [0, 0, 0], cyc: 0, c0: t + 0.3, next: t + 0.3, calmAt: t + 0.8, shakuAt: t + 6, deg: 1, lastShaku: -1, fight: false };
+    mus = { out: out, g: g, lv: [1, 0, 0], src: [], on: [0, 0, 0], cyc: 0, c0: t + 0.3, next: t + 0.3, calmAt: t + 0.8, shakuAt: t + 6, shamAt: t + 8, deg: 1, lastShaku: -1, fight: false };
     musMix(0.5); musTick();
   }
   function musStop() {
