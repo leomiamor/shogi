@@ -27,11 +27,7 @@
       for (var i = 0; i < si.count; i++) for (var k = 0; k < 4; k++) ai[i * 4 + k] = Math.max(0, remap[si.getComponent(i, k)]);
       geo.setAttribute('aSkinI', new T.BufferAttribute(ai, 4)); geo.setAttribute('aSkinW', sw.clone());
       geo.deleteAttribute('skinIndex'); geo.deleteAttribute('skinWeight');
-      // eine Zeile Einheitsmatrizen anhängen: Clip 'bind' = Ruhepose des Modells (Statue steht wie modelliert)
-      var rows = buf.byteLength / 2 / (nb * 12), data = new Uint16Array((rows + 1) * nb * 12); data.set(new Uint16Array(buf));
-      for (var b = 0; b < nb; b++) for (var r = 0; r < 3; r++) data[rows * nb * 12 + b * 12 + r * 4 + r] = 0x3C00; // Half-Float 1.0
-      meta.clips.bind = [rows, 1, 0]; rows++;
-      var tex = new T.DataTexture(data, nb * 3, rows, T.RGBAFormat, T.HalfFloatType);
+      var rows = buf.byteLength / 2 / (nb * 12), tex = new T.DataTexture(new Uint16Array(buf), nb * 3, rows, T.RGBAFormat, T.HalfFloatType);
       tex.minFilter = tex.magFilter = T.NearestFilter; tex.generateMipmaps = false; tex.needsUpdate = true;
       var names = Object.keys(meta.clips), clips = names.map(function (n) { var c = meta.clips[n]; return new T.Vector4(c[0], c[1], meta.fps, c[2]); });
       while (clips.length < 32) clips.push(new T.Vector4(0, 1, 24, 0));
