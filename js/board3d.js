@@ -1618,7 +1618,8 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   this.hlGroup.visible = false; if (this.look === 'feld') this.showTag(null);
   self._camBack = false;
   if (!short) { self.cineDrift = 0; this.tween(700, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.15 - cam0.y) * e; o.radius = cam0.r + (c1r - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; self.viewShift = vs0 * (1 - e); }).then(function () { if (!self._camBack) self.cineDrift = 0.00007 * (Math.random() < .5 ? 1 : -1); }); }
-  function camBack() { if (short) return; self._camBack = true; self.cineDrift = 0; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal }; self.tween(900, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; self.viewShift = vs0 * e; }).then(function () { self._camBack = false; }); }
+  function camBack(ms) { if (short || self._camBack) return; self._camBack = true; self.cineDrift = 0; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal };
+    while (c1.th - cam0.th > Math.PI) c1.th -= Math.PI * 2; while (c1.th - cam0.th < -Math.PI) c1.th += Math.PI * 2; /* kürzester Schwenk, kein Rundflug */ self.tween(ms || 900, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; self.viewShift = vs0 * e; }).then(function () { self._camBack = false; }); }
   function wp(s) { var v = new T.Vector3(); s.getWorldPosition(v); return v; }
   function toLocal(s, x, z) { var v = new T.Vector3(x, BT, z); if (s.parent) { s.parent.updateWorldMatrix(true, false); s.parent.worldToLocal(v); } return v; }
   function rotY(s) { return s.rotation.y + (s.parent && s.parent.userData.troops ? s.parent.rotation.y : 0); }
@@ -1732,7 +1733,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   // Total-War-Gemenge: alle kämpfen gleichzeitig. Jeder sucht den nächsten Gegner, rückt nach, holt aus, trifft oder wird pariert.
   // Größere Soldaten halten mehr aus und schlagen härter (Helden und schwere Krieger treffen mehrere). Bricht der Verteidiger ein, flieht der Rest und wird verfolgt.
   function brawl() {
-    var all = [], sA = [], sD = [], T0 = self.vt, maxT = (short ? 3 : 6) * 1000, capA = Math.floor(at.length * 0.3), lostA = 0, lastSnd = 0, el = 0, routed = false;
+    var all = [], sA = [], sD = [], T0 = self.vt, maxT = (short ? 3 : 6) * 1000, liveA = at.filter(function (a) { return !a.userData.dead && !a.userData.dying; }).length, keepA = Math.max(1, Math.ceil(at.length * 0.25)), capA = Math.max(0, Math.min(Math.floor(liveA * 0.3), liveA - keepA)), lostA = 0 /* Sieger verliert pro Kampf höchstens 30 % der Lebenden und nie unter ein Viertel der Sollstärke */, lastSnd = 0, el = 0, routed = false;
     function mk(s, side) {
       var h = (s.userData.hh || 0.2) / 0.8, pw = Math.pow(h / 0.22, 1.6), o = { s: s, side: side, w: wp(s), h: h, pw: pw, hp: pw, st: 'idle', t: 0, cd: Math.random() * 0.5, tg: null, re: 0, act: (U(s) || { uAct: { value: 0 } }).uAct.value, ang: 0, nx: 0, nz: 1, rout: false, run: 0 };
       s.parent.updateWorldMatrix(true, false); o.inv = new T.Matrix4().copy(s.parent.matrixWorld).invert(); all.push(o); (side ? sD : sA).push(o);
@@ -1888,25 +1889,34 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   }
   // neu formieren und aufs Feld ziehen
   function reform() {
-    camBack();
-    var x0 = A.position.x, z0 = A.position.z, mdur = 260 + Math.hypot(to.x - x0, to.z - z0) * 200;
-    var tw = at.map(function (a) {
-      if (a === A || !a.userData.home || a.userData.dead || a.userData.dying) return Promise.resolve();
-      var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0, q0 = a.userData.q0 ? a.quaternion.clone() : null, u = U(a), a0 = u ? u.uAct.value : 0;
-      var dd = Math.hypot(h.x - p0.x, h.z - p0.z), dur = Math.max(mdur, 350 + dd * 1400) * sp;
-      // Blick in Laufrichtung, am Ende wieder nach vorn
-      var wx = p0.x - h.x, wz = p0.z - h.z, lf = dd > 0.05 ? Math.atan2(wx, wz) - ((m && m.userData.ry0 || 0) - Math.PI) : 0;
-      while (lf - f0 > Math.PI) lf -= Math.PI * 2; while (lf - f0 < -Math.PI) lf += Math.PI * 2;
-      a.userData.ox = a.userData.oz = 0; walk(a, dd > 0.05 ? 0.8 : 0);
-      return self.tween(dur, function (k) {
-        var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y * (1 - e);
-        if (m) m.userData.face = k < 0.2 ? f0 + (lf - f0) * k / 0.2 : k < 0.8 ? lf : lf * (1 - (k - 0.8) / 0.2);
-        if (q0) a.quaternion.copy(q0).slerp(a.userData.q0, Math.min(1, k * 4)); if (u) u.uAct.value = a0 * Math.max(0, 1 - k * 3);
-        if (k > 0.85 && u) u.uWalk.value = 0;
-      }).then(function () { walk(a, 0); if (m) m.userData.face = 0; a.userData.ang = 0; });
+    var x0 = A.position.x, z0 = A.position.z;
+    if (!A.userData.troops) { camBack(1400); return march(x0, z0, to.x, to.z, 260 + Math.hypot(to.x - x0, to.z - z0) * 200).then(function () { A.userData.fighting = false; }); }
+    var live = at.filter(function (a) { return a !== A && a.userData.home && !a.userData.dead && !a.userData.dying; });
+    // Siegesmoment: Überlebende recken die Waffen, Kamera bleibt noch am Geschehen
+    var beat = short ? Promise.resolve() : Promise.all(live.map(function (a, j) { walk(a, 0); return wait(j % 5 * 40).then(function () { return act(a, -1.25, 200, null); }).then(function () { return act(a, -0.9, 260, null); }).then(function () { return act(a, -1.2, 200, null); }); }));
+    return beat.then(function () {
+      // Regiment steht ab jetzt schon auf dem Zielfeld; Soldaten, Gefallene und Fahne behalten ihre Weltposition und gehen von dort zu Fuß
+      var kids = A.children.slice(), wpos = kids.map(function (c) { return c.getWorldPosition(new T.Vector3()); });
+      A.position.x = to.x; A.position.z = to.z; A.updateMatrixWorld(true);
+      kids.forEach(function (c, i) { var l = A.worldToLocal(wpos[i]); c.position.x = l.x; c.position.z = l.z; });
+      var maxd = 0, tw = live.map(function (a) {
+        var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0, q0 = a.userData.q0 ? a.quaternion.clone() : null, u = U(a), a0 = u ? u.uAct.value : 0;
+        var dd = Math.hypot(h.x - p0.x, h.z - p0.z), dur = (380 + dd * 1150 + Math.random() * 160) * sp; maxd = Math.max(maxd, dur);
+        // Blick in Laufrichtung (wie tFace), am Ende wieder nach vorn
+        var lf = dd > 0.04 ? Math.atan2(p0.x - h.x, p0.z - h.z) - ((m && m.userData.ry0 || 0) - Math.PI) : 0;
+        while (lf - f0 > Math.PI) lf -= Math.PI * 2; while (lf - f0 < -Math.PI) lf += Math.PI * 2;
+        a.userData.ox = a.userData.oz = 0;
+        return self.tween(dur, function (k) {
+          var e = k < 0.15 ? 0 : (k - 0.15) / 0.85; e = e * e * (3 - 2 * e);           // erst umdrehen, dann gleichmäßig gehen
+          a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y * (1 - Math.min(1, k * 3));
+          if (m) m.userData.face = k < 0.15 ? f0 + (lf - f0) * k / 0.15 : k < 0.85 ? lf : lf * (1 - (k - 0.85) / 0.15);
+          if (q0) a.quaternion.copy(q0).slerp(a.userData.q0, Math.min(1, k * 5)); if (u) { u.uAct.value = a0 * Math.max(0, 1 - k * 4); u.uWalk.value = dd > 0.04 && k > 0.1 && k < 0.92 ? Math.min(0.9, 0.35 + dd) : 0; }
+        }).then(function () { if (u) u.uWalk.value = 0; if (m) m.userData.face = 0; a.userData.ang = 0; });
+      });
+      var bn = A.userData.banner; if (bn && bn.userData.home0) { var b0 = bn.position.clone(), bh = bn.userData.home0; tw.push(self.tween(Math.max(600, maxd * 0.9), function (k) { var e = ease(k); bn.position.x = b0.x + (bh.x - b0.x) * e; bn.position.z = b0.z + (bh.z - b0.z) * e; })); }
+      wait(maxd * 0.3 / sp).then(function () { camBack(1500); });
+      return Promise.all(tw).then(function () { A.userData.fighting = false; });
     });
-    tw.push(march(x0, z0, to.x, to.z, mdur));
-    return Promise.all(tw).then(function () { A.userData.fighting = false; self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); });
   }
   // Truppen drehen sich zueinander, dann je nach Kampfstil
   var face = Promise.all(at.map(function (a) { return tFace(a, dc.x, dc.z, 200); }).concat(dt.map(function (d) { return tFace(d, ac.x, ac.z, 240); })));
@@ -1988,7 +1998,7 @@ Board3D.prototype.makePiece = function (p) {
   if (army) {
     // kein Stein: Regiment steht im Gelände, Kanji auf dem Feldzeichen (Standartenträger hinten), unsichtbarer Klickbereich
     g.remove(body);
-    var hero = Board3D.armyHero(t), ban = this.armyBanner(t, col); ban.position.set(hero ? 0.3 : 0.06, 0, hero ? 0.22 : 0.42); if (col === 1) ban.rotation.y = Math.PI; g.add(ban); g.userData.banner = ban;
+    var hero = Board3D.armyHero(t), ban = this.armyBanner(t, col); ban.position.set(hero ? 0.3 : 0.06, 0, hero ? 0.22 : 0.42); ban.userData.home0 = ban.position.clone(); if (col === 1) ban.rotation.y = Math.PI; g.add(ban); g.userData.banner = ban;
     var hb = new T.Mesh(this._hitGeo || (this._hitGeo = new T.BoxGeometry(0.9, 0.5, 0.9)), this._hitMat || (this._hitMat = new T.MeshBasicMaterial())); hb.visible = false; hb.position.y = 0.25; g.add(hb);
   }
   var face = new T.Mesh(new T.PlaneGeometry(0.66, 0.66), new T.MeshStandardMaterial({ map: this.faceTexture(t, col), transparent: true, roughness: statue ? 0.35 : 0.5, metalness: statue && ks === 'stein' ? 0.8 : 0, emissive: 0xffffff, emissiveMap: this.faceTexture(t, col), emissiveIntensity: kanjiStyle ? 0 : statue ? (ks === 'stein' ? 0.18 : 0) : 0.35, depthWrite: false }));
