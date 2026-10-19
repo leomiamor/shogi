@@ -16,6 +16,7 @@
     d = d || {}; d.settings = Object.assign({}, DEFAULTS, d.settings || {});
     if (!d.settings.moodV) { if (!d.settings.fieldMood || d.settings.fieldMood === 'feldzug') d.settings.fieldMood = 'kontinent'; d.settings.moodV = 1; } // Kontinent ist neuer Standard (einmalig, 19.10.)
     if (d.settings.moodV < 2) { if (!d.settings.fieldMood || d.settings.fieldMood === 'kontinent') d.settings.fieldMood = 'pass'; d.settings.moodV = 2; } // wieder Gebirgspass wie anfangs (Wunsch 19.10.)
+    if (d.settings.moodV < 3) { if (d.settings.fieldMood === 'feldzug' || d.settings.fieldMood === 'kontinent') d.settings.fieldMood = 'pass'; d.settings.moodV = 3; } // Grenzland und Kontinent nicht mehr wählbar (Wunsch 19.10.)
     d.xp = d.xp || 0; d.lessons = d.lessons || {}; d.puzzles = d.puzzles || {}; d.stats = d.stats || { w: 0, l: 0 }; d.duels = d.duels || [];
     d.rating = d.rating || { r: Rating.START.never, rd: 350, n: 0, hist: [] }; d.prating = d.prating || { r: 800, rd: 350, n: 0 };
     d.titles = d.titles || []; d.skins = d.skins || ['classic']; d.cards = d.cards || {}; d.charges = d.charges || 0; d.losses = d.losses || {}; d.easy = d.easy || {};
@@ -384,6 +385,18 @@
     return '<div class="seg n' + VIEW3D.length + '">' + VIEW3D.map(function (o) { return '<button data-v3="' + o[0] + '" class="' + (view3d() === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
   }
 
+  // ---------- Armee-Schlachtfelder je Edition ----------
+  // Feudal: Board3D.FIELD_MOODS (board3d.js), Einstellung fieldMood. Grenzland (feldzug.js) und Kontinent (kontinent.js) bewusst nicht wählbar
+  // (gestreifte Äcker bzw. abgelehnt, 19.10.). Andere Editionen: Board3D.ED_MOODS (feld_*.js), Einstellung fieldMood_<edition>.
+  var FEUDAL_FIELDS = [['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']];
+  var FIELD_SUB = { pass: 'Abendrot, Schnee und Herbstlaub', tal: 'Kirschblüten, Nebel am Fluss', belagerung: 'Grauer Himmel, Burg unter Feuer', mittag: 'Klarer Mittag im Grünen',
+    m_oedland: 'Trümmer und Brände im Abendlicht', m_neon: 'Nachts zwischen Leuchttürmen', m_eis: 'Eis, Schnee und ein gefallener Titan',
+    f_huegel: 'Burg, Dörfer und Mühlen', f_hort: 'Glut, Fels und Drachen', f_wald: 'Riesenbaum und Irrlichter',
+    h_hof: 'Hof, Heuballen und Zäune', h_schau: 'Schauring mit Ballons', h_park: 'Park im Abendlicht' };
+  function armyFields(ed) { return ed === 'feudal' ? FEUDAL_FIELDS : (window.Board3D && Board3D.ED_MOODS && Board3D.ED_MOODS[ed]) || null; }
+  function fieldKey(ed) { return ed === 'feudal' ? 'fieldMood' : 'fieldMood_' + ed; }
+  function fieldOf(ed) { var L = armyFields(ed); if (!L) return null; var v = ed === 'feudal' ? S.fieldMood : Board3D.edMoodOf(ed, S); return L.some(function (o) { return o[0] === v; }) ? v : L[0][0]; }
+
   // ---------- Stil & Welt ----------
   function mapName() { var m = (TH.maps || []).filter(function (x) { return x.id === S.scene; })[0]; return m ? m.name : ''; }
   // Edition (Fantasy, Sci-Fi, ...) und deren Welten wählen; done() baut danach neu (z. B. Brett im Spiel)
@@ -393,12 +406,16 @@
       var T = THEMES[sel], html = '<h2>Stil & Welt</h2><div class="sw-h">Stil</div><div class="sw-grid sw-themes">';
       Object.keys(THEMES).forEach(function (k) { var t = THEMES[k]; html += '<button class="sw-card' + (k === sel ? ' on' : '') + (t.ready ? '' : ' soon') + '" data-th="' + k + '"><b>' + t.sub + '</b><small>' + t.name + (t.ready ? '' : ' · bald') + '</small></button>'; });
       html += '</div><div class="sw-h">3D-Ansicht' + (S.render === '3d' ? '' : ' <small>(schaltet 3D ein)</small>') + '</div>' + view3dSeg();
-      html += '<div class="sw-h">Welt' + (S.render === '3d' ? '' : ' <small>(nur in 3D, wird eingeschaltet)</small>') + (S.army ? ' <small>(Armee spielt immer auf dem Schlachtfeld)</small>' : '') + '</div><div class="sw-grid sw-maps">';
-      (T.maps || []).forEach(function (m) {
+      var AF = S.army && T.ready && armyFields(sel), cur = AF && S.theme === sel ? fieldOf(sel) : null;
+      html += '<div class="sw-h">' + (AF ? 'Schlachtfeld' : 'Welt') + (S.render === '3d' ? '' : ' <small>(nur in 3D, wird eingeschaltet)</small>') + '</div><div class="sw-grid sw-maps">';
+      if (AF) AF.forEach(function (o) { // Armee: Schlachtfelder der Edition (Vorschau img/maps/army_<edition>_<stimmung>.webp)
+        html += '<button class="sw-card sw-map' + (cur === o[0] ? ' on' : '') + '" data-field="' + o[0] + '" style="background-image:url(img/maps/army_' + sel + '_' + o[0] + '.webp)"><b>' + o[1] + '</b><small>' + (FIELD_SUB[o[0]] || '') + '</small></button>';
+      });
+      else (T.maps || []).forEach(function (m) {
         var on = T.ready && S.scene === m.id;
         html += '<button class="sw-card sw-map' + (on ? ' on' : '') + (T.ready ? '' : ' soon') + '" data-map="' + m.id + '"' + (T.ready ? ' style="background-image:url(img/maps/' + m.id + '.webp)"' : '') + '><b>' + m.name + '</b><small>' + (T.ready ? m.sub || '' : 'bald') + '</small></button>';
       });
-      html += '</div><div class="sw-h">Brett</div><div class="seg n3">' + [['urushi', 'Schwarzlack & Gold'], ['carbon', 'Carbon & Cyan'], ['honig', 'Helles Holz']].map(function (o) { return '<button data-tone="' + o[0] + '" class="' + (S.boardTone === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+      html += '</div>' + (S.army ? '' : '<div class="sw-h">Brett</div><div class="seg n3">' + [['urushi', 'Schwarzlack & Gold'], ['carbon', 'Carbon & Cyan'], ['honig', 'Helles Holz']].map(function (o) { return '<button data-tone="' + o[0] + '" class="' + (S.boardTone === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>'); // Brett-Ton: im Armee-Modus ist kein Brett zu sehen
       html += '<div class="acts"><button class="btn" id="sw-ok">Fertig</button></div>';
       var box = modal(html, 'sw-box');
       box.querySelectorAll('[data-th]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); sel = b.dataset.th; render(); }; });
@@ -406,6 +423,10 @@
         if (!THEMES[sel].ready) { toast('Diese Edition kommt noch.'); return; }
         Sfx.play('ui'); if (S.theme !== sel && THEMES[sel].board) S.boardTone = THEMES[sel].board;
         S.theme = sel; TH = THEMES[sel]; $('#theme-name').textContent = TH.name; S.scene = b.dataset.map; if (HAS3D) S.render = '3d'; save(); render(); done && done();
+      }; });
+      box.querySelectorAll('[data-field]').forEach(function (b) { b.onclick = function () {
+        Sfx.play('ui'); if (S.theme !== sel && THEMES[sel].board) S.boardTone = THEMES[sel].board;
+        S.theme = sel; TH = THEMES[sel]; $('#theme-name').textContent = TH.name; S[fieldKey(sel)] = b.dataset.field; if (HAS3D) S.render = '3d'; save(); render(); done && done();
       }; });
       box.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); setView3d(b.dataset.v3); if (HAS3D) S.render = '3d'; save(); render(); done && done(); }; });
       box.querySelectorAll('[data-tone]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); S.boardTone = b.dataset.tone; save(); render(); done && done(); }; });
@@ -428,7 +449,8 @@
     // Bewusst wenige Optionen (Wunsch 19.10.): Armee-Aussehen, Rückenfähnchen, Steine im 3D, Zugziele, Hot-Seat-Drehen
     // stehen nicht mehr hier, es gelten die Werte aus DEFAULTS (bzw. der zuletzt gespeicherte Wert).
     sec('Darstellung');
-    var sw = h('div', 'set set-sw'); sw.style.setProperty('--img', 'url(' + new URL('img/maps/' + S.scene + '.webp', location.href).href + ')'); sw.innerHTML = '<div class="l"><b>Stil & Welt</b><small>' + TH.sub + ' · ' + mapName() + '</small></div>';
+    var swF = S.army && armyFields(TH.id) && fieldOf(TH.id), swN = swF ? armyFields(TH.id).filter(function (o) { return o[0] === swF; })[0][1] : mapName(); // Armee: Schlachtfeld statt Brett-Welt
+    var sw = h('div', 'set set-sw'); sw.style.setProperty('--img', 'url(' + new URL('img/maps/' + (swF ? 'army_' + TH.id + '_' + swF : S.scene) + '.webp', location.href).href + ')'); sw.innerHTML = '<div class="l"><b>Stil & Welt</b><small>' + TH.sub + ' · ' + swN + '</small></div>';
     var swb = h('button', 'btn small', '🗺 Ändern'); swb.onclick = function () { Sfx.play('ui'); styleWorld(renderSettings); }; sw.appendChild(swb); grp.appendChild(sw);
     seg('palette', 'Farbstil', 'Menüs und Titelbild', [['abend', 'Abendrot'], ['tusche', 'Tusche & Gold'], ['lack', 'Zinnober-Lack'], ['jade', 'Mitternacht-Jade']], applyPalette);
     seg('render', 'Grafik', HAS3D ? '2D-Brett oder 3D-Schlachtfeld' : '3D nicht verfügbar (offline?)', HAS3D ? [['2d', '2D'], ['3d', '3D']] : [['2d', '2D']]);
@@ -438,7 +460,7 @@
     v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
     grp.appendChild(v3);
     seg('fights', 'Kämpfe', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
-    if (S.army) { var edM = TH.id !== 'feudal' && window.Board3D && Board3D.ED_MOODS && Board3D.ED_MOODS[TH.id]; /* andere Editionen: eigene Schlachtfelder (feld_editionen.js) */ if (edM) { S['fieldMood_' + TH.id] = Board3D.edMoodOf(TH.id, S); seg('fieldMood_' + TH.id, 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', edM); } else { S.fieldMood = S.fieldMood || 'pass'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['pass', 'Gebirgspass'], ['kontinent', 'Kontinent'], ['feldzug', 'Grenzland'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); } seg('fieldWeather', 'Wetter', 'Wechselnd: zieht im Lauf der Partie auf und wieder ab', [['wechsel', 'Wechselnd'], ['klar', 'Klar'], ['regen', 'Regen'], ['gewitter', 'Gewitter'], ['nebel', 'Nebel']]); }
+    if (S.army) { var AFs = armyFields(TH.id); if (AFs) { S[fieldKey(TH.id)] = fieldOf(TH.id); seg(fieldKey(TH.id), 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', AFs); } seg('fieldWeather', 'Wetter', 'Wechselnd: zieht im Lauf der Partie auf und wieder ab', [['wechsel', 'Wechselnd'], ['klar', 'Klar'], ['regen', 'Regen'], ['gewitter', 'Gewitter'], ['nebel', 'Nebel']]); }
     sec('Ton');
     var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); grp.appendChild(vs);
     sec('Spiel');

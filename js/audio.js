@@ -144,11 +144,15 @@ var Sfx = (function () {
   function board() { try { var g = window.ShogiApp && ShogiApp.G && ShogiApp.G(), r = g && g.r; return r && r.orbit ? r : null; } catch (e) { return null; } }
   // Ambiente je Schlachtfeld-Stimmung (Pass: Wind, Flusstal: Bach, Belagerung: Feuer, Sommertag: Zikaden), Fahnen, Regen, seltene Krähen/ferne Schreie.
   // Loops mit weicher Überblendung (MP3 loopt nicht lückenlos). Stumm, Effekte 0 oder Tab im Hintergrund: nichts ansetzen.
-  var amb = { L: {}, f: 0, oneAt: 0 }, MOOD = { pass: 'amb_wind', tal: 'amb_river', belagerung: 'amb_fire', mittag: 'amb_cicada', feldzug: 'amb_river', kontinent: 'amb_river' };
-  function ambLayer(k, want) {
+  var amb = { L: {}, f: 0, oneAt: 0 }, MOOD = { pass: 'amb_wind', tal: 'amb_river', belagerung: 'amb_fire', mittag: 'amb_cicada', feldzug: 'amb_river', kontinent: 'amb_river',
+    m_oedland: 'amb_wind', m_neon: 'amb_wind', m_eis: 'amb_wind', f_huegel: 'amb_wind', f_hort: 'amb_fire', f_wald: 'amb_wind', h_hof: 'amb_cicada', h_park: 'amb_cicada' }; // Editionen: eigene Felder (feld_*.js)
+  // Stimmung des tatsächlich gebauten Feldes (andere Editionen haben eigene Schlüssel, settings.fieldMood gilt nur für Feudal)
+  function moodKey(r) { var F = window.Board3D && Board3D.FIELD_MOODS, k; if (F && r.mood) for (k in F) if (F[k] === r.mood) return k; return r.settings.fieldMood || 'pass'; }
+  function ambLayer(k, want, lp) {
     var L = amb.L[k] || (amb.L[k] = { g: null, next: 0, v: -1 }), t = ctx.currentTime;
     if (want > 0.01) load(k, 0); else if (!L.g) return;
-    if (!L.g) { L.g = ctx.createGain(); L.g.gain.value = 0; L.g.connect(ambBus); }
+    if (!L.g) { L.g = ctx.createGain(); L.g.gain.value = 0; if (lp) { L.lp = ctx.createBiquadFilter(); L.lp.type = 'lowpass'; L.lp.frequency.value = lp; L.g.connect(L.lp); L.lp.connect(ambBus); } else L.g.connect(ambBus); }
+    if (lp && L.lp) L.lp.frequency.setTargetAtTime(lp, t, 1);
     if (Math.abs(want - L.v) > 0.01) { L.v = want; L.g.gain.cancelScheduledValues(t); L.g.gain.setTargetAtTime(want, t, 1.2); }
     if (want <= 0.01) { L.next = 0; return; }
     if (has(k) && t + 0.6 >= L.next) {
@@ -161,8 +165,14 @@ var Sfx = (function () {
     setTimeout(ambTick, 500);
     curEd = edition(); if (mus && mus.edId !== curEd) { musStop(); if (wantMusic && vol.music > 0) musStart(); }
     var r = board(), live = !vol.mute && vol.sfx > 0 && !document.hidden, on = !!(live && r && r.look === 'feld' && r.settings && r.settings.army), W = (on && r.wx) || {}, t = ctx.currentTime;
-    var base = on ? MOOD[r.settings.fieldMood || 'pass'] : null, rain = W.rain || 0;
-    Object.keys(MOOD).forEach(function (m) { var k = MOOD[m]; ambLayer(k, k === base ? (k === 'amb_fire' ? 0.45 + 0.07 * Math.min(8, r.firesLit || 0) : 0.55) * (1 - 0.5 * rain) : 0); });
+    var base = on ? MOOD[moodKey(r)] || null : null, rain = W.rain || 0;
+    // Bach/Fluss (19.10., User: „extrem nervig laut“): −12 dB unter den anderen Loops, fern (Tiefpass 1,4 kHz → 500 Hz beim Herauszoomen),
+    // wird aus der Höhe leiser und schwillt langsam an und ab statt voll durchzulaufen
+    var zf = on ? sstep(r.orbit.radius, 14, 70) : 0, swell = 0.55 + 0.45 * Math.max(0, Math.sin(t * 2 * Math.PI / 26) * 0.7 + Math.sin(t * 2 * Math.PI / 11) * 0.3);
+    ['amb_wind', 'amb_river', 'amb_fire', 'amb_cicada'].forEach(function (k) {
+      var v = k !== base ? 0 : k === 'amb_fire' ? 0.45 + 0.07 * Math.min(8, r.firesLit || 0) : k === 'amb_river' ? 0.55 * 0.25 * (1 - 0.7 * zf) * swell : 0.55;
+      ambLayer(k, v * (1 - 0.5 * rain), k === 'amb_river' ? 1400 - 900 * zf : 0);
+    });
     ambLayer('amb_flag', on ? 0.3 + 0.2 * (W.storm || 0) : 0); ambLayer('amb_rain', on ? 0.9 * rain : 0);
     if (on && W.storm > 0.1) load('thunder', 2);
     if (on && ED[curEd]) ['bed', 'drum', 'impact', 'clash', 'hit', 'fall', 'cry'].forEach(function (k) { var e = rk(k); if (e && e !== k) load(e, XS[e] || 0); }); // Grundklänge der Edition vorladen
