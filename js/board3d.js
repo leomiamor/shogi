@@ -1042,7 +1042,7 @@ Board3D.prototype.figUrl = function (t, col) {
   return 'models/fig/' + t + '_' + col + '.glb';
 };
 // Statuen-Look: alle Figuren eines Spielers in einem Material, Normal-Map des Modells bleibt für die Details
-Board3D.STATUE_READY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14]; // Typen, deren Statuen-Modell die Prüfung bestanden hat
+Board3D.STATUE_READY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14]; // Typen, deren Statuen-Modell die Prüfung bestanden hat
 Board3D.promoOnBase = function (ed, t) { return t >= 9 && t <= 12 && ((ed === 'feudal' ? Board3D.STATUE_READY : Board3D.STATUE_READY_ED[ed]) || []).indexOf(t) < 0; };
 Board3D.STATUE_READY_ED = { mecha: [1, 3, 4, 5, 8], fantasy: [1, 8], hunde: [] }; // dito für die anderen Editionen
 Board3D.STATUE = { gold: [0xd9a93a, 0.28, 1], silber: [0xc9ced6, 0.25, 1], bronze: [0x7a4a26, 0.35, 0.85] };
