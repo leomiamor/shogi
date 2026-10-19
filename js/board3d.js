@@ -2538,15 +2538,15 @@ Board3D.prototype.makePiece = function (p, cap) {
     else if (ska) this.buildSquad(g, ska.src, t, col, ska);
     else if (skb) {
       // Skelett-Modell nachladen, solange Platzhalter; schlägt es fehl, normales Statuen-Regiment
-      var fig2 = Figures3D.build(T, t, col, f.color); fig2.position.set(0, 0.2, -0.02); fig2.scale.multiplyScalar(1.6); g.add(fig2); g.userData.fig = fig2;
+      var fig2 = statue ? new T.Group() : Figures3D.build(T, t, col, f.color); fig2.position.set(0, 0.2, -0.02); fig2.scale.multiplyScalar(1.6); g.add(fig2); g.userData.fig = fig2;
       SkinAnim.load(skb).then(function (A2) { if (g.userData.fig === fig2) { g.remove(fig2); g.userData.fig = null; this.buildSquad(g, A2.src, t, col, A2); } }.bind(this))
         .catch(function () { if (g.userData.fig === fig2 && url) Models.load(url).then(function (sc) { if (g.userData.fig === fig2) { g.remove(fig2); g.userData.fig = null; this.buildSquad(g, sc, t, col); } }.bind(this)); }.bind(this));
     }
     else if (src) put(g, src, t, col);
     else if (!url && this.theme.id !== 'feudal') { /* Modell fehlt noch: nur Sockel mit Kanji */ }
     else {
-      var fig = Figures3D.build(T, t, col, f.color); fig.position.set(0, 0.2, -0.02); fig.scale.multiplyScalar(1.6); g.add(fig); g.userData.fig = fig;
-      // KI-Figur (TRELLIS.2) nachladen und den Platzhalter ersetzen
+      var fig = statue ? new T.Group() : Figures3D.build(T, t, col, f.color); fig.position.set(0, 0.2, -0.02); fig.scale.multiplyScalar(1.6); g.add(fig); g.userData.fig = fig;
+      // KI-Figur (TRELLIS.2) nachladen und den Platzhalter ersetzen; im Statuen-Modus ist der Platzhalter leer (Wunsch 19.10.: keine bunten Ersatzfiguren beim Laden, nur der Stein)
       if (url && src === null && window.Models && Models.load) Models.load(url).then(function (sc) { if (g.userData.fig === fig) { g.remove(fig); g.userData.fig = null; if (army) this.buildSquad(g, sc, t, col); else this.attachGlb(g, sc, col); } }.bind(this)).catch(function () {});
     }
   }
