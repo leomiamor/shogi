@@ -2139,7 +2139,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   this.hlGroup.visible = false; if (this.look === 'feld') this.showTag(null);
   self._camBack = false;
   if (!short) { self.cineDrift = 0; this.tween(700, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.15 - cam0.y) * e; o.radius = cam0.r + (c1r - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; self.viewShift = vs0 * (1 - e); }).then(function () { if (!self._camBack) self.cineDrift = 0.00007 * (Math.random() < .5 ? 1 : -1); }); }
-  function camBack(ms) { if (short || self._camBack) return; self._camBack = true; self.cineDrift = 0; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal };
+  function camBack(ms) { if (short || self._camBack || info.promo && (self.settings.fights || 'voll') === 'voll') return; /* Beförderung: Kamera bleibt dran, promoFx fährt weiter zur Truppe und dann zurück */ self._camBack = true; self.cineDrift = 0; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal };
     while (c1.th - cam0.th > Math.PI) c1.th -= Math.PI * 2; while (c1.th - cam0.th < -Math.PI) c1.th += Math.PI * 2; /* kürzester Schwenk, kein Rundflug */ self.tween(ms || 900, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; self.viewShift = vs0 * e; }).then(function () { self._camBack = false; }); }
   function wp(s) { var v = new T.Vector3(); s.getWorldPosition(v); return v; }
   function toLocal(s, x, z) { var v = new T.Vector3(x, BT, z); if (s.parent) { s.parent.updateWorldMatrix(true, false); s.parent.worldToLocal(v); } return v; }
@@ -2813,12 +2813,29 @@ Board3D.prototype.animate = function (info) {
     this.tween(700, function (k) { beam.material.opacity = Math.sin(k * Math.PI) * 0.45; beam.scale.x = beam.scale.z = 1 - k * 0.6; }).then(function () { self.scene.remove(beam); });
   } else { mover = this.pieces[info.from]; var fp = this.sqPos(info.from); from = { x: fp.x, z: fp.z, y: this.BT }; }
   delete this.pieces[info.from]; this._lastMove = { g: mover, to: info.to };
+  var o = this.orbit, home = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal };
+  function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
+  function camTo(c, ms) { var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, ph: o.phi, th: o.thetaGoal }; while (c.th - c1.th > Math.PI) c.th -= Math.PI * 2; while (c.th - c1.th < -Math.PI) c.th += Math.PI * 2;
+    self.cineDrift = 0; return self.tween(ms, function (k) { var e = ease(k); o.target.set(c1.x + (c.x - c1.x) * e, c1.y + (c.y - c1.y) * e, c1.z + (c.z - c1.z) * e); o.radius = c1.r + (c.r - c1.r) * e; o.phi = c1.ph + (c.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (c.th - c1.th) * e; }); }
+  // Beförderung mit Kamerafahrt wie beim Kampf: auf die Truppe/Figur zoomen, Effekt zeigen, danach zurück zur Ansicht vor dem Zug
+  var pilA = 0.55; // Lichtsäule: in der Nahsicht schwächer, sonst überstrahlt sie die Truppe
   function promoFx() {
     if (!info.promo) return;
+    if ((self.settings.fights || 'voll') !== 'voll') return promoFx0();
+    pilA = 0.2;
+    var tr = mover.userData.troops, ext = 0.9, cx = to.x, cz = to.z;
+    if (tr && tr.length) { var v = new T.Vector3(); cx = cz = 0; tr.forEach(function (s) { s.getWorldPosition(v); cx += v.x; cz += v.z; }); cx /= tr.length; cz /= tr.length; tr.forEach(function (s) { s.getWorldPosition(v); ext = Math.max(ext, Math.hypot(v.x - cx, v.z - cz) + 0.35); }); }
+    var vfh = self.camera.fov * Math.PI / 360, hfh = Math.atan(Math.tan(vfh) * self.camera.aspect), r1 = Math.max(2.4, Math.min(9, ext / Math.tan(Math.min(vfh, hfh)) * 1.15));
+    self.hlGroup.visible = false; if (self.look === 'feld') self.showTag(null);
+    return camTo({ x: cx, y: self.BT + 0.3, z: cz, r: r1, ph: 1.12, th: o.thetaGoal + (info.col === 0 ? 0.35 : -0.35) }, 650)
+      .then(promoFx0).then(function () { return self.tween(650, function () { }); })
+      .then(function () { camTo({ x: home.x, y: home.y, z: home.z, r: home.r, ph: home.ph, th: home.th }, 900); });
+  }
+  function promoFx0() {
     // Beförderung: Stein hebt ab, dreht sich um (wie echter Koma), Lichtsäule
     var pillar = new T.Mesh(new T.CylinderGeometry(0.5, 0.5, 10, 16, 1, true), new T.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
     pillar.position.set(to.x, self.BT + 5, to.z); self.scene.add(pillar);
-    self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * 0.55; }).then(function () { self.scene.remove(pillar); });
+    self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * pilA; }).then(function () { self.scene.remove(pillar); });
     if (mover.userData.troops || self.look === 'feld') return self.tween(450, function () { }).then(function () { self.emit(to.x, self.BT + 0.3, to.z, 0xffd76a, 50, 2.5, 1.2); });
     if (mover.userData.sk) return self.figPromo(mover, after.board[info.to], to).then(function (np) { mover = np; }); // Statue mit Skelett: Jubel statt Umdrehen
     return self.tween(220, function (k) { mover.position.y = self.BT + k * 0.9; mover.rotation.z = k * Math.PI / 2; }).then(function () {

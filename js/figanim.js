@@ -627,7 +627,7 @@
     while (th1 - o.theta > Math.PI) th1 -= Math.PI * 2; while (th1 - o.theta < -Math.PI) th1 += Math.PI * 2;
     if (!short) this.tween(600, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mzz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.3 - cam0.y) * e; o.radius = cam0.r + (cr - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; self.viewShift = vs0 * (1 - e); });
     function camBack() {
-      if (short) return; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi };
+      if (short || info.promo && (self.settings.fights || 'voll') === 'voll') return; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi }; // Beförderung: promoFx übernimmt die Rückfahrt
       while (c1.th - cam0.th > Math.PI) c1.th -= Math.PI * 2; while (c1.th - cam0.th < -Math.PI) c1.th += Math.PI * 2;
       self.tween(800, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; self.viewShift = vs0 * e; });
     }
