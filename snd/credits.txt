@@ -89,3 +89,97 @@ amb_flag       IENBA - "Fabric Flapping" - https://freesound.org/s/701647/ - CC0
 amb_rain       unfa - "Slowly Raining Loop" - https://freesound.org/s/177479/ - CC0
 thunder1       netaj - "thunder" - https://freesound.org/s/193170/ - CC0
 thunder2       lennyboy - "Thunder.ogg" - https://freesound.org/s/244053/ - CC0
+
+Edition Hunde (19.10.): Bellen je Rasse, Knurren, Winseln statt Sterbelauten, Bellchor als Jubel; Musik verspielt (Ukulele, Pizzicato/Ragtime)
+dg_small1      LittleBigSounds - "LBS_FX DOG Small Alert Bark001.wav" - https://freesound.org/s/163459/ - CC0
+dg_small2      AntumDeluge - "Puppy Bark" - https://freesound.org/s/583142/ - CC0
+dg_small3      MisterTood - "Dog bark2.wav" - https://freesound.org/s/9032/ - CC0
+dg_mid1        Mrthenoronha - "Barking 4.wav" - https://freesound.org/s/420447/ - CC0
+dg_mid2        Mrthenoronha - "Barking 2.wav" - https://freesound.org/s/420449/ - CC0
+dg_mid3        Ryding - "Dog barking.wav" - https://freesound.org/s/110134/ - CC0
+dg_big1        v23 - "Angry big dog barking - Close [d15].wav" - https://freesound.org/s/440866/ - CC0
+dg_big2-3      mrrap4food - "Large Dog Aggressive Bark.mp3" - https://freesound.org/s/619045/ - CC0
+dg_howl1       simcotter - "dog howling.wav" - https://freesound.org/s/115357/ - CC0
+dg_howl2       LaughingCynic - "Good Boy Howl. Dog bark." - https://freesound.org/s/756309/ - CC0
+dg_growl1      wingz - "growl.wav" - https://freesound.org/s/13789/ - CC0
+dg_growl2-3    5deMayo - "Dachshund Play Growling.mp3" - https://freesound.org/s/169143/ - CC0
+dg_whine1      Breviceps - "Whining Dog" - https://freesound.org/s/462660/ - CC0
+dg_whine2      esperri - "Dog Whine 5.wav" - https://freesound.org/s/118970/ - CC0
+dg_whine3      AustinXYZ - "Chihuahua Puppy Whine" - https://freesound.org/s/350593/ - CC0
+dg_snap        qubodup - "Dog Teeth Clattering Clicking" - https://freesound.org/s/841350/ - CC0
+dg_squeak      Breviceps - "Squeaky Toy #1" - https://freesound.org/s/468443/ - CC0
+dg_chorus      ivolipa - "Group_of_Dogs_Barking.WAV" - https://freesound.org/s/337101/ - CC0
+dg_paws (Loop) luckylittleraven - "dogskitter.wav" - https://freesound.org/s/208654/ - CC0
+dg_bed (Loop)  Ligidium - "Miniature Dachshunds Playing.wav" - https://freesound.org/s/192235/ - CC0
+mus_dg1 (Loop) reasanka - "short ukulele loop by rea.mp3" - https://freesound.org/s/383023/ - CC0
+mus_dg2 (Loop) code_box - "Full of Energy" - https://freesound.org/s/520192/ - CC0
+mus_dg3 (Loop) code_box - "Rogue Strings Rag" - https://freesound.org/s/520931/ - CC0
+
+Edition Mecha (19.10.): Laser, Railgun, Energieklinge, Metall, Servos, Düsen, Explosionen; Funksprüche statt Kampfrufe; Musik dunkler Synth
+mc_laser1      MikeE63 - "blaster shot single 5.wav" - https://freesound.org/s/466867/ - CC0
+mc_laser2      aust_paul - "possiblelazer.wav" - https://freesound.org/s/30935/ - CC0
+mc_laser3      zazz.sound.design - "Laser Gun.wav" - https://freesound.org/s/361471/ - CC0
+mc_rail1       deleted_user_1941307 - "shipboard_railgun.mp3" - https://freesound.org/s/155790/ - CC0
+mc_rail2       qubodup - "Railgun - Extremely LOUD Cannon" - https://freesound.org/s/162260/ - CC0
+mc_blade1      gyzhor - "lightsaber4.mp3" - https://freesound.org/s/47126/ - CC0
+mc_blade2      joe93barlow - "swing7.wav" - https://freesound.org/s/78685/ - CC0
+mc_blade3      h2p34 - "Lightsaber Whoosh" - https://freesound.org/s/650564/ - CC0
+mc_metal1      ani_music - "ANI Big Pipe Hit" - https://freesound.org/s/244983/ - CC0
+mc_metal2      michorvath - "Anvil Hit 2" - https://freesound.org/s/270588/ - CC0
+mc_metal3      Rickplayer - "Metal Impact" - https://freesound.org/s/530486/ - CC0
+mc_servo1      Skullsmasha - "MechanicalClamp.wav" - https://freesound.org/s/123253/ - CC0
+mc_servo2, mc_step (Loop)Breviceps - "Battle Mech walks (fast & slow sequence)" - https://freesound.org/s/557594/ - CC0
+mc_servo3      pgi - "mech_step_001.ogg" - https://freesound.org/s/211957/ - CC0
+mc_heavy (Loop)Artem_Zaitsev - "Heavy Robot Footsteps" - https://freesound.org/s/837389/ - CC0
+mc_jet1        insanity54 - "jumpjet" - https://freesound.org/s/763148/ - CC0
+mc_jet2        Maxx222 - "RocketThrustMaxx.wav" - https://freesound.org/s/446764/ - CC0
+mc_boom1       tommccann - "Explosion_01.wav" - https://freesound.org/s/235968/ - CC0
+mc_boom2       rhapsodize - "Cinematic_Boom_Rhapsodize.wav" - https://freesound.org/s/255111/ - CC0
+mc_boom3       studiomandragore - "Booms.wav" - https://freesound.org/s/401630/ - CC0
+mc_down1       noirenex - "Power Down" - https://freesound.org/s/159399/ - CC0
+mc_down2       Jofae - "Engine Dying" - https://freesound.org/s/368512/ - CC0
+mc_down3       ochimaru - "system_grind_02.wav" - https://freesound.org/s/140409/ - CC0
+mc_alarm       jbum - "jsyd_klaxon2.wav" - https://freesound.org/s/32089/ - CC0
+mc_rotor (Loop)qubodup - "Helicopter Loop.flac" - https://freesound.org/s/187678/ - CC0
+mc_roar1       ItsThatRoboGuy - "Robotic Monster Roar" - https://freesound.org/s/528772/ - CC0
+mc_roar2       Rotaredom - "Mechanical_Roar.wav" - https://freesound.org/s/640805/ - CC0
+mc_zap1        michael_grinnell - "Electric zap.wav" - https://freesound.org/s/512471/ - CC0
+mc_zap2        FlashTrauma - "Electricity" - https://freesound.org/s/398274/ - CC0
+Funk-Squelch   kyles - "tv channel change static blips (scanner CB radio tuning static blips +static sharp +scanner CB radio blips on+off good2).flac" - https://freesound.org/s/454259/ - CC0
+mus_mc1 (Loop) DylanTheFish - "Ambient Space 4.wav" - https://freesound.org/s/442181/ - CC0
+mus_mc2 (Loop) Gerent - "tention-mounts-ticking-clock-loop-dread.ogg" - https://freesound.org/s/558256/ - CC0
+mus_mc3 (Loop) Disquantic - "Cyberpunk Beat.wav" - https://freesound.org/s/525290/ - CC0
+mc_radio1-6, mc_lost1-3, mc_vic1-2: lokal erzeugt mit Qwen3-TTS-12Hz-1.7B-VoiceDesign (Alibaba Qwen, Apache-2.0), englisch, mit Funkfilter, Verzerrung und Squelch
+mc_bed (Loop): lokal gemischt aus den Mecha-Klängen oben
+
+Edition Fantasy (19.10.): Stahl auf Stahl, Schilde, Magie, Greif, Golem, Einhorn; Rufe englisch im Warhammer-Stil; Musik Chor und Orchester (Drache, Hufe, Flügel, Schwert und Speer wie Feudal)
+fa_clash1      spycrah - "Sword clash 1.wav" - https://freesound.org/s/471095/ - CC0
+fa_clash2      Bird_man - "Sword Clash.wav" - https://freesound.org/s/275159/ - CC0
+fa_clash3      ethanchase7744 - "Epic Sword Clang 2.wav" - https://freesound.org/s/439538/ - CC0
+fa_shield1     LilMati - "Attack Blocked.wav" - https://freesound.org/s/523760/ - CC0
+fa_shield2     colorsCrimsonTears - "Block - [Rpg] 1" - https://freesound.org/s/641896/ - CC0
+fa_axe1        smokebomb99 - "Axe Slash 1" - https://freesound.org/s/147290/ - CC0
+fa_axe2        dslrguide - "Metal Hit 2 " - https://freesound.org/s/321482/ - CC0
+fa_magic1      Aleks41 - "Magic Strike.wav" - https://freesound.org/s/406063/ - CC0
+fa_magic2      spookymodem - "Magic Smite.wav" - https://freesound.org/s/249819/ - CC0
+fa_magic3      spookymodem - "Magic Missiles.wav" - https://freesound.org/s/249817/ - CC0
+fa_griff1-2    J.R.Mythical - "Gryffin Cry.mp3" - https://freesound.org/s/563685/ - CC0
+fa_griff3      GrayEpic - "Eagle s.mp3" - https://freesound.org/s/697363/ - CC0
+fa_rock1       uagadugu - "Cracking Earthquake (cracking soil, cracking stone)" - https://freesound.org/s/222521/ - CC0
+fa_rock2       adamgryu - "Rocks.wav" - https://freesound.org/s/336023/ - CC0
+fa_golem       Logicogonist - "bass 16b.wav" - https://freesound.org/s/209943/ - CC0
+fa_neigh1      poodaddy69 - "Horse" - https://freesound.org/s/521246/ - CC0
+fa_neigh2      shadoWisp - "horse neigh shortened.wav" - https://freesound.org/s/269571/ - CC0
+fa_chime       husky70 - "Echo Chime Chime.mp3" - https://freesound.org/s/161316/ - CC0
+fa_horn        adharca - "war horn.wav" - https://freesound.org/s/539956/ - CC0
+fa_drum        Terry93D - "Timpani C2" - https://freesound.org/s/369394/ - CC0
+fa_warcry1     joelcarrsound - "Middle Ages War Cry.wav" - https://freesound.org/s/521830/ - CC0
+fa_warcry2     joelcarrsound - "Middle Ages War Cry 3.wav" - https://freesound.org/s/521831/ - CC0
+fa_warcry3     joelcarrsound - "Middle Ages War Cry 2.wav" - https://freesound.org/s/521832/ - CC0
+fa_cheer (Jubel)AlaskaRobotics - "cheering and clapping crowd 2" - https://freesound.org/s/221567/ - CC0
+mus_fa1 (Loop) Patrick_Corra - "Choir" - https://freesound.org/s/500862/ - CC0
+mus_fa2 (Loop) awrmacd - "Orchestral Suspense Loop 1" - https://freesound.org/s/387223/ - CC0
+mus_fa3 (Loop) Airwolf89 - "Epic_Battle_Music_1.MP3" - https://freesound.org/s/346455/ - CC0
+fa_cry1-4, fa_shout1-5, fa_cheer (Stimmen): lokal erzeugt mit Qwen3-TTS-12Hz-1.7B-VoiceDesign (Alibaba Qwen, Apache-2.0), englisch; fa_cheer als Chor über echtem Jubel
+fa_bed (Loop): lokal gemischt aus den Fantasy-Klängen oben
+Fantasy-Sterbelaute nutzen die sprachfreien die1-5 (siehe oben)

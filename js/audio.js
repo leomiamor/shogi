@@ -51,9 +51,71 @@ var Sfx = (function () {
     hirsch: { swing: ['snort', 0.5], shout: ['snort', 0.35], cry: ['stag', 0.85], die: ['stag', 0.4, 1.2], step: ['hooves', 1.2] },
     drache: { swing: ['wing', 0.6, 0.6], hit: ['dgrowl', 0.6], shout: ['dgrowl', 0.4], cry: ['dragon', 0.9], die: ['dragon', 0.6, 0.8], mag: ['flame', 0.8], step: ['flap', 1.3, 0.55] }
   };
+  // Editionen: Feudal ist die Grundlage. Die anderen haben eigene Typ-Arten (kind), leiten allgemeine Kampfklänge um (remap, null = still)
+  // und bringen eigene Musik mit (calm/mid/hi = ruhig, Spannung, Kampf; Loops mit Überblendung). Sets laden erst beim ersten Gebrauch.
+  var ED = {
+    hunde: {
+      kind: { 1: 'klein', 3: 'klein', 9: 'klein', 11: 'klein', 2: 'mittel', 4: 'mittel', 5: 'mittel', 6: 'mittel', 8: 'mittel', 10: 'mittel', 12: 'mittel', 7: 'husky', 13: 'gross', 14: 'gross' },
+      // kein Blut, keine Sterbeschreie: Treffer = Knurren/Schnappen, Sturz = Winseln, Jubel = Bellchor, Schlachtbeginn = Heulen
+      remap: { clash: 'dg_snap', hit: 'dg_growl', impact: 'dg_growl', fall: 'dg_whine', cry: 'dg_chorus', cheer: 'dg_chorus', bed: 'dg_bed', horn: 'dg_howl', drum: null, wood: null, body: null, die: 'dg_whine', kiai: 'dg_mid', warcry: 'dg_chorus' },
+      music: ['mus_dg1', 'mus_dg2', 'mus_dg3']
+    },
+    mecha: {
+      kind: { 1: 'droide', 9: 'droide', 2: 'rail', 10: 'rail', 3: 'sprung', 11: 'sprung', 4: 'duell', 8: 'duell', 12: 'duell', 5: 'schild', 6: 'psi', 7: 'gunship', 13: 'laeufer', 14: 'mdrache' },
+      // Funksprüche statt Kampfrufe, Metall statt Fleisch, Explosion statt Taiko, Alarm statt Muschelhorn
+      remap: { clash: 'mc_metal', hit: 'mc_metal', impact: 'mc_boom', fall: 'mc_metal', cry: 'mc_radio', warcry: 'mc_radio', kiai: null, die: 'mc_down', cheer: 'mc_vic', horn: 'mc_alarm', drum: 'mc_boom', wood: null, body: null, bed: 'mc_bed', whoosh: 'mc_servo', zap: 'mc_laser', fire: 'mc_boom', crumble: 'mc_metal' },
+      music: ['mus_mc1', 'mus_mc2', 'mus_mc3']
+    },
+    fantasy: {
+      kind: { 1: 'ritter', 5: 'ritter', 8: 'ritter', 9: 'ritter', 2: 'pike', 10: 'pike', 4: 'zwerg', 12: 'zwerg', 3: 'greif', 11: 'greif', 6: 'magier', 7: 'golem', 13: 'einhorn', 14: 'drache' },
+      // Rufe englisch im Warhammer-Stil, Stahl auf Stahl, Schilde, Pauke statt Taiko, Kriegshorn
+      remap: { clash: 'fa_clash', cry: 'fa_cry', warcry: 'fa_warcry', kiai: 'fa_shout', die: 'fa_die', cheer: 'fa_cheer', horn: 'fa_horn', drum: 'fa_drum', wood: 'fa_shield', bed: 'fa_bed', zap: 'fa_magic', crumble: 'fa_rock' },
+      music: ['mus_fa1', 'mus_fa2', 'mus_fa3']
+    }
+  };
+  var FILE = { fa_die: 'die' }; // Sets, die vorhandene Dateien nutzen (die1–5: echte Schreie ohne Sprache)
+  Object.assign(XS, { mc_laser: 3, mc_rail: 2, mc_blade: 3, mc_metal: 3, mc_servo: 3, mc_step: 0, mc_heavy: 0, mc_jet: 2, mc_boom: 3, mc_down: 3, mc_alarm: 0, mc_rotor: 0, mc_roar: 2, mc_zap: 2,
+    mc_radio: 6, mc_lost: 3, mc_vic: 2, mc_bed: 0, fa_clash: 3, fa_shield: 2, fa_axe: 2, fa_magic: 3, fa_griff: 3, fa_rock: 2, fa_golem: 0, fa_neigh: 2, fa_chime: 0, fa_horn: 0, fa_drum: 0,
+    fa_warcry: 3, fa_cry: 4, fa_shout: 5, fa_cheer: 0, fa_bed: 0, fa_die: 5 });
+  Object.assign(GAP, { mc_laser: 70, mc_rail: 400, mc_metal: 90, mc_servo: 150, mc_jet: 400, mc_boom: 350, mc_down: 300, mc_radio: 1800, mc_lost: 2500, mc_roar: 1500, mc_zap: 80,
+    fa_clash: 80, fa_shield: 120, fa_axe: 100, fa_magic: 200, fa_griff: 1200, fa_rock: 250, fa_golem: 600, fa_neigh: 1500, fa_chime: 1500, fa_drum: 250, fa_warcry: 700, fa_cry: 1500, fa_shout: 250, fa_die: 250 });
+  // Mecha: Servos, Hydraulik, Schritte; Laser, Railgun, Energieklinge; Funk bei Angriff und Ausfall
+  Object.assign(VOX, {
+    droide: { swing: ['mc_servo', 0.45], hit: ['mc_metal', 0.6], mag: ['mc_laser', 0.6], shout: ['mc_radio', 0.35], cry: ['mc_radio', 0.75], die: ['mc_down', 0.5], step: ['mc_step', 1.1] },
+    rail: { swing: ['mc_servo', 0.45], hit: ['mc_metal', 0.65], mag: ['mc_rail', 0.7], shout: ['mc_radio', 0.35], cry: ['mc_radio', 0.75], die: ['mc_lost', 0.55], step: ['mc_step', 1.1, 0.95] },
+    sprung: { swing: ['mc_jet', 0.6], hit: ['mc_metal', 0.6], shout: ['mc_radio', 0.35], cry: ['mc_radio', 0.75], also: ['mc_jet', 0.6], die: ['mc_down', 0.5], step: ['mc_step', 1.1, 1.08] },
+    duell: { swing: ['mc_blade', 0.6], hit: ['mc_metal', 0.65], parry: ['mc_blade', 0.5, 0.9], shout: ['mc_radio', 0.35], cry: ['mc_radio', 0.75], die: ['mc_lost', 0.55], step: ['mc_step', 1.1, 0.95] },
+    schild: { swing: ['mc_servo', 0.5, 0.85], hit: ['mc_metal', 0.7, 0.8], parry: ['mc_metal', 0.6, 0.75], shout: ['mc_radio', 0.35], cry: ['mc_radio', 0.75], die: ['mc_down', 0.55, 0.85], step: ['mc_heavy', 1.2] },
+    psi: { mag: ['mc_zap', 0.6], hit: ['mc_zap', 0.4], shout: ['mc_radio', 0.3], cry: ['mc_radio', 0.7], die: ['mc_down', 0.45, 1.15], step: ['mc_step', 0.9, 1.1] },
+    gunship: { swing: ['mc_jet', 0.5, 0.8], mag: ['mc_laser', 0.6, 0.75], hit: ['mc_boom', 0.6], shout: ['mc_radio', 0.3], cry: ['mc_radio', 0.75], die: ['mc_boom', 0.7], step: ['mc_rotor', 0.9] },
+    laeufer: { swing: ['mc_servo', 0.6, 0.75], mag: ['mc_rail', 0.7, 0.8], hit: ['mc_metal', 0.7, 0.7], shout: ['mc_servo', 0.4, 0.7], cry: ['mc_alarm', 0.5], die: ['mc_boom', 0.7, 0.85], step: ['mc_heavy', 1.4, 0.9] },
+    mdrache: { swing: ['mc_jet', 0.6, 0.8], hit: ['mc_metal', 0.7, 0.7], shout: ['mc_roar', 0.4], cry: ['mc_roar', 0.9], die: ['mc_roar', 0.6, 0.75], mag: ['flame', 0.8], step: ['mc_heavy', 1.4, 0.8] },
+    // Fantasy: Ritter und Pikeniere mit Stahl, Zwerge tiefer, Greif und Einhorn als Kreaturen, Golem aus Stein
+    ritter: { swing: ['slash', 0.6], hit: ['cut', 0.65], parry: ['fa_clash', 0.55], shout: ['fa_shout', 0.4], cry: ['fa_cry', 0.85], die: ['fa_die', 0.45], step: ['march', 1.1, 0.95] },
+    pike: { swing: ['thrust', 0.6], hit: ['stab', 0.7], parry: ['fa_shield', 0.5], shout: ['fa_shout', 0.4], cry: ['fa_warcry', 0.9], pack: 2, die: ['fa_die', 0.45], step: ['march', 1.1] },
+    zwerg: { swing: ['fa_axe', 0.6], hit: ['fa_axe', 0.6, 0.85], parry: ['fa_shield', 0.55, 0.85], shout: ['fa_shout', 0.45, 0.8], cry: ['fa_cry', 0.85, 0.85], die: ['fa_die', 0.45, 0.8], step: ['march', 1.1, 0.85] },
+    magier: { mag: ['fa_magic', 0.7], hit: ['fa_magic', 0.4], shout: ['fa_shout', 0.35], cry: ['fa_cry', 0.8], also: ['fa_chime', 0.4], die: ['fa_die', 0.45], step: ['march', 0.9, 1.05] },
+    greif: { swing: ['wing', 0.55], hit: ['fa_griff', 0.4, 1.1], shout: ['fa_griff', 0.35, 1.1], cry: ['fa_griff', 0.85], also: ['wing', 0.6], die: ['fa_griff', 0.45, 0.8], step: ['flap', 1, 0.9] },
+    golem: { swing: ['fa_rock', 0.6], hit: ['fa_rock', 0.65], shout: ['fa_golem', 0.5], cry: ['fa_golem', 0.9], also: ['fa_rock', 0.6], die: ['fa_rock', 0.6, 0.8], step: ['mc_heavy', 1.3, 0.85] },
+    einhorn: { swing: ['snort', 0.5], shout: ['fa_neigh', 0.35], cry: ['fa_neigh', 0.85], also: ['fa_chime', 0.5], die: ['fa_neigh', 0.45, 0.85], step: ['hooves', 1.2] }
+  });
+  Object.assign(XS, { dg_small: 3, dg_mid: 3, dg_big: 3, dg_howl: 2, dg_growl: 3, dg_whine: 3, dg_snap: 0, dg_squeak: 0, dg_chorus: 0, dg_paws: 0, dg_bed: 0 });
+  Object.assign(GAP, { dg_small: 140, dg_mid: 160, dg_big: 220, dg_howl: 3000, dg_growl: 160, dg_whine: 700, dg_snap: 200, dg_chorus: 1500 });
+  // Hunde je Rasse: Dackel/Terrier hoch, Dogge/Mastiff tief, Husky heult
+  Object.assign(VOX, {
+    klein: { swing: ['dg_small', 0.6, 1.1], hit: ['dg_growl', 0.5, 1.25], parry: ['dg_snap', 0.5, 1.1], shout: ['dg_small', 0.45, 1.15], cry: ['dg_small', 0.7, 1.1], pack: 3, die: ['dg_whine', 0.5, 1.15], step: ['dg_paws', 1.2, 1.15] },
+    mittel: { swing: ['dg_mid', 0.6], hit: ['dg_growl', 0.55], parry: ['dg_snap', 0.5], shout: ['dg_mid', 0.45], cry: ['dg_mid', 0.75], pack: 3, die: ['dg_whine', 0.5], step: ['dg_paws', 1.2] },
+    husky: { swing: ['dg_mid', 0.6, 0.95], hit: ['dg_growl', 0.55, 0.9], parry: ['dg_snap', 0.5], shout: ['dg_howl', 0.4], cry: ['dg_howl', 0.8], pack: 2, die: ['dg_whine', 0.5, 0.9], step: ['dg_paws', 1.3, 0.9] },
+    gross: { swing: ['dg_big', 0.7], hit: ['dg_growl', 0.7, 0.7], parry: ['dg_snap', 0.5, 0.8], shout: ['dg_big', 0.5], cry: ['dg_big', 0.9, 0.9], pack: 2, die: ['dg_whine', 0.5, 0.75], step: ['dg_paws', 1.4, 0.75] }
+  });
+  var curEd = 'feudal';
+  function kindOf(t) { var E = ED[curEd]; return t && (E ? E.kind[t] : KIND[t]); }
+  function rk(k) { var E = ED[curEd]; return E && E.remap && k in E.remap ? E.remap[k] : k; }
+  function edition() { try { var e = ShogiApp.P().settings.theme; return ED[e] || e === 'feudal' ? e : 'feudal'; } catch (e) { return 'feudal'; } }
   function load(k, n) {
     if (loaded[k]) return; loaded[k] = true;
-    (n ? Array.from({ length: n }, function (_, i) { return k + (i + 1); }) : [k]).forEach(function (f) {
+    var fk = FILE[k] || k;
+    (n ? Array.from({ length: n }, function (_, i) { return fk + (i + 1); }) : [fk]).forEach(function (f) {
       fetch('snd/' + f + '.mp3').then(function (r) { if (!r.ok) throw r.status; return r.arrayBuffer(); }).then(function (a) { return new Promise(function (ok, no) { ctx.decodeAudioData(a, ok, no); }); })
         .then(function (b) { (buf[k] = buf[k] || []).push(b); }).catch(function () { });
     });
@@ -64,7 +126,7 @@ var Sfx = (function () {
   }
   // Eintrag für Typ t und Ereignis ev (lädt das Set des Typs nach)
   function vx(t, ev) {
-    var kd = t && KIND[t], v = kd && VOX[kd]; if (!v) return null;
+    var kd = kindOf(t), v = kd && VOX[kd]; if (!v) return null;
     if (!v._ld) { v._ld = true; load('horn', 0); Object.keys(v).forEach(function (e) { var s = v[e]; if (s && s.length && XS[s[0]] != null) load(s[0], XS[s[0]]); }); }
     return v[ev] || null;
   }
@@ -76,7 +138,7 @@ var Sfx = (function () {
   function hero(t) {
     if (t !== 8 && t !== 14) return; var now = ctx.currentTime; if (now - heroAt < 8) return; heroAt = now;
     smp('drum', 1, { force: true, nogap: true, out: sfxGain }); smp('drum', 0.8, { force: true, nogap: true, delay: 0.3, rate: 0.85, out: sfxGain }); duck(1800);
-    if (mus && has('mus_sham')) musPlay(buf.mus_sham[buf.mus_sham.length - 1], mus.out, now + 0.6, 0, 0.6);
+    if (mus && !mus.ed && has('mus_sham')) musPlay(buf.mus_sham[buf.mus_sham.length - 1], mus.out, now + 0.6, 0, 0.6);
   }
   // Brett der laufenden Partie (nur lesen): Schlachtfeld-Stimmung, Wetter, Brände, Kameraabstand
   function board() { try { var g = window.ShogiApp && ShogiApp.G && ShogiApp.G(), r = g && g.r; return r && r.orbit ? r : null; } catch (e) { return null; } }
@@ -97,15 +159,17 @@ var Sfx = (function () {
   }
   function ambTick() {
     setTimeout(ambTick, 500);
+    curEd = edition(); if (mus && mus.edId !== curEd) { musStop(); if (wantMusic && vol.music > 0) musStart(); }
     var r = board(), live = !vol.mute && vol.sfx > 0 && !document.hidden, on = !!(live && r && r.look === 'feld' && r.settings && r.settings.army), W = (on && r.wx) || {}, t = ctx.currentTime;
     var base = on ? MOOD[r.settings.fieldMood || 'pass'] : null, rain = W.rain || 0;
     Object.keys(MOOD).forEach(function (m) { var k = MOOD[m]; ambLayer(k, k === base ? (k === 'amb_fire' ? 0.45 + 0.07 * Math.min(8, r.firesLit || 0) : 0.55) * (1 - 0.5 * rain) : 0); });
     ambLayer('amb_flag', on ? 0.3 + 0.2 * (W.storm || 0) : 0); ambLayer('amb_rain', on ? 0.9 * rain : 0);
     if (on && W.storm > 0.1) load('thunder', 2);
+    if (on && ED[curEd]) ['bed', 'drum', 'impact', 'clash', 'hit', 'fall', 'cry'].forEach(function (k) { var e = rk(k); if (e && e !== k) load(e, XS[e] || 0); }); // Grundklänge der Edition vorladen
     // seltene Einzelklänge aus der Ferne: Krähen, bei der Belagerung Schreie
     if (on && t > amb.oneAt) {
       if (amb.oneAt) {
-        var k = base === 'amb_fire' && Math.random() < 0.6 ? ['die', 'warcry', 'cry'][Math.floor(Math.random() * 3)] : base !== 'amb_cicada' ? 'caw' : null;
+        var k = base === 'amb_fire' && curEd === 'feudal' && Math.random() < 0.6 ? ['die', 'warcry', 'cry'][Math.floor(Math.random() * 3)] : base !== 'amb_cicada' ? 'caw' : null;
         if (k) { load(k, XS[k] != null ? XS[k] : SMP[k]); smp(k, 0.35, { force: true, nogap: true, out: far, rate: 0.9 }); }
       }
       amb.oneAt = t + 14 + Math.random() * 24;
@@ -116,6 +180,7 @@ var Sfx = (function () {
     if (Math.abs(f - amb.f) > 0.02 || (f === 0 && amb.f)) { amb.f = f; busF.frequency.setTargetAtTime(20000 * Math.pow(0.1, f), t, 0.3); bus.gain.setTargetAtTime(1 - 0.35 * f, t, 0.3); busRev.gain.setTargetAtTime(0.15 + 0.45 * f, t, 0.3); }
   }
   function smp(k, v, opt) {
+    if (rk(k) !== k) { k = rk(k); if (!k) return true; load(k, XS[k] || 0); if (!has(k)) return true; } // umgeleitet: lieber still als Synth-Ersatz
     if (!has(k)) return false; opt = opt || {};
     var now = ctx.currentTime * 1000; if (!opt.nogap && lastAt[k] && now - lastAt[k] < (GAP[k] || 60)) return true; if (voices >= 6 && !opt.force) return true; lastAt[k] = now;
     var list = buf[k], i = Math.floor(Math.random() * list.length); if (list.length > 1 && i === lastVar[k]) i = (i + 1) % list.length; lastVar[k] = i;
@@ -175,7 +240,7 @@ var Sfx = (function () {
     // Kampf: Klingen-Klirren, Luftzug, Magie/Schuss, Feuer, Zerbröseln der Statue
     // Hieb: kurzes Krachen von Stahl auf Rüstung/Holz, jedes Mal leicht anders, kein Nachklingen
     clash: function (v, t) {
-      hero(t); if (KIND[t] === 'speer' && Math.random() < 0.6) smp('wood', (v || 0.8) * 0.6); // Speerschaft aus Holz
+      hero(t); if (kindOf(t) === 'speer' && Math.random() < 0.6) smp('wood', (v || 0.8) * 0.6); // Speerschaft aus Holz
       if (t && vplay(t, 'parry', v || 0.8)) return;
       if (smp('clash', (v || 0.8) * 0.9)) return;
       var t = t0(), k = v || 0.8, r = 0.75 + Math.random() * 0.5;
@@ -185,7 +250,7 @@ var Sfx = (function () {
     // Schlachtruf der Armee: viele Stimmen „Uooo!“ (Sägezahn durch Vokal-Formanten), dazu Atemrauschen
     roar: function (v, t) {
       var e = t && vx(t, 'cry');
-      if (e && has(e[0])) { for (var j = 0, n = VOX[KIND[t]].pack || 1; j < n; j++) smp(e[0], e[1] * (v || 1) * (j ? 0.6 : 1), { force: true, nogap: j > 0, wet: true, delay: j * (0.08 + Math.random() * 0.14) }); if (VOX[KIND[t]].also) vplay(t, 'also', v, { force: true, nogap: true, delay: 0.25 }); duck(500); return; }
+      if (e && has(e[0])) { for (var j = 0, n = VOX[kindOf(t)].pack || 1; j < n; j++) smp(e[0], e[1] * (v || 1) * (j ? 0.6 : 1), { force: true, nogap: j > 0, wet: true, delay: j * (0.08 + Math.random() * 0.14) }); if (VOX[kindOf(t)].also) vplay(t, 'also', v, { force: true, nogap: true, delay: 0.25 }); duck(500); return; }
       if (smp('cry', v || 1, { force: true, wet: true })) { duck(500); return; }
       var t = t0(), k = v || 1;
       for (var i = 0; i < 9; i++) {
@@ -219,8 +284,10 @@ var Sfx = (function () {
     taiko: function (v) { if (smp('drum', v || 1, { force: true, wet: true })) { smp('impact', (v || 1) * 0.8, { force: true }); duck(300); return; } var t = t0(), k = v || 1; osc('sine', 78, t, 0.55, 1 * k, null, 42, true); noise(t, 0.12, 0.5 * k, 'lowpass', 380, 0.8, 120); noise(t, 0.02, 0.25 * k, 'bandpass', 2500, 1); },
     // Gemenge im Hintergrund: Klappern, Stampfen, Rufe, ein paar Sekunden
     melee: function (sec) {
-      if (has('bed')) {
-        bedStop(0.2); var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf.bed[0]; src.loop = true; g._lvl = 0.7 * (1 + 0.6 * amb.f); // aus der Ferne trägt der Teppich
+      var bk = rk('bed'); if (bk) load(bk, 0);
+      if (bk !== 'bed' && !(bk && has(bk))) return; // Edition: lieber kurz still als Synth-Gemenge
+      if (bk && has(bk)) {
+        bedStop(0.2); var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf[bk][0]; src.loop = true; g._lvl = 0.7 * (1 + 0.6 * amb.f); // aus der Ferne trägt der Teppich
         g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.setTargetAtTime(g._lvl, ctx.currentTime, 0.12); src.connect(g); g.connect(busF);
         src.start(ctx.currentTime, Math.random() * 6); bedSrc = src; bedGain = g; bedTimer = setTimeout(function () { bedStop(0.8); }, (sec || 3) * 1000); return;
       }
@@ -231,9 +298,9 @@ var Sfx = (function () {
     },
     whoosh: function (v, t) { if (t && vplay(t, 'swing', v ? v * 1.6 : 1)) return; if (smp('whoosh', (v || 0.6) * 0.8)) return; var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
     // Fernkampf: ferne Salven kommen später und dumpfer an (Empire/Napoleon)
-    zap: function (v, k) { if (k && vplay(k, 'mag', v ? v * 1.6 : 1, { wet: true, delay: 0.03 + 0.12 * amb.f })) return; var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
-    fire: function (v, k) { if (k && vplay(k, 'mag', 1, { force: true, wet: true, delay: 0.03 + 0.12 * amb.f })) { vplay(k, 'cry', 0.8, { force: true, delay: 0.05 }); return; } var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
-    crumble: function () { var t = t0(); noise(t, 0.6, 0.6, 'lowpass', 1800, 0.7, 200, null, true); for (var i = 0; i < 5; i++) noise(t + i * 0.06 + Math.random() * 0.04, 0.05, 0.4, 'bandpass', 1500 + Math.random() * 2000, 4); },
+    zap: function (v, k) { if (k && vplay(k, 'mag', v ? v * 1.6 : 1, { wet: true, delay: 0.03 + 0.12 * amb.f })) return; if (smp('zap', (v || 0.6) * 1.1, { wet: true, delay: 0.03 + 0.12 * amb.f })) return; var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
+    fire: function (v, k) { if (k && vplay(k, 'mag', 1, { force: true, wet: true, delay: 0.03 + 0.12 * amb.f })) { vplay(k, 'cry', 0.8, { force: true, delay: 0.05 }); return; } if (smp('fire', 0.9, { force: true, wet: true })) return; var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
+    crumble: function () { if (smp('crumble', 0.8, { force: true, wet: true })) return; var t = t0(); noise(t, 0.6, 0.6, 'lowpass', 1800, 0.7, 200, null, true); for (var i = 0; i < 5; i++) noise(t + i * 0.06 + Math.random() * 0.04, 0.05, 0.4, 'bandpass', 1500 + Math.random() * 2000, 4); },
     check: function () { var t = t0(); osc('sine', 90, t, 0.5, 1, null, 45, true); noise(t, 0.12, 0.5, 'lowpass', 400, 1); osc('sine', 90, t + 0.22, 0.45, 0.8, null, 45, true); },
     win: function () { var t = t0(); [0, 2, 4, 5, 7, 9, 10].forEach(function (d, i) { osc('triangle', note(d + 5), t + i * 0.12, 0.9, 0.18, null, null, true); }); for (var i = 0; i < 6; i++) osc('sine', 80, t + i * 0.15, 0.3, 0.6, null, 50); },
     lose: function () { var t = t0(); [1, 2.4, 3.8, 5.1].forEach(function (h) { osc('sine', 98 * h, t, 3, 0.25 / h, null, null, true); }); },
@@ -260,6 +327,12 @@ var Sfx = (function () {
   }
   function musMix(tc) {
     if (!mus) return; var i = musLevel(), t = ctx.currentTime;
+    if (mus.ed) {
+      mus.lv = [1 - sstep(i, 0.25, 0.55), 0.85 * sstep(i, 0.2, 0.45) * (1 - sstep(i, 0.6, 0.85)), sstep(i, 0.6, 0.85)];
+      if (i > 0.15) mus.ed.forEach(function (k) { load(k, 0); });
+      mus.g.forEach(function (g, k) { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(mus.lv[k], t, tc || 1.5); });
+      mus.fight = i >= 0.8 && intensity < 0.8; return;
+    }
     mus.lv = [1 - 0.55 * sstep(i, 0.3, 0.9), 0.75 * sstep(i, 0.22, 0.5), 0.8 * sstep(i, 0.6, 0.85)];
     if (i > 0.15) { TAIKO.forEach(function (k) { load(k, 0); }); load('mus_sham', 2); }
     mus.g.forEach(function (g, k) { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(mus.lv[k], t, tc || 1.2); if (k && mus.lv[k] > 0.02) taiko(k, Math.max(t + 0.03, mus.c0)); });
@@ -269,6 +342,7 @@ var Sfx = (function () {
     if (!mus) return; var t = ctx.currentTime;
     if (vol.mute || document.hidden) { mus.c0 = mus.next = t + 0.3; mus.cyc++; mus.calmAt = t + 1; }
     else {
+      if (mus.ed) { for (var q = 0; q < 3; q++) musLoop(q, t); if (mus.fight && musLevel() < 0.8) musMix(2.5); mus.timer = setTimeout(musTick, 400); return; }
       if (t + 0.6 >= mus.next) { mus.c0 = Math.max(mus.next, t + 0.05); mus.next = mus.c0 + 8; mus.cyc++; }
       for (var j = 1; j < 3; j++) if (mus.lv[j] > 0.02) taiko(j, Math.max(t + 0.05, mus.c0)); // auch wenn die Aufnahme gerade erst geladen ist
       if (t >= mus.calmAt) musCalm(t);
@@ -292,13 +366,21 @@ var Sfx = (function () {
     }
     mus.calmAt = t + (mus.lv[2] > 0.3 ? 2.4 : 1.3) + Math.random() * 2.2;
   }
+  // Loop q der Edition: neue Kopie 2 s vor Ende weich einblenden (nur solange die Schicht hörbar ist)
+  function musLoop(q, t) {
+    var k = mus.ed[q]; if (mus.lv[q] <= 0.02) { mus.nx[q] = 0; return; }
+    if (!has(k) || t + 0.6 < mus.nx[q]) return;
+    var b = buf[k][0], X = 2, at = Math.max(t + 0.05, mus.nx[q]), sg = ctx.createGain(), d = b.duration;
+    sg.gain.setValueAtTime(0, at); sg.gain.linearRampToValueAtTime(1, at + X); sg.gain.setValueAtTime(1, at + d - X); sg.gain.linearRampToValueAtTime(0, at + d); sg.connect(mus.g[q]);
+    musPlay(b, sg, at, 0, 1); mus.nx[q] = at + d - X;
+  }
   function musStart() {
     var t = ctx.currentTime;
     if (mus) { mus.out.gain.cancelScheduledValues(t); mus.out.gain.setTargetAtTime(1, t, 0.4); return; }
-    load('mus_koto1', 0); load('mus_koto2', 0); load('mus_shaku', 5);
+    var E = ED[curEd = edition()]; if (E) load(E.music[0], 0); else { load('mus_koto1', 0); load('mus_koto2', 0); load('mus_shaku', 5); }
     var out = ctx.createGain(); out.gain.value = 0; out.gain.setTargetAtTime(1, t, 0.6); out.connect(musicGain);
     var g = [0, 1, 2].map(function (k) { var x = ctx.createGain(); x.gain.value = 0; x.connect(out); return x; });
-    mus = { out: out, g: g, lv: [1, 0, 0], src: [], on: [0, 0, 0], cyc: 0, c0: t + 0.3, next: t + 0.3, calmAt: t + 0.8, shakuAt: t + 6, shamAt: t + 8, deg: 1, lastShaku: -1, fight: false };
+    mus = { out: out, g: g, lv: [1, 0, 0], src: [], on: [0, 0, 0], cyc: 0, c0: t + 0.3, next: t + 0.3, calmAt: t + 0.8, shakuAt: t + 6, shamAt: t + 8, deg: 1, lastShaku: -1, fight: false, edId: curEd, ed: E ? E.music : null, nx: [0, 0, 0] };
     musMix(0.5); musTick();
   }
   function musStop() {

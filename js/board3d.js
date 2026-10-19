@@ -2103,7 +2103,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   var at = A.userData.troops || [A], dt = D.userData.troops || [D], many = at.length + dt.length > 10, pf = Math.max(0.12, Math.min(1, 10 / Math.max(at.length, dt.length)));
   var st = Math.min(110, 900 / at.length);
   A.userData.fighting = D.userData.fighting = true;
-  function snd(n, a, side) { if (typeof Sfx !== 'undefined') Sfx.play(n, a, side == null || self.theme.id !== 'feudal' ? null : Math.abs((side ? D : A).userData.p || 0)); }
+  function snd(n, a, side) { if (typeof Sfx !== 'undefined') Sfx.play(n, a, side == null ? null : Math.abs((side ? D : A).userData.p || 0)); }
   function wait(ms) { return self.tween(ms * sp, function () { }); }
   function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
   // Kino-Kamera: tief auf Augenhöhe, seitlich zur Front, dreht langsam um das Gemenge
@@ -2433,8 +2433,8 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   var face = Promise.all(at.map(function (a) { return tFace(a, dc.x, dc.z, 200); }).concat(dt.map(function (d) { return tFace(d, ac.x, ac.z, 240); })));
   var x0 = A.position.x, z0 = A.position.z, stopD = dist > 1.6 ? dist - 1.15 : Math.max(0, dist - 0.85), battle;
   function each(f) { return Promise.all(at.map(function (a, j) { return f(a, groups[j]); })); }
-  if (style === 'magic' || style === 'shoot' || style === 'breath') battle = face.then(function () { if (!short && style === 'magic' && self.theme.id === 'feudal') snd('roar', 0.8, 0); return each(volley); });
-  else if (style === 'leap') battle = face.then(function () { if (!short && self.theme.id === 'feudal') snd('roar', 0.8, 0); return each(leapAt); });
+  if (style === 'magic' || style === 'shoot' || style === 'breath') battle = face.then(function () { if (!short && style === 'magic') snd('roar', 0.8, 0); return each(volley); });
+  else if (style === 'leap') battle = face.then(function () { if (!short) snd('roar', 0.8, 0); return each(leapAt); });
   else if (style === 'charge') battle = face.then(function () {
     snd('roar', 1, 0);
     return march(x0, z0, x0 - ux * 0.15, z0 - uz * 0.15, 200).then(function () { return march(x0 - ux * 0.15, z0 - uz * 0.15, x0 + ux * stopD, z0 + uz * stopD, 160 + stopD * 120, true); });
@@ -2446,7 +2446,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   // Verteidiger stürmen ein Stück entgegen
   function meet(dur) {
     if (short) return Promise.resolve();
-    var p0 = D.position.clone(); dt.forEach(function (d) { walk(d, 1); }); if (self.theme.id === 'feudal') snd('roar', 0.55, 1);
+    var p0 = D.position.clone(); dt.forEach(function (d) { walk(d, 1); }); snd('roar', 0.55, 1);
     return self.tween(dur * 0.7 * sp, function (k) { var e = k * k; D.position.x = p0.x - ux * 0.16 * e; D.position.z = p0.z - uz * 0.16 * e; }, dur * 0.3 * sp).then(function () { dt.forEach(function (d) { walk(d, 0); }); });
   }
   // Aufprall der Linien: Staubwall, Wackeln, kurze Zeitlupe, vordere Reihe wird gestaucht
@@ -2877,7 +2877,7 @@ Board3D.prototype.armyRun = function (g, from, to) {
     return { s: s, m: m, f0: f0, goal: goal, u: s.userData.u, lag: Math.random() * 0.05 };
   });
   g.userData.marching = true;
-  if (typeof Sfx !== 'undefined') Sfx.play('march', dur, this.theme.id === 'feudal' ? Math.abs(g.userData.p || 0) : null);
+  if (typeof Sfx !== 'undefined') Sfx.play('march', dur, Math.abs(g.userData.p || 0));
   function sm(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
   return this.tween(dur, function (k) {
     var e = sm((k - 0.14) / 0.72);
