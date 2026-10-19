@@ -10,7 +10,7 @@ function Board2D(root, theme, settings) {
   for (var i = 0; i < 81; i++) { var c = el('div', 'b2-cell'); c.dataset.i = i; this.gridEl.appendChild(c); this.cells.push(c); }
   [[3, 3], [3, 6], [6, 3], [6, 6]].forEach(function (p) { var h = el('div', 'b2-hoshi'); h.style.left = (p[1] / 9 * 100) + '%'; h.style.top = (p[0] / 9 * 100) + '%'; self0.gridEl.appendChild(h); });
   this.coords = el('div', 'b2-coords'); this.gridEl.appendChild(this.coords);
-  this.piecesEl = el('div', 'b2-pieces'); frame.appendChild(this.piecesEl);
+  this.piecesEl = el('div', 'b2-pieces'); this.gridEl.appendChild(this.piecesEl); // im Gitter, damit Steine genau auf den Feldern sitzen
   this.canvas = el('canvas', 'b2-fx'); frame.appendChild(this.canvas);
   this.frame = frame;
   var self = this;
@@ -57,7 +57,7 @@ Board2D.prototype.pieceEl = function (p) {
   var kan = t === 8 && col === 1 ? (u.kanji2 || u.kanji) : u.kanji;
   var inner = '<div class="koma-in">';
   if (style !== 'kanji') inner += '<div class="koma-icon">' + unitSVG(this.theme, t, col, { color: komaInk(t, col) }) + '</div>';
-  if (style !== 'icon') inner += '<div class="koma-kanji' + (style === 'kanji' ? ' big' : '') + '">' + kan + '</div>';
+  if (style !== 'icon') inner += style === 'kanji' ? komaKanjiHTML(kan) : '<div class="koma-kanji">' + kan + '</div>';
   inner += '</div>';
   d.innerHTML = inner;
   return d;

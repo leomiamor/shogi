@@ -147,6 +147,10 @@ var THEMES = {
 })();
 
 // 2D-Steine: Schwarz (Sente, im 3D Gold) gegen Weiß (Gote), befördert rot wie echte Kanji
+// Echte Steinschrift (Ka-hu, kanji_light, CC BY 4.0) als Maske: Kanji → Datei in img/koma/
+var KOMA_MASK = { '歩': 'FU', '香': 'KY', '桂': 'KE', '銀': 'GI', '金': 'KI', '角': 'KA', '飛': 'HI', '王': 'OU', '玉': 'GY', 'と': 'TO', '杏': 'NY', '圭': 'NK', '全': 'NG', '馬': 'UM', '龍': 'RY', '竜': 'RY' };
+// url() in einer CSS-Variable löst relativ zur style.css auf (css/), daher ../
+function komaKanjiHTML(kan) { var m = KOMA_MASK[kan]; return m ? '<div class="koma-kanji km" role="img" aria-label="' + kan + '" style="--km:url(../img/koma/' + m + '.svg)"></div>' : '<div class="koma-kanji big">' + kan + '</div>'; }
 function komaInk(t, col) { return t >= 9 ? (col === 0 ? '#ff6b5c' : '#c41e1e') : col === 0 ? '#ecd08a' : '#1b1b1b'; }
 function unitSVG(theme, t, col, opts) {
   opts = opts || {};

@@ -1,0 +1,2 @@
+Kanji-Formen aus dem Steinsatz "kanji_light" von Ka-hu (lishogi.org, https://github.com/WandererXII/lishogi),
+Lizenz CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Geändert: Steinform entfernt, nur das Zeichen als Maske.
