@@ -1217,12 +1217,13 @@ Board3D.prototype.armyBase = function (col, map) {
 // Bemalte Soldaten: Originalfarben des KI-Designs (gebackene Farb- und Normal-Map). Spieler erkennt man am Randschein der Silhouette
 // (Sente Gold, Gote Silber, wie die Statuen), an Formation und Fahnen, optional am Sashimono (Sente gold mit schwarzem Mon, Gote silberweiß mit rotem Mon)
 Board3D.RIM = [[1.0, 0.62, 0.16], [0.75, 0.85, 1.0]];
+Board3D.RIM_K = 0.06; // Stärke des Randscheins (war 0,32: auf den facettierten Low-Poly-Soldaten leuchtete fast jede Kante gold/türkis, wirkte verzerrt; Spielerfarbe zeigen Fahnen und Formation)
 Board3D.NO_SASHI = [1, 3, 13, 14]; // Bauern (Fähnchen sah wie eine zweite Waffe aus, Speer soll lesbar sein) und Kreaturen (Fuchs, Hirsch, Drache) ohne Rückenfähnchen
 Board3D.SASHI = [[[0.85, 0.55, 0.12], [0.02, 0.018, 0.015]], [[0.8, 0.82, 0.85], [0.6, 0.04, 0.03]]]; // Tuch, Mon: Sente Gold/schwarz, Gote Silberweiß/rot
 Board3D.WHITE_FUR = [3]; // Kitsune (Springer): weißes Fell wie die Inari-Füchse statt Orange
-// je Edition: Kitsune-Fell nur bei Feudal (sonst würde der Sprung-Mech/Greif/Jack Russell umgefärbt); Rückenfähnchen nur bei Menschen/Mechs, nie bei Kreaturen, Fliegern und Hunden
+// je Edition: Kitsune-Fell nur bei Feudal (sonst würde der Sprung-Mech/Greif/Jack Russell umgefärbt); japanische Rückenfähnchen nur bei Feudal-Menschen (bei Mecha/Fantasy wirkten sie wie die alte Gold/Silber-Färbung), nie bei Kreaturen und Hunden
 Board3D.WHITE_FUR_ED = { feudal: [3] };
-Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 3, 7, 13, 14], fantasy: [1, 3, 7, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14] };
+Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], fantasy: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14] };
 Board3D.edLists = function (ed) { Board3D.WHITE_FUR = Board3D.WHITE_FUR_ED[ed] || []; Board3D.NO_SASHI = Board3D.NO_SASHI_ED[ed] || Board3D.NO_SASHI_ED.feudal; };
 Board3D.KUMADORI = [[0.85, 0.52, 0.1], [0.62, 0.05, 0.03]]; // Zeichnung im Fell (dunkle Partien des Originals): Sente Gold, Gote Zinnober
 Board3D.paintPatch = function (sh, col, t) {
@@ -1245,7 +1246,7 @@ Board3D.paintPatch = function (sh, col, t) {
       '  else if (vFlag > 0.25) diffuseColor.rgb = vec3(0.05, 0.04, 0.035); }'].join('\n'))
     .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>' + (fur ? '\n roughnessFactor = 0.95;' : ''))
     // Randschein in Spielerfarbe: liest sich auch aus der Ferne, kostet nur eine Rechnung pro Pixel
-    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (vFlag < 0.25) totalEmissiveRadiance += ' + v3(r) + ' * pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 3.0) * 0.32;');
+    .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  if (vFlag < 0.25) totalEmissiveRadiance += ' + v3(r) + ' * pow(1.0 - clamp(dot(normalize(vNormal), normalize(vViewPosition)), 0.0, 1.0), 4.0) * ' + Board3D.RIM_K.toFixed(3) + ';');
 };
 // Sashimono an die Soldaten-Geometrie hängen: Stange am Rücken + Tuch (doppelseitig), folgt Rumpf (Skelett: spine_03) bzw. Körper-Biegung
 Board3D.prototype.sashiGeo = function (geo, sk) {

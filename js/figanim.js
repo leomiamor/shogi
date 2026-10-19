@@ -5,7 +5,8 @@
 // damit die Figur exakt wie die starre Statue aussieht. Typen ohne Rig behalten den alten Kampf (lean/faceTo in board3d.js).
 (function () {
   var cache = {}, done = {};
-  Board3D._figTransfer = function (d, A) { return transfer(d, A); }; // für Messungen
+  Board3D._figTransfer = function (d, A, base) { return transfer(d, A, base); }; // für Messungen
+  Board3D._figArm = function (A, base) { return armCaps(A, base); };
 
   // ---------- Gewichte vom Rig auf die Detail-Statue übertragen ----------
   // Ecken roh lesen (quantisiert, evtl. verschachtelt): liefert Array, Abstand, Versatz, Skala
@@ -16,13 +17,14 @@
   }
   // kurz abgeben, damit das Bild nicht hängt (MessageChannel: wird auch im Hintergrund nicht gedrosselt)
   function yieldNow() { return new Promise(function (res) { var ch = new MessageChannel(); ch.port1.onmessage = function () { res(); }; ch.port2.postMessage(0); }); }
-  // Starre Teile wie beim Rig (tools/anim/fit_args.json „rigid“, erste passende Regel gewinnt), umgerechnet in den Rig-Raum
+  // Starre Teile wie beim Rig (tools/anim/fit_args.json „rigid“ aller Editionen, erste passende Regel gewinnt), umgerechnet in den Rig-Raum
   // (Blender x, y, z → x, z, −y): Speer starr am Waffen-Knochen, Schwert an der Hand, Hut/Helm am Kopf, Flügel/Umhang am Rücken.
   // Ohne das mischt der nächste-Nachbar-Abgleich Hand und Waffe, und Speer/Schwert knicken in den Clips.
-  Board3D.FIG_RIGID = {"ashigaru":[["weapon","seg",[-0.192,-0.479,0.068],[-0.187,0.493,0.133],0.022],["hand_r","seg",[-0.19,0.055,0.09],[-0.19,0.055,0.09],0.04],["weapon","pole",[[-9,-9,-9],[-0.17,-0.25,9]],[[-9,0.46,-9],[9,9,9]],0.024],["weapon","seg",[-0.188,0.367,0.125],[-0.187,0.5,0.133],0.06],["Head","ymin",0.3]],"veteran":[["weapon","seg",[-0.185,-0.49,0.177],[-0.209,0.476,0.17],0.022],["hand_r","seg",[-0.2,0.045,0.16],[-0.2,0.045,0.16],0.04],["weapon","pole",[[-9,-9,0.1],[-0.15,-0.3,0.3]],[[-9,0.38,0.1],[-0.15,9,0.3]],0.03],["weapon","seg",[-0.209,0.34,0.17],[-0.209,0.5,0.17],0.05],["spine_03","seg",[-0.045,-0.14,-0.1],[0.1,0.5,-0.18],0.03],["spine_03","box",[0.11,0.26,-0.3],[0.26,0.47,-0.12]],["hand_l","seg",[0.175,-0.05,0.02],[0.185,-0.08,0.02],0.035],["pelvis","seg",[0.11,0.02,0.13],[0.22,-0.22,-0.19],0.022],["Head","ymin",0.3]],"yari":[["weapon","seg",[-0.195,-0.5,0.104],[-0.2,0.3,0.12],0.022],["hand_r","seg",[-0.19,0.04,0.11],[-0.19,0.04,0.11],0.04],["weapon","seg",[-0.195,-0.5,0.104],[-0.2,0.3,0.12],0.03],["weapon","seg",[-0.2,0.25,0.13],[-0.2,0.5,0.12],0.07],["Head","ymin",0.3]],"kenshi":[["hand_r","seg",[-0.23,0.22,0.17],[0.06,0.49,-0.19],0.03],["hand_r","seg",[-0.24,0.25,0.1],[-0.22,0.32,0.12],0.05],["pelvis","seg",[0.07,0.03,0.05],[0.21,-0.27,-0.19],0.025],["Head","box",[-0.15,0.29,-0.2],[0.15,0.6,0.2]]],"onmyoji":[["hand_r","seg",[-0.16,0.24,0.15],[-0.14,0.39,0.15],0.06],["Head","ymin",0.3]],"tengu":[["spine_03","box",[-0.6,0.24,-0.3],[-0.17,0.5,0.2]],["spine_03","box",[0.17,0.24,-0.3],[0.6,0.5,0.2]],["spine_03","box",[-0.6,-0.2,-0.3],[-0.22,0.5,-0.03]],["spine_03","box",[0.22,-0.2,-0.3],[0.6,0.5,-0.03]],["spine_03","box",[-0.22,0.0,-0.3],[0.22,0.45,-0.08]],["Head","ymin",0.3]],"samurai":[["hand_r","seg",[-0.2,-0.05,0.06],[-0.29,-0.23,0.3],0.03],["Head","ymin",0.3]],"general":[["hand_r","seg",[-0.28,0.13,0.23],[-0.3,0.49,0.27],0.04],["hand_l","seg",[0.12,-0.02,0.15],[0.12,0.09,0.35],0.03],["spine_03","box",[-0.6,-0.35,-0.4],[0.6,0.3,-0.07]],["spine_03","box",[-0.6,-0.35,-0.4],[-0.25,-0.02,0.3]],["spine_03","box",[0.25,-0.35,-0.4],[0.6,-0.02,0.3]],["Head","ymin",0.3]],"naginata":[["hand_r","seg",[-0.34,0.3,0.34],[0.36,-0.245,-0.31],0.04],["hand_r","seg",[0.36,-0.245,-0.31],[0.22,-0.14,-0.18],0.06],["Head","ymin",0.3]]};
+  Board3D.FIG_RIGID = {"ashigaru":[["weapon","seg",[-0.192,-0.479,0.068],[-0.187,0.493,0.133],0.022],["hand_r","seg",[-0.19,0.055,0.09],[-0.19,0.055,0.09],0.04],["weapon","pole",[[-9,-9,-9],[-0.17,-0.25,9]],[[-9,0.46,-9],[9,9,9]],0.024],["weapon","seg",[-0.188,0.367,0.125],[-0.187,0.5,0.133],0.06],["Head","ymin",0.3]],"veteran":[["weapon","seg",[-0.185,-0.49,0.177],[-0.209,0.476,0.17],0.022],["hand_r","seg",[-0.2,0.045,0.16],[-0.2,0.045,0.16],0.04],["weapon","pole",[[-9,-9,0.1],[-0.15,-0.3,0.3]],[[-9,0.38,0.1],[-0.15,9,0.3]],0.03],["weapon","seg",[-0.209,0.34,0.17],[-0.209,0.5,0.17],0.05],["spine_03","seg",[-0.045,-0.14,-0.1],[0.1,0.5,-0.18],0.03],["spine_03","box",[0.11,0.26,-0.3],[0.26,0.47,-0.12]],["hand_l","seg",[0.175,-0.05,0.02],[0.185,-0.08,0.02],0.035],["pelvis","seg",[0.11,0.02,0.13],[0.22,-0.22,-0.19],0.022],["Head","ymin",0.3]],"yari":[["weapon","seg",[-0.195,-0.5,0.104],[-0.2,0.3,0.12],0.022],["hand_r","seg",[-0.19,0.04,0.11],[-0.19,0.04,0.11],0.04],["weapon","seg",[-0.195,-0.5,0.104],[-0.2,0.3,0.12],0.03],["weapon","seg",[-0.2,0.25,0.13],[-0.2,0.5,0.12],0.07],["Head","ymin",0.3]],"kenshi":[["hand_r","seg",[-0.23,0.22,0.17],[0.06,0.49,-0.19],0.03],["hand_r","seg",[-0.24,0.25,0.1],[-0.22,0.32,0.12],0.05],["pelvis","seg",[0.07,0.03,0.05],[0.21,-0.27,-0.19],0.025],["Head","box",[-0.15,0.29,-0.2],[0.15,0.6,0.2]]],"onmyoji":[["hand_r","seg",[-0.16,0.24,0.15],[-0.14,0.39,0.15],0.06],["Head","ymin",0.3]],"tengu":[["spine_03","box",[-0.6,0.24,-0.3],[-0.17,0.5,0.2]],["spine_03","box",[0.17,0.24,-0.3],[0.6,0.5,0.2]],["spine_03","box",[-0.6,-0.2,-0.3],[-0.22,0.5,-0.03]],["spine_03","box",[0.22,-0.2,-0.3],[0.6,0.5,-0.03]],["spine_03","box",[-0.22,0.0,-0.3],[0.22,0.45,-0.08]],["Head","ymin",0.3]],"samurai":[["hand_r","seg",[-0.2,-0.05,0.06],[-0.29,-0.23,0.3],0.03],["hand_r","box",[-0.3,-0.26,0.05],[-0.16,-0.02,0.33]],["Head","ymin",0.3]],"general":[["hand_r","seg",[-0.28,0.13,0.23],[-0.3,0.49,0.27],0.04],["hand_l","seg",[0.12,-0.02,0.15],[0.12,0.09,0.35],0.03],["spine_03","box",[-0.6,-0.35,-0.4],[0.6,0.3,-0.07]],["spine_03","box",[-0.6,-0.35,-0.4],[-0.25,-0.02,0.3]],["spine_03","box",[0.25,-0.35,-0.4],[0.6,-0.02,0.3]],["Head","ymin",0.3]],"naginata":[["hand_r","seg",[-0.34,0.3,0.34],[0.36,-0.245,-0.31],0.04],["hand_r","seg",[0.36,-0.245,-0.31],[0.22,-0.14,-0.18],0.06],["Head","ymin",0.3]],"kirin":[["Head","box",[-0.2,0.36,0.1],[0.2,0.6,0.5]]],"ryu":[["Head","box",[-0.25,0.36,-0.2],[0.25,0.6,0.2]]],"hauptmann":[["weapon","seg",[0.054,-0.46,-0.26],[-0.12,0.05,0.08],0.014],["weapon","seg",[-0.12,0.05,0.08],[-0.32,0.41,0.33],0.022],["hand_r","seg",[-0.12,0.05,0.08],[-0.12,0.05,0.08],0.04],["weapon","seg",[-0.12,0.05,0.08],[-0.32,0.41,0.33],0.035],["weapon","seg",[-0.24,0.25,0.24],[-0.32,0.41,0.33],0.09],["cape","box",[-0.6,-0.6,-0.6],[0.6,0.12,-0.1]],["cape","box",[-0.6,-0.6,-0.6],[-0.17,0.12,0.1]],["cape","box",[0.27,-0.6,-0.6],[0.6,0.12,0.1]],["Head","box",[-0.15,0.27,-0.2],[0.18,0.6,0.2]]],"fantasy_1":[["hand_r","seg",[-0.17,-0.05,0.0],[-0.33,-0.27,0.19],0.03],["hand_l","box",[0.19,-0.26,-0.24],[0.4,0.19,0.25]],["Head","ymin",0.28]],"fantasy_9":[["hand_r","seg",[-0.215,0.12,0.17],[-0.2,0.5,0.14],0.035],["hand_l","box",[0.1,-0.29,-0.13],[0.3,0.18,0.18]],["Head","ymin",0.27]],"fantasy_10":[["weapon","seg",[-0.1,-0.1,-0.15],[-0.15,0.05,0.0],0.014],["weapon","seg",[-0.15,0.05,0.0],[-0.29,0.42,0.33],0.022],["hand_r","seg",[-0.15,0.05,0.0],[-0.15,0.05,0.0],0.04],["weapon","seg",[-0.15,0.05,0.0],[-0.29,0.42,0.33],0.035],["weapon","seg",[-0.23,0.22,0.17],[-0.29,0.42,0.33],0.09],["cape","box",[-0.6,-0.1,-0.6],[0.6,0.12,-0.1]],["cape","box",[-0.6,-0.4,-0.6],[0.6,-0.1,-0.15]],["cape","box",[-0.6,-0.4,-0.6],[-0.17,0.0,0.1]],["cape","box",[0.3,-0.4,-0.6],[0.6,0.0,0.1]],["Head","box",[-0.15,0.27,-0.3],[0.18,0.6,0.2]]],"fantasy_12":[["hand_r","seg",[-0.28,0.09,0.34],[0.18,0.37,-0.2],0.035],["hand_r","box",[0.06,0.25,-0.34],[0.31,0.5,-0.07]],["Head","box",[-0.17,0.24,-0.15],[0.17,0.6,0.25]]],"fantasy_8":[["weapon","seg",[0,-0.23,0.19],[0,0.035,0.2],0.03],["weapon","seg",[-0.06,0.02,0.2],[0.06,0.02,0.2],0.02],["cape","box",[-0.6,-0.6,-0.6],[0.6,0.15,0.04]],["cape","box",[-0.6,-0.6,-0.6],[-0.19,0.12,0.6]],["cape","box",[0.19,-0.6,-0.6],[0.6,0.12,0.6]],["Head","box",[-0.12,0.28,-0.15],[0.12,0.6,0.2]]],"fantasy_11":[["Ear1.L","box",[0.15,-0.12,-0.6],[0.6,0.6,0.6]],["Ear1.R","box",[-0.6,-0.12,-0.6],[-0.15,0.6,0.6]],["Head","box",[-0.08,0.1,0.3],[0.08,0.4,0.6]]],"mecha_1":[["hand_r","seg",[0.06,0.04,0.2],[0.166,0.013,0.323],0.06],["hand_r","seg",[-0.14,0.186,-0.118],[0.166,0.013,0.323],0.05],["Head","ymin",0.33]],"mecha_4":[["hand_r","seg",[-0.211,0.224,0.146],[0.052,0.5,-0.015],0.035],["Head","box",[-0.1,0.22,-0.2],[0.12,0.6,0.2]]],"mecha_9":[["hand_r","seg",[0.1,0.08,0.2],[0.225,0.018,0.295],0.06],["hand_r","seg",[-0.171,0.262,-0.018],[0.225,0.018,0.295],0.045],["Head","box",[-0.11,0.33,-0.06],[0.1,0.6,0.25]],["spine_03","box",[-0.25,0.0,-0.6],[0.25,0.6,-0.07]]],"mecha_12":[["spine_03","seg",[-0.15,0.02,0.093],[0.241,0.437,0.057],0.035],["spine_03","seg",[0.16,0.02,0.094],[-0.163,0.33,0.066],0.035],["Head","box",[-0.12,0.27,-0.1],[0.12,0.6,0.25]],["pelvis","box",[-0.07,-0.36,0.05],[0.07,-0.02,0.3]],["cape","box",[-0.6,-0.42,-0.6],[0.6,0.0,-0.06]],["cape","box",[-0.6,-0.6,-0.6],[-0.19,-0.04,0.6]],["cape","box",[0.19,-0.6,-0.6],[0.6,-0.04,0.6]]],"mecha_5":[["hand_r","box",[-0.5,-0.3,-0.26],[-0.29,0.36,0.12]],["hand_l","seg",[0.3,0.02,0.08],[0.47,0.03,0.3],0.05],["Head","box",[-0.09,0.29,-0.2],[0.09,0.6,0.2]]],"mecha_8":[["weapon","seg",[-0.245,-0.47,0.18],[-0.245,0.49,0.18],0.03],["weapon","seg",[-0.245,0.12,0.2],[-0.245,0.49,0.18],0.08],["hand_l","seg",[0.219,-0.016,0.066],[0.279,-0.384,-0.195],0.03],["cape","box",[-0.6,-0.4,-0.6],[0.6,0.15,-0.08]],["cape","box",[-0.6,-0.4,-0.6],[-0.2,0.0,0.1]],["cape","box",[0.25,-0.4,-0.6],[0.6,-0.05,0.1]],["Head","box",[-0.1,0.27,-0.1],[0.1,0.6,0.2]]],"mecha_3":[["hand_r","seg",[-0.37,-0.05,0.12],[-0.46,-0.16,0.18],0.03],["Head","box",[-0.1,0.28,-0.1],[0.12,0.6,0.3]]],"mecha_10":[["weapon","seg",[-0.217,0.15,0.06],[-0.218,0.157,0.422],0.045],["spine_03","box",[-0.3,0.05,-0.6],[0.3,0.6,-0.12]],["Head","box",[-0.1,0.26,-0.12],[0.1,0.6,0.1]]],"mecha_11":[["hand_r","seg",[-0.327,-0.054,0.008],[-0.489,-0.272,0.071],0.035],["hand_l","seg",[0.328,-0.053,0.011],[0.488,-0.281,0.058],0.035]],"hunde_9":[["Head","box",[-0.1,0.3,0.0],[0.1,0.6,0.3]]],"hunde_11":[["Torso3","box",[-0.6,0.08,-0.3],[0.6,0.35,0.0]]],"hunde_1":[["Head","box",[-0.22,0.27,0.08],[0.22,0.6,0.45]]],"hunde_6":[["Head","box",[-0.15,0.36,0.0],[0.15,0.6,0.35]]],"hunde_8":[["Head","box",[-0.1,0.37,0.05],[0.1,0.6,0.25]]]};
   Board3D.FIG_RIGID_R = 1.0; // Radien wie beim Rig (1,25 änderte nichts sichtbar)
+  Board3D.FIG_RIGID_RS = { hauptmann: 2.2 }; // je Rig: Faktor auf die Radien (Hauptmann: die Detail-Stange ist dicker als im Low-Poly-Rig, sonst bleibt ein Stück am Bein)
   function rigidRules(A, base) {
-    var src = Board3D.FIG_RIGID[String(base || '').split('/').pop()] || [], rp = A.geo.getAttribute('position'), K = Board3D.FIG_RIGID_R;
+    var nm = String(base || '').split('/').pop(), src = Board3D.FIG_RIGID[nm] || [], rp = A.geo.getAttribute('position'), K = Board3D.FIG_RIGID_R * (Board3D.FIG_RIGID_RS[nm] || 1);
     function inb(x, y, z, bx) { return x >= bx[0][0] && x <= bx[1][0] && y >= bx[0][1] && y <= bx[1][1] && z >= bx[0][2] && z <= bx[1][2]; }
     return src.map(function (r) {
       var bi = A.meta.bones.indexOf(r[0]); if (bi < 0) return null;
@@ -51,6 +53,163 @@
     }
     return -1;
   }
+  // Arm-Kapseln gegen verzogenen Stoff: das Low-Poly-Rig hängt Brustpanzer, Rock und Umhang teils an Ober-/Unterarm,
+  // die Detail-Statue erbt das und reißt Kleidung mit, die der Arm gar nicht berührt. Gelenke stehen nicht in der Rig-JSON,
+  // also aus den Clips: ein Gelenk ist der Punkt, den Eltern- und Kindknochen in jedem Frame gleich bewegen (kleinste Quadrate).
+  // Arm-Gewicht bleibt nur nah an der Knochenachse (weich auslaufend) und nur, wenn die Ecke näher am Arm als am Rumpf liegt.
+  Board3D.FIG_ARM = { r0: 0.08, pad: 1.1, min: 0.05, max: 0.14, soft: 1.4, rel: [1.0, 0.75] }; // Radius = gemessene Armdicke × pad (Rig-Einheiten, Figur ≈ 1 hoch), weich bis × soft; Verhältnis Arm/Rumpf-Abstand
+  Board3D.FIG_ARM_SCALE = {}; // je Rig-Datei (z. B. dicke Mech-Arme): Faktor auf die Radien
+  // Hände nur bei diesen Rigs umhängen: ihre gehaltenen Waffen sitzen per FIG_RIGID fest (geprüft). Sonst sind ferne
+  // Hand-Ecken Schild, Fächer oder Kanone und müssen mit der Hand gehen.
+  Board3D.FIG_HELD = ['ashigaru', 'veteran', 'yari', 'kenshi', 'onmyoji', 'tengu', 'samurai', 'general', 'naginata', 'hauptmann'];
+  function armCaps(A, base) {
+    var bn = A.meta.bones, ix = function (n) { return bn.indexOf(n); };
+    if (ix('upperarm_l') < 0 || ix('upperarm_r') < 0 || ix('spine_03') < 0 || ix('pelvis') < 0) return null; // nur Menschen-Rigs
+    var H = THREE.DataUtils.fromHalfFloat, d = A.tex.image.data, nb = bn.length, rows = A.tex.image.height;
+    function joint(a, b) {
+      var ia = ix(a), ib = ix(b); if (ia < 0 || ib < 0) return null;
+      var N = [0, 0, 0, 0, 0, 0, 0, 0, 0], R = [0, 0, 0], D = [0, 0, 0];
+      for (var f = 0; f < rows; f += 2) {
+        var oa = f * nb * 12 + ia * 12, ob = f * nb * 12 + ib * 12;
+        for (var r = 0; r < 3; r++) {
+          for (var k = 0; k < 3; k++) D[k] = H(d[oa + r * 4 + k]) - H(d[ob + r * 4 + k]);
+          var t = H(d[ob + r * 4 + 3]) - H(d[oa + r * 4 + 3]);
+          for (var i = 0; i < 3; i++) { for (var j = 0; j < 3; j++) N[i * 3 + j] += D[i] * D[j]; R[i] += D[i] * t; }
+        }
+      }
+      var m = new THREE.Matrix3().set(N[0], N[1], N[2], N[3], N[4], N[5], N[6], N[7], N[8]);
+      if (Math.abs(m.determinant()) < 1e-12) return null;
+      var v = new THREE.Vector3(R[0], R[1], R[2]).applyMatrix3(m.invert());
+      return isFinite(v.x + v.y + v.z) ? [v.x, v.y, v.z] : null;
+    }
+    var nm = String(base || '').split('/').pop(), K = Board3D.FIG_ARM, sc = Board3D.FIG_ARM_SCALE[nm] || 1, arm = [], torso = [];
+    var held = Board3D.FIG_HELD.indexOf(nm) >= 0;
+    function seg(b, p, q, arm1) { if (b >= 0 && p && q) (arm1 ? arm : torso).push({ b: b, p: p, d: [q[0] - p[0], q[1] - p[1], q[2] - p[2]] }); }
+    for (var s = 0; s < 2; s++) {
+      var e = s ? '_r' : '_l', sh = joint('clavicle' + e, 'upperarm' + e), el = joint('upperarm' + e, 'lowerarm' + e), wr = joint('lowerarm' + e, 'hand' + e);
+      if (!sh || !el || !wr) return null;
+      seg(ix('upperarm' + e), sh, el, 1); seg(ix('lowerarm' + e), el, wr, 1);
+      if (held) seg(ix('hand' + e), wr, [wr[0] + (wr[0] - el[0]) * 0.45, wr[1] + (wr[1] - el[1]) * 0.45, wr[2] + (wr[2] - el[2]) * 0.45], 1);
+    }
+    var s1 = joint('pelvis', 'spine_01'), s2 = joint('spine_01', 'spine_02'), s3 = joint('spine_02', 'spine_03'), nk = joint('spine_03', 'neck_01'), hd = joint('neck_01', 'Head');
+    var hl = joint('pelvis', 'thigh_l'), hr = joint('pelvis', 'thigh_r'); if (!s1 || !nk) return null;
+    var hip = hl && hr ? [(hl[0] + hr[0]) / 2, (hl[1] + hr[1]) / 2 - 0.06, (hl[2] + hr[2]) / 2] : [s1[0], s1[1] - 0.1, s1[2]];
+    seg(ix('pelvis'), hip, s1); seg(ix('spine_01'), s1, s2 || s3 || nk); seg(ix('spine_02'), s2 || s1, s3 || nk); seg(ix('spine_03'), s3 || s2 || s1, nk); if (hd) seg(ix('neck_01'), nk, hd);
+    // Dicke je Armstück aus dem Rig messen: Rig-Ecken mit diesem Knochen als stärkstem, auf der Außenseite (vom Rumpf weg),
+    // dort stört kein Rumpf; Rüstungsärmel und Schulterplatten sind je Modell sehr verschieden dick
+    var rp = A.geo.getAttribute('position'), si = A.geo.getAttribute('aSkinI'), sw = A.geo.getAttribute('aSkinW'), dom = new Int32Array(rp.count);
+    for (var i = 0; i < rp.count; i++) { var bw = 0; dom[i] = -1; for (var q = 0; q < 4; q++) if (sw.getComponent(i, q) > bw) { bw = sw.getComponent(i, q); dom[i] = si.getComponent(i, q); } }
+    arm.forEach(function (S) {
+      var dd = S.d[0] * S.d[0] + S.d[1] * S.d[1] + S.d[2] * S.d[2], mx = S.p[0] + S.d[0] / 2, mz = S.p[2] + S.d[2] / 2, ol = Math.hypot(mx - nk[0], mz - nk[2]) || 1, ox = (mx - nk[0]) / ol, oz = (mz - nk[2]) / ol, ds = [];
+      for (var i = 0; i < rp.count; i++) {
+        if (dom[i] !== S.b) continue;
+        var ax = rp.getX(i) - S.p[0], ay = rp.getY(i) - S.p[1], az = rp.getZ(i) - S.p[2], t = (ax * S.d[0] + ay * S.d[1] + az * S.d[2]) / dd;
+        if (t < 0.1 || t > 0.9) continue; ax -= S.d[0] * t; ay -= S.d[1] * t; az -= S.d[2] * t;
+        var l = Math.hypot(ax, ay, az); if (l > 1e-6 && (ax * ox + az * oz) / l > 0.3) ds.push(l);
+      }
+      ds.sort(function (a, b) { return a - b; });
+      var r = ds.length >= 4 ? ds[Math.floor(ds.length * 0.85)] : K.r0;
+      S.r0 = Math.max(K.min, Math.min(K.max, r * K.pad)) * sc; S.r1 = S.r0 * K.soft;
+    });
+    var isArm = new Uint8Array(nb); bn.forEach(function (n, i) { if (/^(upperarm|lowerarm)_/.test(n) || held && /^hand_/.test(n)) isArm[i] = 1; });
+    var isAll = new Uint8Array(nb); bn.forEach(function (n, i) { if (/^(upperarm|lowerarm|hand)_|^weapon$/.test(n)) isAll[i] = 1; }); // Arm samt Waffe (für Glätten und Schnitt)
+    return { arm: arm, torso: torso, rel: K.rel, isArm: isArm, isAll: isAll, hand: held ? [-1, -1] : [ix('hand_l'), ix('hand_r')] };
+  }
+  function segD2(S, v) {
+    var ax = v[0] - S.p[0], ay = v[1] - S.p[1], az = v[2] - S.p[2], d = S.d, dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2], t = dd > 1e-9 ? Math.max(0, Math.min(1, (ax * d[0] + ay * d[1] + az * d[2]) / dd)) : 0;
+    ax -= d[0] * t; ay -= d[1] * t; az -= d[2] * t; return ax * ax + ay * ay + az * az;
+  }
+  function smooth(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+  // acc (Gewicht je Knochen) für Ecke v korrigieren: Arm-Anteil außerhalb der Kapsel → vorhandene Rumpf-/Bein-Anteile, sonst nächster Rumpfknochen
+  function armFix(C, acc, v) {
+    var da = Infinity, f = 0, dt = Infinity, tb = -1, i, S, q, hb = acc[C.hand[0]] > acc[C.hand[1]] ? C.hand[0] : C.hand[1];
+    if (hb >= 0) { var big = 0; for (i = 0; i < acc.length; i++) if (acc[i] > big) big = acc[i]; if (acc[hb] >= big) return; } // Hand vorn (Modell ohne FIG_RIGID): gehaltene Waffe, bleibt
+    for (i = 0; i < C.arm.length; i++) { S = C.arm[i]; q = Math.sqrt(segD2(S, v)); var fi = smooth(S.r1, S.r0, q); if (fi > f) f = fi; if (q < da) da = q; }
+    for (i = 0; i < C.torso.length; i++) { q = segD2(C.torso[i], v); if (q < dt) { dt = q; tb = C.torso[i].b; } }
+    f *= smooth(C.rel[0], C.rel[1], da / (Math.sqrt(dt) + 1e-6));
+    if (f >= 0.999) return;
+    var rm = 0, rest = 0;
+    for (i = 0; i < acc.length; i++) { if (!acc[i]) continue; if (C.isArm[i]) { rm += acc[i] * (1 - f); acc[i] *= f; } else rest += acc[i]; }
+    if (rm > rest && tb >= 0) acc[tb] += rm - rest;
+  }
+  // Gewichte über das Mesh glätten: harte Sprünge zwischen Nachbar-Ecken (Rock halb Oberschenkel, halb Becken) reißen
+  // bei Ausfallschritt und Ausholen Streifen. Ecken mit gleicher Lage (UV-Nähte) werden verschweißt, sonst klaffen Nähte.
+  // Starre Teile (FIG_RIGID) bleiben, wirken aber auf die Nachbarn. iters Runden, je halb eigener Wert, halb Nachbarmittel.
+  Board3D.FIG_SMOOTH = 3;
+  function smoothW(ix, n, nb, I, W, posOf, rigid, isArm) {
+    var key = new Map(), wid = new Int32Array(n), nw = 0, o = [0, 0, 0], q, i, j, b;
+    for (q = 0; q < n; q++) { posOf(q, o); var kk = Math.round(o[0] * 1e4) + ',' + Math.round(o[1] * 1e4) + ',' + Math.round(o[2] * 1e4), id = key.get(kk); if (id == null) { id = nw++; key.set(kk, id); } wid[q] = id; }
+    var fix = new Uint8Array(nw), deg = new Int32Array(nw + 1), cnt = new Float32Array(nw), D = new Float32Array(nw * nb), E = new Float32Array(nw * nb);
+    for (q = 0; q < n; q++) { var w0 = wid[q]; cnt[w0]++; for (j = 0; j < 4; j++) D[w0 * nb + I[q * 4 + j]] += W[q * 4 + j] / 255; if (rigid && rigid(q)) fix[w0] = 1; }
+    for (i = 0; i < nw; i++) if (cnt[i] > 1) for (b = 0; b < nb; b++) D[i * nb + b] /= cnt[i];
+    // Arm-Grenze scharf lassen: Ecken mit Arm-Anteil bleiben, Arm-Gewicht wandert nicht in den Rumpf (sonst wird das Netz zwischen Arm und Flanke breiter)
+    if (isArm) for (i = 0; i < nw; i++) for (b = 0; b < nb; b++) if (isArm[b] && D[i * nb + b] > 0.004) { fix[i] = 1; break; }
+    // Nachbarn (CSR) aus den Dreiecken
+    for (i = 0; i < ix.length; i += 3) for (j = 0; j < 3; j++) { var a0 = wid[ix[i + j]], b0 = wid[ix[i + (j + 1) % 3]]; if (a0 !== b0) { deg[a0 + 1]++; deg[b0 + 1]++; } }
+    for (i = 0; i < nw; i++) deg[i + 1] += deg[i];
+    var adj = new Int32Array(deg[nw]), fill = deg.slice(0, nw);
+    for (i = 0; i < ix.length; i += 3) for (j = 0; j < 3; j++) { var a1 = wid[ix[i + j]], b1 = wid[ix[i + (j + 1) % 3]]; if (a1 !== b1) { adj[fill[a1]++] = b1; adj[fill[b1]++] = a1; } }
+    var it = 0, R = D, S = E;
+    function round() {
+      for (var u = 0; u < nw; u++) {
+        var s0 = deg[u], s1 = deg[u + 1], ub = u * nb, c;
+        if (fix[u] || s1 === s0) { for (c = 0; c < nb; c++) S[ub + c] = R[ub + c]; continue; }
+        var k = 0.5 / (s1 - s0);
+        for (c = 0; c < nb; c++) S[ub + c] = R[ub + c] * 0.5;
+        for (var e = s0; e < s1; e++) { var vb = adj[e] * nb; for (c = 0; c < nb; c++) if (R[vb + c] && !(isArm && isArm[c])) S[ub + c] += R[vb + c] * k; }
+      }
+      var t = R; R = S; S = t;
+    }
+    var chain = Promise.resolve();
+    for (it = 0; it < Board3D.FIG_SMOOTH; it++) chain = chain.then(function () { round(); return yieldNow(); });
+    return chain.then(function () {
+      var top = [0, 0, 0, 0], tw = [0, 0, 0, 0];
+      for (q = 0; q < n; q++) {
+        var u = wid[q]; if (fix[u]) continue; var ub = u * nb;
+        top[0] = top[1] = top[2] = top[3] = 0; tw[0] = tw[1] = tw[2] = tw[3] = 0;
+        for (b = 0; b < nb; b++) { var a2 = R[ub + b]; if (a2 <= tw[3]) continue; var p = 3; while (p > 0 && a2 > tw[p - 1]) { tw[p] = tw[p - 1]; top[p] = top[p - 1]; p--; } tw[p] = a2; top[p] = b; }
+        var sum = tw[0] + tw[1] + tw[2] + tw[3] || 1, rest = 255;
+        for (j = 3; j >= 0; j--) { var q2 = j ? Math.round(tw[j] / sum * 255) : rest; I[q * 4 + j] = top[j]; W[q * 4 + j] = q2; rest -= q2; }
+      }
+    });
+  }
+  // Arm und Flanke sind in den Statuen verschmolzen (die Arme liegen am Körper an, Klingen am Bein). Hebt der Clip den Arm,
+  // spannt sich die Verbindung als Netz vom Arm bis zur Hüfte. Dreiecke an der Arm-Grenze, die in den Kampf-Clips über FIG_CUT-fach gedehnt
+  // würden, fallen in der Bewegungs-Geometrie weg (in Ruhe zeichnet die volle Statue): der Arm löst sich sauber vom Körper.
+  Board3D.FIG_CUT = 3;
+  function armCut(A, C, g, RN, I, W) {
+    var H = THREE.DataUtils.fromHalfFloat, d = A.tex.image.data, nb = A.meta.bones.length, P = raw(g.getAttribute('position')), n = g.getAttribute('position').count;
+    var ix = g.index.array, aw = new Float32Array(n), q, j, i;
+    for (q = 0; q < n; q++) for (j = 0; j < 4; j++) if (C.isAll[I[q * 4 + j]]) aw[q] += W[q * 4 + j] / 255;
+    // nur Dreiecke an der Arm-Grenze prüfen
+    var cand = []; for (i = 0; i < ix.length; i += 3) { var a = aw[ix[i]], b = aw[ix[i + 1]], c = aw[ix[i + 2]]; if (Math.max(a, b, c) - Math.min(a, b, c) > 0.3) cand.push(i); }
+    if (!cand.length) return null;
+    var e = RN.elements, R = new Float32Array(n * 3), Q = new Float32Array(n * 3), used = new Uint8Array(n), dead = new Uint8Array(ix.length / 3);
+    cand.forEach(function (t) { used[ix[t]] = used[ix[t + 1]] = used[ix[t + 2]] = 1; });
+    for (q = 0; q < n; q++) if (used[q]) { var o = q * P.st + P.of, x = P.a[o] * P.sc, y = P.a[o + 1] * P.sc, z = P.a[o + 2] * P.sc; R[q * 3] = e[0] * x + e[4] * y + e[8] * z + e[12]; R[q * 3 + 1] = e[1] * x + e[5] * y + e[9] * z + e[13]; R[q * 3 + 2] = e[2] * x + e[6] * y + e[10] * z + e[14]; }
+    function L(X, a0, b0) { return Math.hypot(X[a0 * 3] - X[b0 * 3], X[a0 * 3 + 1] - X[b0 * 3 + 1], X[a0 * 3 + 2] - X[b0 * 3 + 2]); }
+    var lim = Board3D.FIG_CUT, M = new Float32Array(nb * 12);
+    ['atk1', 'atk2', 'atk3', 'atk4', 'fin_a', 'fin_d', 'punch', 'block', 'parry2', 'cheer1', 'hit2'].forEach(function (nm) {
+      if (A.ids[nm] == null) return; var c = A.clips[A.ids[nm]];
+      for (var s = 1; s <= 3; s++) {
+        var f = c.x + Math.min(c.y - 1, Math.round(c.y * s / 4)), k;
+        for (k = 0; k < nb * 12; k++) M[k] = H(d[f * nb * 12 + k]);
+        for (q = 0; q < n; q++) if (used[q]) {
+          var X = R[q * 3], Y = R[q * 3 + 1], Z = R[q * 3 + 2], ox = 0, oy = 0, oz = 0;
+          for (j = 0; j < 4; j++) { var w = W[q * 4 + j] / 255; if (!w) continue; var m = I[q * 4 + j] * 12; ox += w * (M[m] * X + M[m + 1] * Y + M[m + 2] * Z + M[m + 3]); oy += w * (M[m + 4] * X + M[m + 5] * Y + M[m + 6] * Z + M[m + 7]); oz += w * (M[m + 8] * X + M[m + 9] * Y + M[m + 10] * Z + M[m + 11]); }
+          Q[q * 3] = ox; Q[q * 3 + 1] = oy; Q[q * 3 + 2] = oz;
+        }
+        cand.forEach(function (t) {
+          if (dead[t / 3]) return;
+          for (var z = 0; z < 3; z++) { var a0 = ix[t + z], b0 = ix[t + (z + 1) % 3], l0 = L(R, a0, b0), l1 = L(Q, a0, b0); if (l1 > 0.008 && l1 > l0 * lim) { dead[t / 3] = 1; return; } }
+        });
+      }
+    });
+    var keep = [], nd = 0; for (i = 0; i < ix.length; i += 3) { if (dead[i / 3]) { nd++; continue; } keep.push(ix[i], ix[i + 1], ix[i + 2]); }
+    if (!nd) return null;
+    Board3D._figCutN = nd;
+    return new THREE.BufferAttribute(n > 65535 ? new Uint32Array(keep) : new Uint16Array(keep), 1);
+  }
   // Höhenausgleich je Clip: der Boden der Clips liegt etwas tiefer als die Sohle der Statue (Füße steckten im Sockel).
   // Je Clip: tiefster Punkt des Rigs über alle Frames gegen die Ruhepose, nur anheben (Rig-Einheiten)
   function clipLift(A) {
@@ -75,7 +234,7 @@
 
   function transfer(d, A, base) {
     var T = THREE, m = null; d.updateMatrixWorld(true); d.traverse(function (o) { if (o.isMesh && !m) m = o; });
-    var RR = rigidRules(A, base);
+    var RR = rigidRules(A, base), AC = Board3D.FIG_ARM && armCaps(A, base);
     var pa = m.geometry.getAttribute('position'), n = pa.count, P = raw(pa), rp = A.geo.getAttribute('position'), rn = rp.count, i, c, k;
     var si = A.geo.getAttribute('aSkinI'), sw = A.geo.getAttribute('aSkinW'), SI = new Int32Array(rn * 4), SW = new Float32Array(rn * 4);
     for (i = 0; i < rn; i++) { SI[i * 4] = si.getX(i); SI[i * 4 + 1] = si.getY(i); SI[i * 4 + 2] = si.getZ(i); SI[i * 4 + 3] = si.getW(i); SW[i * 4] = sw.getX(i); SW[i * 4 + 1] = sw.getY(i); SW[i * 4 + 2] = sw.getZ(i); SW[i * 4 + 3] = sw.getW(i); }
@@ -123,6 +282,7 @@
           var j = cj[t] * 4, w = 1 / (Math.sqrt(cd[t]) + 0.003); w *= w;
           acc[SI[j]] += w * SW[j]; acc[SI[j + 1]] += w * SW[j + 1]; acc[SI[j + 2]] += w * SW[j + 2]; acc[SI[j + 3]] += w * SW[j + 3];
         }
+        if (AC) armFix(AC, acc, v);
         top[0] = top[1] = top[2] = top[3] = 0; tw[0] = tw[1] = tw[2] = tw[3] = 0;
         for (var b2 = 0; b2 < nb; b2++) { var a2 = acc[b2]; if (a2 <= tw[3]) continue; var p = 3; while (p > 0 && a2 > tw[p - 1]) { tw[p] = tw[p - 1]; top[p] = top[p - 1]; p--; } tw[p] = a2; top[p] = b2; }
         var sum = tw[0] + tw[1] + tw[2] + tw[3] || 1, rest = 255;
@@ -131,6 +291,7 @@
     }
     var CH = Board3D.MOBILE ? 10000 : 30000, chain = Promise.resolve();
     for (k = 0; k < n; k += CH) (function (k0) { chain = chain.then(function () { part(k0, Math.min(n, k0 + CH)); return yieldNow(); }); })(k);
+    if (AC && Board3D.FIG_SMOOTH && m.geometry.index) chain = chain.then(function () { return smoothW(m.geometry.index.array, n, nb, I, W, function (q, o) { pos(q, RN, o); }, RR.length ? function (q) { pos(q, RN, v); return rigidHit(RR, v) >= 0; } : null, AC.isAll); });
     chain = chain.then(function () { clipLift(A); return yieldNow(); }); // Höhenausgleich vorab (nicht erst beim Kompilieren)
     return chain.then(function () {
       var geo = new T.BufferGeometry(); geo.setIndex(m.geometry.index);
@@ -139,6 +300,8 @@
       geo.computeBoundingBox(); geo.computeBoundingSphere();
       var mesh = new T.Mesh(geo, m.material); mesh.matrixAutoUpdate = false; mesh.matrix.copy(RN); mesh.castShadow = mesh.receiveShadow = true;
       var src = new T.Group(); src.add(mesh); src.updateMatrixWorld(true);
+      var cut = AC && Board3D.FIG_CUT && m.geometry.index ? armCut(A, AC, m.geometry, RN, I, W) : null;
+      if (cut) { var gc = new T.BufferGeometry(); gc.setIndex(cut); for (var nm2 in geo.attributes) gc.setAttribute(nm2, geo.attributes[nm2]); gc.boundingBox = geo.boundingBox; gc.boundingSphere = geo.boundingSphere; geo.userData.cutGeo = gc; } // an der Geometrie (geteilt), nicht in userData des Mesh: das würde beim Klonen als JSON kopiert
       return { src: src, A: A, node: RN.clone(), nodeI: RN.clone().invert() };
     });
   }
@@ -159,7 +322,7 @@
     if (ed === 'feudal') return Board3D.FIG_SKIN.indexOf(+mm[1]) >= 0 && Board3D.SKIN[+mm[1]] || null;
     return (Board3D.SKIN_ED && Board3D.SKIN_ED[ed] || {})[+mm[1]] || null;
   };
-  Board3D.FIG_SKIN = [1, 2, 4, 5, 6, 7, 8, 9, 12]; // Modelle, die in der Figuren-Ansicht das Skelett nutzen (alle Menschen mit Rig)
+  Board3D.FIG_SKIN = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // Modelle, die in der Figuren-Ansicht das Skelett nutzen (alle mit Rig, auch Kitsune, Kirin, Ryu)
 
   // makePiece-Haken: true = Figur mit Skelett angehängt; sonst normaler Weg (starre Statue), Skelett-Figur ersetzt sie nach dem Laden
   Board3D.prototype.figSkinTry = function (g, url, col) {
@@ -196,7 +359,7 @@
     var mat = mesh.material.clone(); mat.onBeforeCompile = function (sh) { patch(sh, A, U, false, rim); }; mat.customProgramCacheKey = function () { return rim ? 'figS-rim' : 'figS'; };
     var dm = new T.MeshDepthMaterial({ depthPacking: T.RGBADepthPacking }); dm.onBeforeCompile = function (sh) { patch(sh, A, U, true); }; dm.customProgramCacheKey = function () { return 'figSd'; };
     // in Ruhe zeichnet die Figur mit dem normalen Statuen-Material (Bind-Pose = Ruhepose), Skinning kostet nur während Aktionen
-    g.userData.sk = { A: A, U: U, clip: [A.ids.bind, 0, -1, 0], cur: 'bind', until: 0, then: null, mats: [mat, dm], mesh: mesh, stat: mesh.material, off: 0 };
+    g.userData.sk = { A: A, U: U, clip: [A.ids.bind, 0, -1, 0], cur: 'bind', until: 0, then: null, mats: [mat, dm], mesh: mesh, stat: mesh.material, off: 0, full: mesh.geometry };
   };
   // Figur entfernt: eigene Materialien freigeben (Programm bleibt im Cache)
   Board3D.prototype.figFree = function (g) { var k = g && g.userData.sk; if (k) { k.mats.forEach(function (x) { x.dispose(); }); k.mats = []; } };
@@ -212,7 +375,7 @@
     if (loop && k.cur === name) { k.until = 0; return 0; }
     var off = o.hitAt != null ? Math.max(0, (A.hit[name] || 0) - o.hitAt) : 0;
     SkinAnim.play(A, k, name, off + 1e-4); k.U.iClip.value.fromArray(k.clip); k.cur = name;
-    if (name === 'bind') k.off = now + SkinAnim.FADE + 0.05; else { k.off = 0; k.mesh.material = k.mats[0]; k.mesh.customDepthMaterial = k.mats[1]; k.mesh.frustumCulled = false; } // bewegt: Bounding-Box stimmt nicht mehr
+    if (name === 'bind') k.off = now + SkinAnim.FADE + 0.05; else { k.off = 0; k.mesh.material = k.mats[0]; k.mesh.customDepthMaterial = k.mats[1]; k.mesh.frustumCulled = false; if (k.full && k.full.userData.cutGeo) k.mesh.geometry = k.full.userData.cutGeo; } // bewegt: Bounding-Box stimmt nicht mehr
     var left = A.dur[name] - off;
     k.until = loop || name === 'bind' || o.hold ? 0 : now + left * (o.cut || 0.9); k.then = o.then || null; k.frz = o.freeze != null ? o.freeze : null;
     return left;
@@ -222,7 +385,7 @@
   // jedes Bild (aus update): Einzel-Clip zu Ende → Folge-Clip
   Board3D.prototype.figTick = function (g) {
     var k = g.userData.sk;
-    if (k.off && SkinAnim.time.value >= k.off) { k.off = 0; k.mesh.material = k.stat; k.mesh.customDepthMaterial = undefined; k.mesh.frustumCulled = true; }
+    if (k.off && SkinAnim.time.value >= k.off) { k.off = 0; k.mesh.material = k.stat; k.mesh.customDepthMaterial = undefined; k.mesh.frustumCulled = true; if (k.full) k.mesh.geometry = k.full; }
     // freeze: Clip bei dieser Sekunde anhalten (Startzeit wandert mit der Uhr mit)
     if (k.frz != null) { var s0 = SkinAnim.time.value - k.frz; if (s0 > k.clip[1]) { k.clip[1] = s0; k.U.iClip.value.y = s0; } }
     if (!k.until || SkinAnim.time.value < k.until) return;
