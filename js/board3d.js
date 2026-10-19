@@ -1087,6 +1087,34 @@ Board3D.coreZ = function (m) {
   zs.sort(function (a, b) { return a - b; });
   return zs.length ? [zs[Math.floor(zs.length * 0.05)], zs[Math.floor(zs.length * 0.95)]] : [0, 0];
 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
+// Verdeckung des Kanji (Fläche x ±0,15, z 0,055–0,345 im Stein-Raum): Anteil belegter Zellen von oben und aus Sicht des Besitzers (Kamera auf seiner Seite, ~40° hoch), dazu z der Füße (5. Perzentil)
+Board3D.kanjiCov = function (m) {
+  var v = new THREE.Vector3(), N = 10, top = {}, own = {}, feet = [], tn = 1 / Math.tan(0.7); m.updateMatrixWorld(true); var inv = m.parent ? m.parent.matrixWorld.clone().invert() : null;
+  m.traverse(function (o) {
+    if (!o.isMesh) return; var pa = o.geometry.attributes.position, st = Math.max(1, Math.floor(pa.count / 6000));
+    for (var k = 0; k < pa.count; k += st) {
+      v.fromBufferAttribute(pa, k).applyMatrix4(o.matrixWorld); if (inv) v.applyMatrix4(inv);
+      if (v.y < 0.26) { feet.push(v.z); continue; }
+      var cx = Math.floor((v.x + 0.15) / 0.3 * N); if (cx < 0 || cx >= N) continue;
+      var a = Math.floor((v.z - 0.055) / 0.29 * N), b = Math.floor((v.z - (v.y - 0.225) * tn - 0.055) / 0.29 * N);
+      if (a >= 0 && a < N) top[cx * N + a] = 1; if (b >= 0 && b < N) own[cx * N + b] = 1;
+    }
+  });
+  feet.sort(function (a, b) { return a - b; });
+  return { top: Object.keys(top).length / N / N, own: Object.keys(own).length / N / N, foot: feet.length ? feet[Math.floor(feet.length * 0.05)] : 0 };
+};
+// Grenzen: so viel darf verdeckt sein (Grundfiguren Feudal lagen bei ≤ 15 % von oben); zum Freimachen Füße höchstens bis z −0,34 nach vorn (Sockel verjüngt sich zur Spitze),
+// nie über die Steinspitze hinaus (−0,48, zählt alles unter 0,26 Höhe: Pfoten, Schwänze), höchstens auf 68 % verkleinern
+Board3D.KANJI_FREE = { top: 0.15, own: 0.03, step: 0.03, foot: -0.34, tip: -0.48, shrink: 0.94, minS: 0.68, v: 3 };
+Board3D.kanjiFree = function (m) {
+  var K = Board3D.KANJI_FREE, s0 = m.scale.x;
+  for (var i = 0; i < 24; i++) {
+    var c = Board3D.kanjiCov(m);
+    if (c.foot < K.tip) { m.position.z += Math.min(K.step, K.tip - c.foot); continue; }
+    if (c.top <= K.top && c.own <= K.own) return;
+    if (c.foot - K.step >= K.foot) m.position.z -= K.step; else if (m.scale.x > s0 * K.minS) m.scale.multiplyScalar(K.shrink); else return;
+  }
+};
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
   var m = Models.fit(src, 1.15, this.settings.figSet === 'statue' ? 2.2 : 0.95), self = this; m.position.set(0, 0.223, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0); // Statuen: alle gleich hoch (Grundfläche nur gegen Ausreißer); y = Oberkante Sockel (0,22, Rand 0,222)
@@ -1102,6 +1130,10 @@ Board3D.prototype.attachGlb = function (g, src, col) {
     var K = Board3D.FIG_KANJI, cz = Board3D.coreZ(m), d = cz[1] - cz[0];
     if (d > K.maxD) { m.scale.multiplyScalar(K.maxD / d); cz = Board3D.coreZ(m); }
     m.position.z += Math.max(-K.shift, Math.min(0, K.lim - cz[1]));
+    // Kanji frei halten (von oben und aus Sicht des Besitzers): messen, nach vorn schieben (Füße bleiben auf dem Sockel), notfalls verkleinern; Ergebnis je Modell gemerkt
+    var fp = src.userData.figPlace || (src.userData.figPlace = {}), fk = (Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0)) ? 'p' : 'n') + Board3D.KANJI_FREE.v;
+    if (fp[fk]) { m.scale.multiplyScalar(fp[fk][0]); m.position.z += fp[fk][1]; }
+    else { var s0 = m.scale.x, z0 = m.position.z; Board3D.kanjiFree(m); fp[fk] = [m.scale.x / s0, m.position.z - z0]; }
   }
   g.add(m); g.userData.glb = m;
 };
