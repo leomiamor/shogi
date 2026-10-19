@@ -3,7 +3,7 @@
   --gold: #ffd76a; --gold2: #e3a83a; --text: #f4ead2; --mute: #b8a98c; --sente: #46d7ff; --gote: #ff5a4e;
   --good: #58e08a; --bad: #ff5a4e; --warn: #ffb347;
   --r: 14px; --safe-b: env(safe-area-inset-bottom, 0px); --safe-t: env(safe-area-inset-top, 0px);
-  --font-d: 'Cinzel', 'Noto Serif JP', serif; --font-k: 'Noto Serif JP', serif;
+  --font-d: 'Cinzel', 'Noto Serif JP', serif; --font-k: 'Noto Serif JP', serif; --font-koma: 'Potta One', 'Noto Serif JP', serif;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif; overflow: hidden; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
@@ -174,10 +174,10 @@ select, input { font: 600 16px system-ui; background: var(--deep); color: var(--
 .koma-in::after { content: ''; position: absolute; inset: 7% 8% 5%; clip-path: polygon(50% 0, 85% 15%, 100% 100%, 0 100%, 15% 15%); background: var(--fill); }
 .koma-icon { position: relative; z-index: 1; width: 78%; height: 56%; margin-top: 18%; display: flex; align-items: center; justify-content: center; }
 .koma-icon svg { width: 100%; height: 100%; filter: drop-shadow(0 0 2px rgba(0, 0, 0, .6)); }
-.koma-kanji { position: relative; z-index: 1; font: 900 clamp(7px, 1.7vmin, 14px) var(--font-k); color: #ecd08a; line-height: 1; margin-top: 1%; }
+.koma-kanji { position: relative; z-index: 1; font: 400 clamp(7px, 1.7vmin, 14px) var(--font-koma); color: #ecd08a; line-height: 1; margin-top: 1%; }
 .koma.c1 .koma-kanji { color: #1b1b1b; }
 .koma.promo .koma-kanji { color: #ff6b5c; } .koma.c1.promo .koma-kanji { color: #c41e1e; }
-.koma-kanji.big { font-size: clamp(10px, 60cqh, 80px); margin-top: 14cqh; line-height: 1; }
+.koma-kanji.big { font-size: clamp(8px, 42cqh, 60px); margin-top: 12cqh; line-height: 1; }
 .koma.dying { animation: dying .4s forwards; }
 @keyframes dying { to { transform: rotate(var(--rot)) scale(1.6); opacity: 0; filter: brightness(3) blur(2px); } }
 
