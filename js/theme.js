@@ -16,7 +16,7 @@ var ICONS = {
 
 var THEMES = {
   feudal: {
-    id: 'feudal', name: 'Pfad des Shōgun', sub: 'Fantasy-Feudaljapan', ready: true, board: 'urushi',
+    id: 'feudal', name: 'Pfad des Shōgun', sub: 'Feudaljapan', ready: true, board: 'urushi',
     // Welten (nur im 3D-Modus sichtbar), id = settings.scene
     maps: [{ id: 'buehne', name: 'Dunkle Bühne', sub: 'Spotlicht, schwarzer Glanzboden' }, { id: 'garten', name: 'Zen-Garten', sub: 'Kies, Felsen, Bambus, Sternenhimmel' }, { id: 'see', name: 'Mondsee', sub: 'Steininsel im Wasser, Torii' }],
     factions: [
