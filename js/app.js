@@ -15,6 +15,7 @@
     var d = null; try { d = JSON.parse(localStorage.getItem(STORE)); } catch (e) { }
     d = d || {}; d.settings = Object.assign({}, DEFAULTS, d.settings || {});
     if (!d.settings.moodV) { if (!d.settings.fieldMood || d.settings.fieldMood === 'feldzug') d.settings.fieldMood = 'kontinent'; d.settings.moodV = 1; } // Kontinent ist neuer Standard (einmalig, 19.10.)
+    if (d.settings.moodV < 2) { if (!d.settings.fieldMood || d.settings.fieldMood === 'kontinent') d.settings.fieldMood = 'pass'; d.settings.moodV = 2; } // wieder Gebirgspass wie anfangs (Wunsch 19.10.)
     d.xp = d.xp || 0; d.lessons = d.lessons || {}; d.puzzles = d.puzzles || {}; d.stats = d.stats || { w: 0, l: 0 }; d.duels = d.duels || [];
     d.rating = d.rating || { r: Rating.START.never, rd: 350, n: 0, hist: [] }; d.prating = d.prating || { r: 800, rd: 350, n: 0 };
     d.titles = d.titles || []; d.skins = d.skins || ['classic']; d.cards = d.cards || {}; d.charges = d.charges || 0; d.losses = d.losses || {}; d.easy = d.easy || {};
@@ -437,7 +438,7 @@
     v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
     grp.appendChild(v3);
     seg('fights', 'Kämpfe', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
-    if (S.army) { S.fieldMood = S.fieldMood || 'kontinent'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['kontinent', 'Kontinent'], ['feldzug', 'Grenzland'], ['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); seg('fieldWeather', 'Wetter', 'Wechselnd: zieht im Lauf der Partie auf und wieder ab', [['wechsel', 'Wechselnd'], ['klar', 'Klar'], ['regen', 'Regen'], ['gewitter', 'Gewitter'], ['nebel', 'Nebel']]); }
+    if (S.army) { S.fieldMood = S.fieldMood || 'pass'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['pass', 'Gebirgspass'], ['kontinent', 'Kontinent'], ['feldzug', 'Grenzland'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); seg('fieldWeather', 'Wetter', 'Wechselnd: zieht im Lauf der Partie auf und wieder ab', [['wechsel', 'Wechselnd'], ['klar', 'Klar'], ['regen', 'Regen'], ['gewitter', 'Gewitter'], ['nebel', 'Nebel']]); }
     sec('Ton');
     var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); grp.appendChild(vs);
     sec('Spiel');

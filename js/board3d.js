@@ -1608,7 +1608,7 @@ Board3D.prototype.foliageMat = function (kind) {
 };
 Board3D.prototype.buildField = function (hi) {
   var T = THREE, scene = this.scene, self = this, Y = this.BT, N = Board3D.noise, H = Board3D.fieldH, E = Board3D.fieldE;
-  var MD = this.mood = Board3D.FIELD_MOODS[Board3D.FIELD_MOOD || this.settings.fieldMood || 'kontinent'] || Board3D.FIELD_MOODS.kontinent || Board3D.FIELD_MOODS.feldzug || Board3D.FIELD_MOODS.pass; Board3D.FIELD_SHAPE = MD.shape || null; Board3D.MOUNDS = (MD.mounds || Board3D.MOUNDS0).map(function (q) { return q.slice(); });
+  var MD = this.mood = Board3D.FIELD_MOODS[Board3D.FIELD_MOOD || this.settings.fieldMood || 'pass'] || Board3D.FIELD_MOODS.pass; Board3D.FIELD_SHAPE = MD.shape || null; Board3D.MOUNDS = (MD.mounds || Board3D.MOUNDS0).map(function (q) { return q.slice(); });
   var fogC = new T.Color(MD.fog[0] == null ? 0xb4bec4 : MD.fog[0]); scene.background = fogC.clone(); scene.fog = new T.FogExp2(fogC, MD.fog[1]);
   this.hemi.color.set(MD.hemi[0]); this.hemi.groundColor.set(MD.hemi[1]); this.hemi.intensity = MD.hemi[2];
   var sd = new T.Vector3().fromArray(MD.sun[2]); if (sd.length() < 2) sd.normalize().multiplyScalar(22);

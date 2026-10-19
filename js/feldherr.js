@@ -5,14 +5,20 @@
 (function () {
   if (typeof Board3D === 'undefined') return;
   var T = THREE;
-  // Mehr Truppen (Wunsch „viel größer, mehr Truppenanzahl“): je Regiment PC ×2, Handy ×1,44 Mann, dafür kleiner,
-  // Formation bleibt gleich groß (ein Feld = ein großes Stück Land). Kampfkraft skaliert für alle gleich, das Kräfteverhältnis bleibt.
+  // Mehr Truppen nur in Grenzland und Kontinent (Wunsch „viel größer, mehr Truppenanzahl“): je Regiment PC ×2, Handy ×1,44 Mann, dafür kleiner,
+  // Formation bleibt gleich groß. Die alten Schlachtfelder (Gebirgspass usw.) behalten die Regimenter wie anfangs (Bauer 48 Mann).
   (function () {
-    var kc = Board3D.MOBILE ? 1.2 : 1.42, ks = Board3D.ARMY_KS = Board3D.MOBILE ? 0.84 : 0.74;
+    var kc = Board3D.MOBILE ? 1.2 : 1.42, ks = Board3D.ARMY_KS = Board3D.MOBILE ? 0.84 : 0.74, BIG = {};
     Object.keys(Board3D.ARMY).forEach(function (k) {
-      var F = Board3D.ARMY[k]; if (F.cols * F.rows <= 1) return; // Helden bleiben allein und groß
+      var F = BIG[k] = Object.assign({}, Board3D.ARMY[k]); if (F.cols * F.rows <= 1) return; // Helden bleiben allein und groß
       F.cols = Math.round(F.cols * kc); F.rows = Math.round(F.rows * kc); F.sx /= kc; F.sz /= kc; F.h *= ks; F.pw *= ks; F.foot *= ks;
     });
+    var sq0 = Board3D.prototype.buildSquad;
+    Board3D.prototype.buildSquad = function () {
+      if (Board3D.FIELD_SHAPE !== 'feldzug' && Board3D.FIELD_SHAPE !== 'kontinent') return sq0.apply(this, arguments);
+      var A = Board3D.ARMY; Board3D.ARMY = BIG;
+      try { return sq0.apply(this, arguments); } finally { Board3D.ARMY = A; }
+    };
   })();
   function sm(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
