@@ -46,9 +46,9 @@
   function volControls() {
     var box = h('div', 'vol-box');
     var mb = h('button', 'btn vol-mute'); box.appendChild(mb);
-    function paintMute() { mb.innerHTML = S.mute ? '🔇 Stumm · tippen für Ton' : '🔊 Ton an · tippen für stumm'; mb.classList.toggle('on', S.mute); box.classList.toggle('is-muted', S.mute); }
+    function paintMute() { mb.innerHTML = S.mute ? 'Stumm · tippen für Ton' : 'Ton an · tippen für stumm'; mb.classList.toggle('on', S.mute); box.classList.toggle('is-muted', S.mute); }
     mb.onclick = function () { toggleMute(); paintMute(); };
-    [['music', '🎵 Musik'], ['sfx', '🔔 Effekte']].forEach(function (o) {
+    [['music', 'Musik'], ['sfx', 'Effekte']].forEach(function (o) {
       var key = o[0], row = h('label', 'vol-row');
       row.innerHTML = '<span class="vl">' + o[1] + '</span><input type="range" min="0" max="100" step="1"><b class="vp"></b>';
       var r = row.querySelector('input'), vp = row.querySelector('.vp');
@@ -298,16 +298,16 @@
       '<p style="color:var(--mute);font-size:13px">' + P.rating.n + ' gewertete Partien. Skala wie Lishogi (15 Kyū bis 8 Dan). ' + (R.sure ? '' : 'Der Rang wird fest, sobald die Unsicherheit unter 110 fällt (ca. 10 bis 15 Partien). ') + 'Die KI-Stärken sind geschätzt.</p>';
     box.appendChild(me);
     if (!P.rating.n) {
-      var st = h('div', 'card', '<h3>Wo startest du?</h3><p>Nur für den Startwert. Danach zählt jede Partie.</p><div class="seg" id="r-start"></div>');
+      var st = h('div', 'card', '<h3>Wo startest du?</h3><p>Nur für den Startwert. Danach zählt jede Partie.</p><div class="seg n3" id="r-start"></div>');
       box.appendChild(st);
       [['never', 'Nie gespielt'], ['rules', 'Kenne die Regeln'], ['chess', 'Starker Schachspieler']].forEach(function (o) { var b = h('button', P.rating.r === Rating.START[o[0]] ? 'on' : '', o[1]); b.onclick = function () { P.rating.r = Rating.START[o[0]]; save(); renderRating(); }; $('#r-start', st).appendChild(b); });
     }
-    box.appendChild(h('div', 'card', '<h3>🧩 Rätsel-Wertung</h3><div class="big-num">' + P.prating.r + ' <small>± ' + P.prating.rd + ' · ' + P.prating.n + ' Rätsel</small></div><p style="color:var(--mute);font-size:13px">Wie bei Lichess: Jedes Rätsel ist ein Gegner. Ein Hinweis zählt als Fehlversuch.</p>'));
+    box.appendChild(h('div', 'card', '<h3>Rätsel-Wertung</h3><div class="big-num">' + P.prating.r + ' <small>± ' + P.prating.rd + ' · ' + P.prating.n + ' Rätsel</small></div><p style="color:var(--mute);font-size:13px">Wie bei Lichess: Jedes Rätsel ist ein Gegner. Ein Hinweis zählt als Fehlversuch.</p>'));
     // Gegenspieler
     var riv = h('div', 'card'), plats = Object.keys(Rating.PLATFORMS);
     var est = P.rival.chess ? Rating.chessToShogi(P.rival.platform, P.rival.chess) : null, mine = Rating.shogiToChess(R.r);
     var dr = rivalR(), diff = dr - R.r, sug = Rating.suggestHC(Math.abs(diff));
-    riv.innerHTML = '<h3>👤 Du gegen den Schachspieler</h3>' +
+    riv.innerHTML = '<h3>Du gegen den Schachspieler</h3>' +
       '<div class="row"><label>Seine Schach-Wertung</label><select id="riv-pf">' + plats.map(function (k) { return '<option value="' + k + '"' + (P.rival.platform === k ? ' selected' : '') + '>' + Rating.PLATFORMS[k] + '</option>'; }).join('') + '</select><input id="riv-val" type="number" inputmode="numeric" placeholder="z. B. 1800" value="' + (P.rival.chess || '') + '"></div>' +
       (est ? '<p>Er ist besser als etwa <b>' + est.pct + ' %</b> der Online-Schachspieler. Derselbe Prozentrang im Shogi wäre <b>' + est.rank + '</b> (~' + est.shogi + '). <small style="color:var(--mute)">Schätzung, es gibt keine offizielle Umrechnung.</small></p>' +
         '<p>Aber: Beim Umstieg starten starke Schachspieler laut Erfahrungswerten bei etwa <b>10 bis 6 Kyū</b> und brauchen 6 bis 12 Monate bis 1 oder 2 Dan, wenn sie Burgen und Tsume lernen. Genau da liegt dein Vorsprung.</p>' : '<p style="color:var(--mute)">Trag seine Schach-Wertung ein, dann schätze ich, wo er im Shogi stünde.</p>') +
@@ -324,7 +324,7 @@
     mark(R.r, '<b class="me">Du</b>'); if (P.rival.r != null) mark(P.rival.r, '<b class="riv">Schachspieler</b>'); if (est) mark(est.shogi, '<span class="riv">Schachspieler (Schach-%)</span>');
     LESSONS.forEach(function (L) { if (L.type === 'B') mark(foeOpp(L).r, '<span class="boss">' + FOES[L.foe].name + '</span>'); });
     for (var i = Rating.RANKS.length - 1; i >= 0; i--) rows += '<tr' + (i === R.i ? ' class="cur"' : '') + '><td>' + Rating.RANKS[i][0] + '</td><td>' + Rating.RANKS[i][1] + '+</td><td>' + (marks[i] || []).join(' ') + '</td></tr>';
-    lad.innerHTML = '<h3>🏯 Kyū/Dan-Leiter</h3><table class="ladder">' + rows + '</table>';
+    lad.innerHTML = '<h3>Kyū/Dan-Leiter</h3><table class="ladder">' + rows + '</table>';
     box.appendChild(lad);
   }
   // Duell gegen den Gegenspieler werten (beide Wertungen, Vorgabe zählt für den Empfänger)
@@ -347,7 +347,7 @@
   // ---------- Kodex ----------
   function renderCodex() {
     var list = $('#codex'); list.innerHTML = '';
-    var album = h('div', 'card', '<h3>🃏 Sammelkarten</h3><div class="album">' + Object.keys(CARDS).map(function (k) { var c = CARDS[k], has = P.cards[k]; return '<div class="tcard' + (has ? '' : ' off') + '"><div class="jp">' + (has ? c.jp : '?') + '</div><b>' + (has ? c.name : '???') + '</b><small>' + (has ? c.txt : 'In der Kampagne finden') + '</small></div>'; }).join('') + '</div>');
+    var album = h('div', 'card', '<h3>Sammelkarten</h3><div class="album">' + Object.keys(CARDS).map(function (k) { var c = CARDS[k], has = P.cards[k]; return '<div class="tcard' + (has ? '' : ' off') + '"><div class="jp">' + (has ? c.jp : '?') + '</div><b>' + (has ? c.name : '???') + '</b><small>' + (has ? c.txt : 'In der Kampagne finden') + '</small></div>'; }).join('') + '</div>');
     list.appendChild(album);
     [8, 7, 6, 5, 4, 3, 2, 1, 14, 13, 9].forEach(function (t) {
       var u = TH.units[t], c = h('div', 'card');
@@ -379,7 +379,7 @@
   function view3d() { return S.army ? 'armee' : S.models === false ? 'steine' : 'figuren'; }
   function setView3d(v) { S.models = v !== 'steine'; S.army = v === 'armee'; if (v === 'armee') S.quality = 'high'; }
   function view3dSeg() {
-    return '<div class="seg">' + VIEW3D.map(function (o) { return '<button data-v3="' + o[0] + '" class="' + (view3d() === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    return '<div class="seg n' + VIEW3D.length + '">' + VIEW3D.map(function (o) { return '<button data-v3="' + o[0] + '" class="' + (view3d() === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
   }
 
   // ---------- Stil & Welt ----------
@@ -396,7 +396,7 @@
         var on = T.ready && S.scene === m.id;
         html += '<button class="sw-card sw-map' + (on ? ' on' : '') + (T.ready ? '' : ' soon') + '" data-map="' + m.id + '"' + (T.ready ? ' style="background-image:url(img/maps/' + m.id + '.webp)"' : '') + '><b>' + m.name + '</b><small>' + (T.ready ? m.sub || '' : 'bald') + '</small></button>';
       });
-      html += '</div><div class="sw-h">Brett</div><div class="seg">' + [['urushi', 'Schwarzlack & Gold'], ['carbon', 'Carbon & Cyan'], ['honig', 'Honig'], ['walnuss', 'Walnuss'], ['rauch', 'Rauch-Eiche'], ['m_weiss', 'Marmor weiß'], ['m_grau', 'Marmor grau'], ['m_gruen', 'Marmor grün'], ['m_nero', 'Marmor schwarz']].map(function (o) { return '<button data-tone="' + o[0] + '" class="' + (S.boardTone === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+      html += '</div><div class="sw-h">Brett</div><div class="seg n3">' + [['urushi', 'Schwarzlack & Gold'], ['carbon', 'Carbon & Cyan'], ['honig', 'Helles Holz']].map(function (o) { return '<button data-tone="' + o[0] + '" class="' + (S.boardTone === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
       html += '<div class="acts"><button class="btn" id="sw-ok">Fertig</button></div>';
       var box = modal(html, 'sw-box');
       box.querySelectorAll('[data-th]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); sel = b.dataset.th; render(); }; });
@@ -414,36 +414,40 @@
 
   // ---------- Einstellungen ----------
   function renderSettings() {
-    var box = $('#settings'); box.innerHTML = '';
+    var box = $('#settings'), grp = box; box.innerHTML = '';
+    function sec(title, cls) { box.appendChild(h('div', 'set-h ' + (cls || ''), title)); grp = h('div', 'set-group ' + (cls || '')); box.appendChild(grp); }
+    box.classList.toggle('is2d', S.render !== '3d'); // 3D-Abschnitt nur zeigen, wenn 3D an ist
     function seg(key, label, sub, opts, cb) {
-      var d = h('div', 'set'); d.innerHTML = '<div class="l"><b>' + label + '</b><small>' + (sub || '') + '</small></div>';
-      var sg = h('div', 'seg');
-      opts.forEach(function (o) { var b = h('button', S[key] === o[0] ? 'on' : '', o[1]); b.onclick = function () { S[key] = o[0]; save(); Sfx.setVolume(S.sfx, S.music); Sfx.play('ui'); if (key === 'music') Sfx.music(S.music > 0); cb && cb(); renderSettings(); }; sg.appendChild(b); });
-      d.appendChild(sg); box.appendChild(d);
+      var d = h('div', 'set' + (opts.length > 2 ? ' stack' : '')); d.innerHTML = '<div class="l"><b>' + label + '</b><small>' + (sub || '') + '</small></div>';
+      var sg = h('div', 'seg n' + opts.length);
+      opts.forEach(function (o) { var b = h('button', S[key] === o[0] ? 'on' : '', o[1]); b.dataset.v = o[0]; b.onclick = function () { S[key] = o[0]; save(); Sfx.setVolume(S.sfx, S.music); Sfx.play('ui'); if (key === 'music') Sfx.music(S.music > 0); cb && cb(); renderSettings(); }; sg.appendChild(b); });
+      d.appendChild(sg); grp.appendChild(d);
     }
-    var sw = h('div', 'set'); sw.innerHTML = '<div class="l"><b>Stil & Welt</b><small>' + TH.sub + ' · ' + mapName() + '</small></div>';
-    var swb = h('button', 'btn small', '🗺 Ändern'); swb.onclick = function () { Sfx.play('ui'); styleWorld(renderSettings); }; sw.appendChild(swb); box.appendChild(sw);
+    // Bewusst wenige Optionen (Wunsch 19.10.): Armee-Aussehen, Rückenfähnchen, Steine im 3D, Zugziele, Hot-Seat-Drehen
+    // stehen nicht mehr hier, es gelten die Werte aus DEFAULTS (bzw. der zuletzt gespeicherte Wert).
+    sec('Darstellung');
+    var sw = h('div', 'set set-sw'); sw.style.setProperty('--img', 'url(' + new URL('img/maps/' + S.scene + '.webp', location.href).href + ')'); sw.innerHTML = '<div class="l"><b>Stil & Welt</b><small>' + TH.sub + ' · ' + mapName() + '</small></div>';
+    var swb = h('button', 'btn small', '🗺 Ändern'); swb.onclick = function () { Sfx.play('ui'); styleWorld(renderSettings); }; sw.appendChild(swb); grp.appendChild(sw);
     seg('palette', 'Farbstil', 'Menüs und Titelbild', [['abend', 'Abendrot'], ['tusche', 'Tusche & Gold'], ['lack', 'Zinnober-Lack'], ['jade', 'Mitternacht-Jade']], applyPalette);
     seg('render', 'Grafik', HAS3D ? '2D-Brett oder 3D-Schlachtfeld' : '3D nicht verfügbar (offline?)', HAS3D ? [['2d', '2D'], ['3d', '3D']] : [['2d', '2D']]);
+    sec('3D', 'grp-3d');
     seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']], function () { if (S.quality === 'low' && S.army) { setView3d('figuren'); save(); } });
-    var v3 = h('div', 'set'); v3.innerHTML = '<div class="l"><b>3D-Ansicht</b><small>Steine, Figur auf Stein oder Armee</small></div>' + view3dSeg();
+    var v3 = h('div', 'set stack'); v3.innerHTML = '<div class="l"><b>3D-Ansicht</b><small></small></div>' + view3dSeg();
     v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
-    box.appendChild(v3);
-    seg('fights', 'Kampf beim Schlagen (3D)', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
-    if (S.army) seg('armyLook', 'Armee-Aussehen', 'Bemalte Soldaten oder Gold/Silber-Statuen', [['farbe', 'Bemalt'], ['statue', 'Statuen']]);
-    if (S.army) seg('armySashi', 'Rückenfähnchen', 'Sashimono in Spielerfarbe (Sente gold, Gote weiß)', [[true, 'An'], [false, 'Aus']]);
+    grp.appendChild(v3);
+    seg('fights', 'Kämpfe', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
     if (S.army) { S.fieldMood = S.fieldMood || 'pass'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); }
-    seg('pieceStyle', 'Steine im 3D', '2D zeigt immer Kanji wie echtes Shogi', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
-    var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); box.appendChild(vs);
+    sec('Ton');
+    var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); grp.appendChild(vs);
+    sec('Spiel');
     if (OWNER && P.skins.length > 1) seg('skin', 'Brett', 'Freigespielt in der Kampagne', P.skins.map(function (k) { return [k, SKINS[k].name]; }));
-    if (OWNER && P.titles.length) { var tt = h('div', 'set'); tt.innerHTML = '<div class="l"><b>Titel</b><small>Wird im Profil gezeigt</small></div>'; var tsg = h('div', 'seg'); P.titles.forEach(function (t) { var b = h('button', P.title === t ? 'on' : '', t); b.onclick = function () { P.title = t; save(); renderSettings(); }; tsg.appendChild(b); }); tt.appendChild(tsg); box.appendChild(tt); }
-    seg('dots', 'Zugziele anzeigen', 'Grüne Punkte beim Auswählen', [[true, 'An'], [false, 'Aus']]);
-    seg('autoFlip', 'Hot-Seat: Brett drehen', 'Nach jedem Zug zum anderen Spieler', [[true, 'An'], [false, 'Aus']]);
+    if (OWNER && P.titles.length) { var tt = h('div', 'set' + (P.titles.length > 2 ? ' stack' : '')); tt.innerHTML = '<div class="l"><b>Titel</b><small>Wird im Profil gezeigt</small></div>'; var tsg = h('div', 'seg n' + P.titles.length); P.titles.forEach(function (t) { var b = h('button', P.title === t ? 'on' : '', t); b.onclick = function () { P.title = t; save(); renderSettings(); }; tsg.appendChild(b); }); tt.appendChild(tsg); grp.appendChild(tt); }
     if (OWNER) {
-      seg('threats', 'Gefahren-Sicht (Training)', 'Rot = hängende Figur, Lila = Schach-Drop möglich', [[true, 'An'], [false, 'Aus']]);
-      seg('coach', 'Coach Hoshi (Training)', 'Bewertet deine Züge gegen die KI', [[true, 'An'], [false, 'Aus']]);
+      sec('Training');
+      seg('threats', 'Gefahren-Sicht', 'Rot = hängende Figur, Lila = Schach-Drop möglich', [[true, 'An'], [false, 'Aus']]);
+      seg('coach', 'Coach Hoshi', 'Bewertet deine Züge gegen die KI', [[true, 'An'], [false, 'Aus']]);
       var rs = h('div', 'set'); rs.innerHTML = '<div class="l"><b>Fortschritt</b><small>' + P.xp + ' XP, ' + Object.keys(P.lessons).length + ' Lektionen</small></div>';
-      var rb = h('button', 'btn small', 'Zurücksetzen'); rb.onclick = function () { if (confirm('Wirklich alles zurücksetzen?')) { var o = P.owner; P = load(); localStorage.removeItem(STORE); P = load(); P.owner = o; S = P.settings; save(); renderSettings(); } }; rs.appendChild(rb); box.appendChild(rs);
+      var rb = h('button', 'btn small', 'Zurücksetzen'); rb.onclick = function () { if (confirm('Wirklich alles zurücksetzen?')) { var o = P.owner; P = load(); localStorage.removeItem(STORE); P = load(); P.owner = o; S = P.settings; save(); renderSettings(); } }; rs.appendChild(rb); grp.appendChild(rs);
     }
   }
 
@@ -596,7 +600,6 @@
     var tb = $('#toolbar'), self = this; tb.innerHTML = '';
     function btn(label, title, fn, on) { var b = h('button', 'btn' + (on ? ' on' : ''), label); b.title = title; b.onclick = function () { Sfx.play('ui'); fn(b); }; tb.appendChild(b); return b; }
     btn('☰', 'Menü', function () { self.menu(); });
-    btn(volIcon(), 'Lautstärke (M = stumm)', volPanel).classList.add('vol-ico');
     if (this.assist.hint) this.hintBtn = btn(this.boss ? '🦊' + P.charges : '💡', this.boss ? 'Fuchsgeist (kostet 1 Ladung)' : 'Hinweis', function () { self.hint(); });
     if (this.assist.undo) btn('↶', 'Zug zurück', function () { self.undo(); });
     if (OWNER && (this.mode === 'battle' || this.mode === 'lessonBattle')) btn('👁', 'Gefahren-Sicht', function (b) { self.assist.threats = !self.assist.threats; S.threats = self.assist.threats; save(); b.classList.toggle('on', self.assist.threats); self.highlights(); }, this.assist.threats);
@@ -608,8 +611,9 @@
   // Renderer neu bauen (z. B. nach Wechsel von Welt oder 2D/3D)
   Game.prototype.rerender = function () { $('#board-wrap').classList.toggle('mode3d', S.render === '3d'); this.makeRenderer(); this.r.setFlip(this.flip); this.r.sync(this.state); this.updateAll(); this.buildToolbar(); };
   Game.prototype.menu = function () {
-    var self = this, box = modal('<h2>Pause</h2><div class="acts" style="flex-direction:column"><button class="btn" id="pm-go">Weiterspielen</button>' + (this.mode === 'mission' || this.mode === 'tsume' || this.mode === 'puzzle' ? '<button class="btn" id="pm-re">Neu starten</button>' : '') + (this.mode === 'online' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + (this.mode === 'battle' || this.mode === 'lessonBattle' || this.mode === 'hotseat' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + '<button class="btn" id="pm-q">Zum Hauptmenü</button></div>');
+    var self = this, box = modal('<h2>Pause</h2><div class="acts" style="flex-direction:column"><button class="btn" id="pm-go">Weiterspielen</button>' + (this.mode === 'mission' || this.mode === 'tsume' || this.mode === 'puzzle' ? '<button class="btn" id="pm-re">Neu starten</button>' : '') + (this.mode === 'online' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + (this.mode === 'battle' || this.mode === 'lessonBattle' || this.mode === 'hotseat' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + '<button class="btn" id="pm-vol">Lautstärke</button><button class="btn" id="pm-q">Zum Hauptmenü</button></div>');
     $('#pm-go', box).onclick = closeModal;
+    $('#pm-vol', box).onclick = volPanel;
     if ($('#pm-re', box)) $('#pm-re', box).onclick = function () { closeModal(); self.restart(); };
     if ($('#pm-res', box)) $('#pm-res', box).onclick = function () { closeModal(); self.resign(); };
     $('#pm-q', box).onclick = function () { closeModal(); self.saveProgress(); go(self.cfg.back || 'title'); };
@@ -682,7 +686,9 @@
       var status = Shogi.status(st);
       if (status.check && !status.over) { Sfx.play('check'); self.banner('SCHACH!', 'check'); self.r.fx('check', st.king[st.turn]); }
       if (self.L && !status.over) { if (col !== self.human) self.taunt(status.check ? 'check' : cap ? 'capture' : d.drop ? 'drop' : null); else if (cap && Shogi.VALUE[Math.abs(cap)] >= Shogi.VALUE[5]) self.taunt('hurt'); }
-      Sfx.setIntensity((self.mode === 'battle' || self.mode === 'lessonBattle' ? 0.2 : 0) + (status.check ? 0.6 : 0) + Math.min(0.3, st.ply / 300));
+      // Musik-Spannung: Boss, Schach, Spieldauer und Endspiel (viele Steine in der Hand); hoch = Taiko
+      var inHand = 0; for (var hc = 0; hc < 2; hc++) for (var ht = 1; ht < 8; ht++) inHand += st.hands[hc][ht] || 0;
+      Sfx.setIntensity((self.mode === 'battle' || self.mode === 'lessonBattle' ? 0.2 : 0) + (status.check ? 0.6 : 0) + Math.min(0.3, st.ply / 300) + Math.min(0.3, Math.max(0, inHand - 4) * 0.05));
       self.updateAll();
       self.lastStatus = status;
     });
@@ -865,6 +871,7 @@
     var self = this, st = this.state, win = status.winner === this.human, draw = status.winner < 0;
     var reasonTxt = { mate: 'Schachmatt', nomoves: 'Keine Züge mehr', resign: 'Aufgabe', perpetual: 'Dauerschach (verboten)', repetition: 'Stellungswiederholung', king: 'König geschlagen' }[status.reason] || '';
     if (status.reason === 'mate' && st.king[st.turn] >= 0) { this.r.fx('mate', st.king[st.turn]); this.banner('MATT!', 'mate'); }
+    if (!draw && this.r.armyEnd) this.r.armyEnd(status.winner); // Armee: Verlierer fliehen, Sieger jubeln
     Sfx.setIntensity(0);
     if (this.mode === 'online') { this.sendOnline(); }
     if (this.mode === 'hotseat' || this.mode === 'online') {

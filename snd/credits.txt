@@ -63,3 +63,10 @@ die4           Christopherderp - "Hurt 2 - (Male)" - https://freesound.org/s/342
 die5           alexaxy - "man scream" - https://freesound.org/s/278177/ - CC0
 march (Loop)   craigsmith - "R16-15-Army Marching.wav" - https://freesound.org/s/480656/ - CC0
 horn           Ohrwurm - "Snailhorn.wav" - https://freesound.org/s/64830/ - CC0
+
+Musik (19.10.2026, geschnitten, mono, normalisiert; dynamisch gemischt in js/audio.js):
+mus_koto1      --DeletedUser--   "Koto C4.wav"                                      https://freesound.org/s/223958/  CC0
+mus_koto2      --DeletedUser--   "Koto G4.wav"                                      https://freesound.org/s/223956/  CC0
+mus_shaku1-5   makenoisemusic    "Todd Barton Shakuhachi Ro Reel"                   https://freesound.org/s/470651/  CC0
+mus_taiko1     Xinematix         "Taiko Drumloop 001 (120)"                         https://freesound.org/s/491277/  CC0
+mus_taiko2     szegvari          "Taiko Body Vocal Beat 120BPM Loop Action Mood Cinematic.wav"  https://freesound.org/s/625518/  CC0

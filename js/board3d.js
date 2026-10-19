@@ -2474,7 +2474,8 @@ Board3D.prototype.makePiece = function (p, cap) {
     var skb = army && this.theme.id === 'feudal' && this.settings.skel !== false && window.SkinAnim && Board3D.SKIN[t], ska = skb ? SkinAnim.cached(skb) : null;
     if (ska === false) skb = null;
     var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, tt, c) { this.attachGlb(g, s, c); }.bind(this);
-    if (ska) this.buildSquad(g, ska.src, t, col, ska);
+    if (!army && this.figSkinTry && this.figSkinTry(g, url, col)) { /* Statue mit Skelett (figanim.js) */ }
+    else if (ska) this.buildSquad(g, ska.src, t, col, ska);
     else if (skb) {
       // Skelett-Modell nachladen, solange Platzhalter; schlägt es fehl, normales Statuen-Regiment
       var fig2 = Figures3D.build(T, t, col, f.color); fig2.position.set(0, 0.2, -0.02); fig2.scale.multiplyScalar(1.6); g.add(fig2); g.userData.fig = fig2;
@@ -2500,9 +2501,11 @@ Board3D.prototype.sync = function (state) {
   this.state = state;
   var grp = this.pieceGroup, mv = this._lastMove; this._lastMove = null;
   if (this.look !== 'feld') {
-    while (grp.children.length) grp.remove(grp.children[0]);
-    this.pieces = {};
-    for (var q = 0; q < 81; q++) { var p = state.board[q]; if (!p) continue; var g = this.makePiece(p); this.placePiece(g, q); grp.add(g); this.pieces[q] = g; }
+    // Figur mit Skelett, die gerade gezogen hat, bleibt stehen (ihr Clip läuft weiter), alle anderen werden neu aufgestellt
+    var km = mv && mv.g && mv.g.userData.sk && mv.g.parent === grp && state.board[mv.to] === mv.g.userData.p ? mv.g : null;
+    while (grp.children.length) { var c0 = grp.children[0]; grp.remove(c0); if (c0 !== km && this.figFree) this.figFree(c0); }
+    this.pieces = {}; this._selG = null;
+    for (var q = 0; q < 81; q++) { var p = state.board[q]; if (!p) continue; var g = km && q === mv.to ? km : this.makePiece(p); this.placePiece(g, q); grp.add(g); this.pieces[q] = g; }
     return;
   }
   // Armee-Modus: bestehende Regimenter bleiben (Formation, Verluste), nur Neues wird aufgestellt
@@ -2510,7 +2513,7 @@ Board3D.prototype.sync = function (state) {
   var keep = [], np = {};
   for (var q2 = 0; q2 < 81; q2++) {
     var p2 = state.board[q2]; if (!p2) continue; var g2 = cand[q2];
-    if (!(g2 && g2.userData.p === p2 && g2.parent === grp && keep.indexOf(g2) < 0)) {
+    if (!(g2 && g2.userData.p === p2 && g2.parent === grp && keep.indexOf(g2) < 0 && !g2.userData.fleeing)) {
       // befördertes Regiment: so viele Veteranen wie Überlebende, höchstens volle Stärke (kein Nachschub)
       var live = g2 && g2.parent === grp && g2.userData.troops && (g2.userData.p > 0) === (p2 > 0) ? g2.userData.troops.filter(function (tr) { return !tr.userData.dead && !tr.userData.dying; }).length : 0;
       g2 = this.makePiece(p2, live ? Math.max(1, live) : 0); grp.add(g2);
@@ -2519,9 +2522,12 @@ Board3D.prototype.sync = function (state) {
   }
   grp.children.slice().forEach(function (c) { if (keep.indexOf(c) < 0 && !c.userData.corpseHold) grp.remove(c); }); // Besiegte liegen noch, bis sie eingesunken sind
   this.pieces = np;
+  // Kameraflug nur zu Spielbeginn (noch kein Zug), höchstens alle 30 s (Neuaufbau beim Umstellen der Einstellungen)
+  if (!this._introDone) { this._introDone = true; if (state.moves && !state.moves.length && (!Board3D._introT || performance.now() - Board3D._introT > 30000)) { Board3D._introT = performance.now(); this.armyIntro(); } }
 };
 Board3D.prototype.setHighlights = function (h) {
   this.hl = h || {}; h = this.hl;
+  if (this.figSelect) this.figSelect(h.selected);
   if (this.look === 'feld') this.showTag(this.hoverSq != null ? this.hoverSq : h.selected);
   var col = new Array(81).fill(null), dots = new Array(81).fill(0);
   function set(sq, c) { if (sq >= 0 && sq < 81) col[sq] = c; }
@@ -2642,7 +2648,7 @@ Board3D.prototype.update = function (now, dt) {
   if (this.checkRing.visible) { var k = 1 + Math.sin(now / 120) * 0.15; this.checkRing.scale.set(k, k, k); this.checkRing.material.opacity = 0.6 + Math.sin(now / 120) * 0.3; }
   // Figuren-Details
   var t = now / 1000, me = this; Board3D.ARMY_TIME.value = t;
-  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0); });
+  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0); if (g.userData.sk) me.figTick(g); });
   // Tweens (laufen auf einer eigenen Uhr, damit Zeitlupe geht)
   var self = this;
   if (this.slowUntil && now > this.slowUntil) { this.timeScale = 1; this.slowUntil = 0; }
@@ -2728,6 +2734,7 @@ Board3D.prototype.animate = function (info) {
   var capG = this.pieces[info.to];
   if (info.drop) {
     var p0 = info.col === 0 ? info.drop : -info.drop; mover = this.makePiece(p0); this.pieceGroup.add(mover);
+    if (this.look === 'feld') { this._lastMove = { g: mover, to: info.to }; return this.armyDrop(mover, info.col, to).then(function () { self.sync(after); }); } // Armee: aus dem Lager anmarschieren
     from = { x: to.x, z: to.z, y: this.BT + 7 };
     // Lichtsäule (Beschwörung)
     var beam = new T.Mesh(new T.CylinderGeometry(0.45, 0.45, 14, 16, 1, true), new T.MeshBasicMaterial({ color: new T.Color(f.color), transparent: true, opacity: 0.0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
@@ -2742,6 +2749,7 @@ Board3D.prototype.animate = function (info) {
     pillar.position.set(to.x, self.BT + 5, to.z); self.scene.add(pillar);
     self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * 0.55; }).then(function () { self.scene.remove(pillar); });
     if (mover.userData.troops || self.look === 'feld') return self.tween(450, function () { }).then(function () { self.emit(to.x, self.BT + 0.3, to.z, 0xffd76a, 50, 2.5, 1.2); });
+    if (mover.userData.sk) return self.figPromo(mover, after.board[info.to], to).then(function (np) { mover = np; }); // Statue mit Skelett: Jubel statt Umdrehen
     return self.tween(220, function (k) { mover.position.y = self.BT + k * 0.9; mover.rotation.z = k * Math.PI / 2; }).then(function () {
       var np = self.makePiece(after.board[info.to]); np.position.copy(mover.position); np.rotation.z = -Math.PI / 2; self.pieceGroup.remove(mover); self.pieceGroup.add(np); mover = np;
       self.emit(to.x, self.BT + 0.9, to.z, 0xffd76a, 80, 4, 1.4);
@@ -2752,18 +2760,24 @@ Board3D.prototype.animate = function (info) {
   if (capG && !info.drop && (this.settings.fights || 'voll') !== 'aus') {
     info.usesHit = true;
     var army = mover.userData.troops || capG.userData.troops;
-    return (army ? this.armyFight(info, mover, from, to, capG, this.fightStyle(Shogi && info.promo ? (Shogi.BASE[Math.abs(after.board[info.to])] || 0) : after.board[info.to])) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
+    var fst = this.fightStyle(Shogi && info.promo ? (Shogi.BASE[Math.abs(after.board[info.to])] || 0) : after.board[info.to]);
+    return (army ? this.armyFight(info, mover, from, to, capG, fst) : mover.userData.sk ? this.figFight(info, mover, from, to, capG, fst) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
   }
   var dist = Math.hypot(to.x - from.x, to.z - from.z), dur = info.drop ? 380 : 230 + dist * 45, height = info.drop ? 0 : 0.5 + dist * 0.12;
   // Armee: Regiment läuft über den Boden (umdrehen, laufen, wieder nach vorn) statt wie ein Spielstein zu hüpfen
   if (!info.drop && mover.userData.troops && !capG) return this.armyRun(mover, from, to).then(promoFx).then(function () { self.sync(after); });
+  // Statue mit Skelett geht/läuft hinüber; ohne Kampf fliegt die geschlagene Figur kurz vor der Ankunft weg
+  if (!info.drop && mover.userData.sk) return this.figWalk(mover, from, to, capG && function () {
+    self.shakeAmt = 0.3; self.emit(to.x, self.BT + 0.3, to.z, f.color, 60, 5, 1.2); var side = info.col === 0 ? 1 : -1, cs = capG.position.clone();
+    return self.tween(450, function (k) { capG.position.set(cs.x + (6.5 * side - cs.x) * k, cs.y + Math.sin(k * Math.PI) * 3, cs.z + (4 * side - cs.z) * k); capG.rotation.x = k * 8; capG.scale.setScalar(1 - k * 0.7); }).then(function () { self.pieceGroup.remove(capG); });
+  }).then(promoFx).then(function () { self.sync(after); });
   return this.tween(dur, function (k) {
     var e = info.drop ? k * k : (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
     mover.position.x = from.x + (to.x - from.x) * e; mover.position.z = from.z + (to.z - from.z) * e;
     mover.position.y = info.drop ? from.y + (self.BT - from.y) * e : self.BT + Math.sin(k * Math.PI) * height;
     if (info.drop) mover.rotation.y = (info.col === 1 ? Math.PI : 0) + (1 - k) * 6;
   }).then(function () {
-    if (info.drop) mover.rotation.y = info.col === 1 ? Math.PI : 0;
+    if (info.drop) { mover.rotation.y = info.col === 1 ? Math.PI : 0; if (self.figLand) self.figLand(mover); }
     self.emit(to.x, self.BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3);
     if (capG) {
       // Hit-Stop + Explosion + gefangene Figur fliegt zur Hand
@@ -2805,7 +2819,7 @@ Board3D.prototype.faceTo = function (g, x, z, dur) {
 Board3D.prototype.armyRun = function (g, from, to) {
   var self = this, dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1e-4;
   var dur = 520 + Math.min(dist, 3) * 430 + Math.max(0, dist - 3) * 190, r = g.rotation.y;
-  var sol = g.userData.troops.filter(function (s) { return !s.userData.dead && !s.userData.dying; }).map(function (s) {
+  var sol = (g.userData.troops || []).filter(function (s) { return !s.userData.dead && !s.userData.dying; }).map(function (s) {
     var m = s.userData.glb, rr = r + s.rotation.y, lx = dx * Math.cos(rr) - dz * Math.sin(rr), lz = dx * Math.sin(rr) + dz * Math.cos(rr);
     var f0 = m ? m.userData.face || 0 : 0, goal = Math.atan2(-lx, -lz) - ((m && m.userData.ry0 || 0) - Math.PI);
     while (goal - f0 > Math.PI) goal -= Math.PI * 2; while (goal - f0 < -Math.PI) goal += Math.PI * 2;
@@ -2826,6 +2840,105 @@ Board3D.prototype.armyRun = function (g, from, to) {
     sol.forEach(function (o) { if (o.m) o.m.userData.face = 0; if (o.u) o.u.uWalk.value = 0; });
     g.userData.marching = false;
   });
+};
+// ---------- Shogi-Momente im Armee-Modus (nur Optik, Regeln unverändert) ----------
+// Abwurf: das Regiment marschiert aus dem eigenen Feldlager auf sein Feld (Staub, kurzes Horn)
+Board3D.prototype.armyDrop = function (g, col, to) {
+  var self = this, side = col === 0 ? 1 : -1, from = { x: (to.x < 0 ? -1 : 1) * 6.8, z: side * 7.9 }; // aus der näheren Zeltreihe, damit der Anmarsch im Bild ist
+  g.position.set(from.x, this.BT, from.z);
+  var t = Math.abs(g.userData.p || 0), dust = this.dustColor(col), last = 0;
+  if (typeof Sfx !== 'undefined') Sfx.play('horn', 0.35, this.theme.id === 'feudal' ? t : null);
+  var run = this.armyRun(g, from, to);
+  this.tween(2600, function (k) { var now = performance.now(); if (now - last < (self.mobile ? 220 : 110) || g.userData.marching === false && k > 0.2) return; last = now; self.emit(g.position.x, self.BT + 0.05, g.position.z, dust, self.mobile ? 4 : 8, 0.9, 0.35); });
+  return run;
+};
+// Schach: Horn, Banner des Königs blinkt rot, eigene Regimenter neben dem König rücken an ihn heran (und nach kurzer Zeit zurück)
+Board3D.prototype.armyCheck = function (sq) {
+  var self = this, K = this.pieces[sq]; if (!K || !K.userData.banner) return;
+  var kp = K.userData.p, cell = Math.hypot(this.sqPos(1).x - this.sqPos(0).x, this.sqPos(1).z - this.sqPos(0).z) || 1;
+  if (typeof Sfx !== 'undefined') Sfx.play('horn', 0.6, this.theme.id === 'feudal' ? 8 : null);
+  var fm = K.userData.banner.userData.piv.children[0].material;
+  this.tween(1600, function (k) { var v = Math.max(0, Math.sin(k * Math.PI * 4)) * (1 - k * 0.5); fm.emissive.setRGB(v * 0.9, v * 0.05, 0); }).then(function () { fm.emissive.setRGB(0, 0, 0); });
+  var kw = K.position;
+  Object.keys(this.pieces).forEach(function (q) {
+    var g = self.pieces[q]; if (g === K || !g.userData.troops || (g.userData.p > 0) !== (kp > 0) || g.userData.marching || g.userData.fighting) return;
+    if (Math.abs(g.position.x - kw.x) > cell * 1.5 || Math.abs(g.position.z - kw.z) > cell * 1.5) return;
+    var kl = g.worldToLocal(kw.clone()), d = Math.hypot(kl.x, kl.z) || 1, sx = kl.x / d * cell * 0.22, sz = kl.z / d * cell * 0.22;
+    self.armyShift(g, sx, sz, 600).then(function () { return self.tween(2200, function () { }); }).then(function () { if (g.parent) self.armyShift(g, -sx, -sz, 900); });
+  });
+};
+// ganzes Regiment um (sx, sz) lokal verschieben, Soldaten gehen dabei und blicken in Gehrichtung
+Board3D.prototype.armyShift = function (g, sx, sz, ms) {
+  var r = g.rotation.y, sol = g.userData.troops.filter(function (s) { return !s.userData.dead && !s.userData.dying; }).map(function (s) {
+    var u = s.userData, m = u.glb, rr = s.rotation.y, lx = sx * Math.cos(rr) - sz * Math.sin(rr), lz = sx * Math.sin(rr) + sz * Math.cos(rr);
+    return { s: s, u: u, m: m, x0: s.position.x, z0: s.position.z, hx: u.home.x, hz: u.home.z, goal: Math.atan2(-lx, -lz) - ((m && m.userData.ry0 || 0) - Math.PI) };
+  });
+  var bn = g.userData.banner, bx = bn ? bn.position.x : 0, bz = bn ? bn.position.z : 0;
+  g.userData.marching = true;
+  return this.tween(ms, function (k) {
+    var e = k * k * (3 - 2 * k), turn = Math.sin(k * Math.PI);
+    if (bn) bn.position.set(bx + sx * e, bn.position.y, bz + sz * e);
+    sol.forEach(function (o) { o.s.position.x = o.x0 + sx * e; o.s.position.z = o.z0 + sz * e; o.u.u.uWalk.value = k < 0.9 ? 0.5 : 0; if (o.m) o.m.userData.face = o.goal * turn; });
+  }).then(function () {
+    sol.forEach(function (o) { o.u.home.x = o.hx + sx; o.u.home.z = o.hz + sz; o.u.ox = o.u.oz = 0; o.u.u.uWalk.value = 0; if (o.m) o.m.userData.face = 0; });
+    g.userData.marching = false;
+  });
+};
+// Matt oder Aufgabe: Verlierer drehen um und fliehen zum eigenen Lager, Sieger jubeln
+Board3D.prototype.armyEnd = function (winner) {
+  if (this.look !== 'feld') return;
+  var self = this, T = THREE, wp = new T.Vector3();
+  if (typeof Sfx !== 'undefined') setTimeout(function () { Sfx.play('cheer', 0.9); }, 900);
+  this.pieceGroup.children.forEach(function (g, gi) {
+    if (!g.userData.troops) return;
+    var col = g.userData.p > 0 ? 0 : 1, live = g.userData.troops.filter(function (s) { return !s.userData.dead && !s.userData.dying; });
+    if (col === winner) {
+      // Jubel: Skelett-Soldaten spielen Cheer-Clips in Wellen, Statuen hüpfen
+      live.forEach(function (s) {
+        var u = s.userData, n = 0;
+        (function again() { if (n++ > 2 || !s.parent) return; self.tween(250 + Math.random() * 900, function () { }).then(function () {
+          if (u.skin) { self.skinShot(s, ['cheer1', 'cheer2', 'cheer3']); return self.tween(u.skin.dur.cheer1 * 900 || 1500, function () { }); }
+          var y0 = s.position.y; return self.tween(380, function (k) { s.position.y = y0 + Math.sin(k * Math.PI) * 0.08; });
+        }).then(again); })();
+      });
+      return;
+    }
+    // Flucht: jeder dreht sich weg vom Feld und rennt zum eigenen Lagerrand, verteilt sich, verschwindet in der Ferne
+    var side = col === 0 ? 1 : -1, r = g.rotation.y; g.userData.marching = true; g.userData.fleeing = true;
+    var sol = live.map(function (s) {
+      s.getWorldPosition(wp); var tx = wp.x * 1.3 + (Math.random() - .5) * 5, tz = side * (11 + Math.random() * 6);
+      var tl = g.worldToLocal(new T.Vector3(tx, wp.y, tz)), dx = tl.x - s.position.x, dz = tl.z - s.position.z, rr = s.rotation.y;
+      var lx = dx * Math.cos(rr) - dz * Math.sin(rr), lz = dx * Math.sin(rr) + dz * Math.cos(rr), m = s.userData.glb;
+      return { s: s, u: s.userData, m: m, x0: s.position.x, z0: s.position.z, dx: dx, dz: dz, goal: Math.atan2(-lx, -lz) - ((m && m.userData.ry0 || 0) - Math.PI), lag: Math.random() * 0.25 + gi % 3 * 0.05, sp: 0.8 + Math.random() * 0.35 };
+    });
+    var ban = g.userData.banner, bdx = Math.random() - .5, bdz = side;
+    self.tween(4200, function (k) {
+      sol.forEach(function (o) {
+        var kk = Math.max(0, (k - o.lag) / (1 - o.lag)), turn = Math.min(1, kk * 6), mv = Math.max(0, kk - 0.08) * o.sp;
+        if (o.m) o.m.userData.face = o.goal * turn;
+        o.u.u.uWalk.value = kk > 0.05 ? 1 : 0.4; o.s.position.x = o.x0 + o.dx * mv; o.s.position.z = o.z0 + o.dz * mv;
+        if (mv > 0.85) o.s.visible = false;
+      });
+      if (ban) self.lean(ban, bdx, bdz, Math.min(1, k * 4) * Math.min(1, k * 4) * 1.5); // Fahne wird fallen gelassen
+    });
+  });
+};
+// Kameraflug zum Spielstart: hoch über Gote, tief und seitlich über beide Armeen, Landung in der Spielansicht; Antippen überspringt
+Board3D.prototype.armyIntro = function () {
+  var self = this, o = this.orbit, end = null, vs = this.viewShift;
+  var el = this.renderer.domElement, fn, stop = function () { self.tweens.forEach(function (tw) { if (tw.f === fn) tw.start = -1e12; }); };
+  el.addEventListener('pointerdown', stop, { once: true });
+  function sm(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+  function lerp(a, b, k) { return a + (b - a) * k; }
+  this.introOn = true;
+  return this.tween(this.mobile ? 6000 : 7000, fn = function (k) {
+    if (!end) end = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.user ? o.radius : o.fit || o.radius, ph: o.phi0 || o.phi, th: o.thetaGoal }; // Zielansicht erst im ersten Bild (Kamera ist dann eingepasst)
+    // drei Stationen: hoch hinter dem Gegner, tief seitlich über der Mitte, Spielansicht
+    var a = sm(k / 0.5), b = sm((k - 0.5) / 0.5), gs = end.th ? 1 : -1; // gs: Seite des Gegners (Start hinter seiner Armee)
+    o.target.x = end.x; o.target.y = end.y; o.target.z = lerp(lerp(gs * 2.5, 0, a), end.z, b);
+    o.radius = lerp(lerp(Math.min(end.r * 1.8, 26), Math.min(end.r * 0.85, 11), a), end.r, b); // feste Obergrenzen: hochkant ist end.r größer, sonst ginge der Flug durch den Wald o.phi = lerp(lerp(0.8, 1.3, a), end.ph, b);
+    o.theta = o.thetaGoal = lerp(lerp(end.th + Math.PI - 0.35, end.th + 1.35, a), end.th, b); self.viewShift = vs * b;
+  }).then(function () { el.removeEventListener('pointerdown', stop); self.introOn = false; o.target.set(end.x, end.y, end.z); o.radius = end.r; o.phi = end.ph; o.theta = o.thetaGoal = end.th; self.viewShift = vs; });
 };
 Board3D.prototype.lean = function (g, dx, dz, ang) {
   var q0 = g.userData.q0 || (g.userData.q0 = g.quaternion.clone()), L = Math.hypot(dx, dz) || 1;
@@ -2864,6 +2977,7 @@ Board3D.prototype.fight = function (info, A, from, to, D) {
   function die() {
     if (info.onHit) info.onHit();
     hit(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35);
+    if (D.userData.sk) return self.figDie(D, dust, sp, ux, uz); // Verteidiger mit Skelett: Sterbe-Animation
     var p0 = D.position.clone();
     return self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, ux, uz, e * 1.45); D.position.x = p0.x + ux * e * 0.35; D.position.z = p0.z + uz * e * 0.35; }).then(function () {
       snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
@@ -2977,7 +3091,9 @@ Board3D.prototype.fight = function (info, A, from, to, D) {
 };
 Board3D.prototype.fx = function (name, sq) {
   var p = this.sqPos(sq);
+  if (name === 'check' && this.look === 'feld') this.armyCheck(sq);
   if (name === 'check') { this.shakeAmt = 0.25; this.emit(p.x, this.BT + 0.2, p.z, 0xff3030, 40, 2.5, 0.6); }
+  if (name === 'mate' && this.figMate) this.figMate(sq);
   if (name === 'mate') { this.shakeAmt = 0.6; var self = this; [0xffd76a, 0xff5a4e, 0x46d7ff, 0xffffff].forEach(function (c, i) { setTimeout(function () { self.emit(p.x, self.BT + 0.5, p.z, c, 120, 6, 1.6); }, i * 150); }); }
   if (name === 'sparkle') this.emit(p.x, this.BT + 0.4, p.z, 0xffd76a, 30, 2, 1.2);
 };

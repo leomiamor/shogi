@@ -1,6 +1,6 @@
-// Sound komplett synthetisch (WebAudio), keine Dateien nötig.
+// Bedienklänge synthetisch (WebAudio), Kampf und Musik aus Aufnahmen (snd/, CC0).
 var Sfx = (function () {
-  var ctx = null, master, sfxGain, musicGain, noiseBuf, musicOn = false, musicTimer = null, intensity = 0;
+  var ctx = null, master, sfxGain, musicGain, noiseBuf, intensity = 0;
   var vol = { sfx: 0.8, music: 0.35, mute: false }, wantMusic = false;
   // weich nachregeln statt springen (kein Knacksen beim Ziehen)
   function ramp(g, v) { var t = ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(v, t, 0.04); }
@@ -185,41 +185,78 @@ var Sfx = (function () {
     grade: function (g) { var t = t0(); if (g >= 3) { osc('sine', note(10), t, 0.4, 0.15, null, null, true); osc('sine', note(12), t + 0.08, 0.5, 0.15, null, null, true); } else if (g <= 1) { osc('triangle', 220, t, 0.3, 0.12, null, 150); } }
   };
 
-  function musicTick() {
-    if (!musicOn || !ctx) return;
-    var t = t0(), base = 146.83;
-    // Koto-Zupfen: Dreieck mit schnellem Abklingen
-    var deg = Math.floor(Math.random() * 8);
-    var g = ctx.createGain(), o = ctx.createOscillator(), o2 = ctx.createOscillator();
-    o.type = 'triangle'; o2.type = 'sine'; var f = note(deg, base * 2); o.frequency.value = f; o2.frequency.value = f * 2.01;
-    env(g, t, 0.003, 0.22, 1.6); o.connect(g); o2.connect(g); g.connect(musicGain); g.connect(reverb);
-    o.start(t); o2.start(t); o.stop(t + 1.8); o2.stop(t + 1.8);
-    if (Math.random() < 0.35) { var o3 = ctx.createOscillator(), g3 = ctx.createGain(); o3.type = 'triangle'; o3.frequency.value = note(deg - 3, base * 2); env(g3, t + 0.18, 0.003, 0.12, 1.2); o3.connect(g3); g3.connect(musicGain); g3.connect(reverb); o3.start(t + 0.18); o3.stop(t + 1.6); }
-    // Taiko bei Spannung
-    if (intensity > 0 && Math.random() < 0.25 + intensity * 0.5) { var gt = ctx.createGain(), ot = ctx.createOscillator(); ot.frequency.setValueAtTime(110, t); ot.frequency.exponentialRampToValueAtTime(48, t + 0.4); env(gt, t, 0.003, 0.35 * intensity + 0.1, 0.45); ot.connect(gt); gt.connect(musicGain); ot.start(t); ot.stop(t + 0.5); }
-    var gap = intensity > 0.5 ? 380 : 650 + Math.random() * 700;
-    musicTimer = setTimeout(musicTick, gap);
+  // Musik aus Aufnahmen (CC0, snd/credits.txt) statt Synthesizer, dynamisch in drei Schichten:
+  // 0 ruhig: Koto-Töne in der In-Skala auf D, ab und zu eine Shakuhachi-Phrase (Ro = D); 1 Taiko leicht, 2 Taiko schwer (beide 120 BPM, 8 s, taktgleich).
+  // Spannung (setIntensity: Schach, Endspiel, Boss) und Kampfklänge im Armee-Modus blenden die Taiko ein. Lädt erst bei Musik > 0, Taiko erst bei Spannung.
+  // Stumm oder Tab im Hintergrund: nichts Neues ansetzen (Akku).
+  var mus = null, fightAt = -99, FIGHT = { clash: 1, hit: 1, roar: 1, horn: 1, fire: 1, zap: 1, fall: 1 }, TAIKO = ['mus_taiko1', 'mus_taiko2'];
+  function sstep(x, a, b) { x = Math.max(0, Math.min(1, (x - a) / (b - a))); return x * x * (3 - 2 * x); }
+  function musLevel() { return Math.max(intensity, ctx && ctx.currentTime - fightAt < 5 ? 0.8 : 0); }
+  function musPlay(k, g, at, off, v, rate) {
+    var s = ctx.createBufferSource(), sg = ctx.createGain(); s.buffer = k; s.playbackRate.value = rate || 1; sg.gain.value = v == null ? 1 : v;
+    s.connect(sg); sg.connect(g); s.start(at, off || 0); var m = mus; m.src.push(s); s.onended = function () { var i = m.src.indexOf(s); if (i >= 0) m.src.splice(i, 1); };
   }
-  var drone = null;
-  function startDrone() {
-    if (drone) return;
-    var g = ctx.createGain(); g.gain.value = 0; g.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 3);
-    var a = ctx.createOscillator(), b = ctx.createOscillator(), lp = ctx.createBiquadFilter();
-    a.type = 'sawtooth'; b.type = 'sawtooth'; a.frequency.value = 73.42; b.frequency.value = 73.42 * 1.498; b.detune.value = 6;
-    lp.type = 'lowpass'; lp.frequency.value = 380; a.connect(lp); b.connect(lp); lp.connect(g); g.connect(musicGain); g.connect(reverb);
-    a.start(); b.start(); drone = { g: g, a: a, b: b };
+  // Taiko-Schicht j ab Zeitpunkt t im laufenden 8-s-Zyklus einsetzen (beim Einblenden mitten im Zyklus mit Versatz, damit es im Takt bleibt)
+  function taiko(j, at) {
+    var k = TAIKO[j - 1]; if (!has(k) || mus.on[j] === mus.cyc) return;
+    mus.on[j] = mus.cyc; musPlay(buf[k][0], mus.g[j], at, Math.max(0, at - mus.c0));
+  }
+  function musMix(tc) {
+    if (!mus) return; var i = musLevel(), t = ctx.currentTime;
+    mus.lv = [1 - 0.55 * sstep(i, 0.3, 0.9), 0.75 * sstep(i, 0.22, 0.5), 0.8 * sstep(i, 0.6, 0.85)];
+    if (i > 0.15) TAIKO.forEach(function (k) { load(k, 0); });
+    mus.g.forEach(function (g, k) { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(mus.lv[k], t, tc || 1.2); if (k && mus.lv[k] > 0.02) taiko(k, Math.max(t + 0.03, mus.c0)); });
+    mus.fight = i >= 0.8 && intensity < 0.8;
+  }
+  function musTick() {
+    if (!mus) return; var t = ctx.currentTime;
+    if (vol.mute || document.hidden) { mus.c0 = mus.next = t + 0.3; mus.cyc++; mus.calmAt = t + 1; }
+    else {
+      if (t + 0.6 >= mus.next) { mus.c0 = Math.max(mus.next, t + 0.05); mus.next = mus.c0 + 8; mus.cyc++; }
+      for (var j = 1; j < 3; j++) if (mus.lv[j] > 0.02) taiko(j, Math.max(t + 0.05, mus.c0)); // auch wenn die Aufnahme gerade erst geladen ist
+      if (t >= mus.calmAt) musCalm(t);
+      if (mus.fight && musLevel() < 0.8) musMix(2.5); // Kampf vorbei: Taiko langsam zurück
+    }
+    mus.timer = setTimeout(musTick, 400);
+  }
+  // Koto: Wanderung in der In-Skala (G3–A4), Ton aus der näheren Aufnahme (C4 oder G4) umgestimmt; Shakuhachi-Phrase alle 25–50 s
+  function musCalm(t) {
+    var g = mus.g[0];
+    if (t >= mus.shakuAt && has('mus_shaku')) {
+      var L = buf.mus_shaku, i = Math.floor(Math.random() * L.length); if (L.length > 1 && i === mus.lastShaku) i = (i + 1) % L.length; mus.lastShaku = i;
+      musPlay(L[i], g, t + 0.05, 0, 0.5); mus.shakuAt = t + L[i].duration + 25 + Math.random() * 25; mus.calmAt = t + L[i].duration * 0.6; return;
+    }
+    if (has('mus_koto1') && has('mus_koto2')) {
+      mus.deg = Math.max(-3, Math.min(4, mus.deg + [-2, -1, 1, 2][Math.floor(Math.random() * 4)]));
+      var kn = function (d, at, v) { var f = note(d), c = Math.abs(Math.log(f / 261.63)) < Math.abs(Math.log(f / 392)); musPlay(buf[c ? 'mus_koto1' : 'mus_koto2'][0], g, at, 0, v, f / (c ? 261.63 : 392)); };
+      kn(mus.deg, t + 0.03, 0.45 + Math.random() * 0.15);
+      if (Math.random() < 0.3) kn(mus.deg - 2, t + 0.21, 0.3);
+    }
+    mus.calmAt = t + (mus.lv[2] > 0.3 ? 2.4 : 1.3) + Math.random() * 2.2;
+  }
+  function musStart() {
+    var t = ctx.currentTime;
+    if (mus) { mus.out.gain.cancelScheduledValues(t); mus.out.gain.setTargetAtTime(1, t, 0.4); return; }
+    load('mus_koto1', 0); load('mus_koto2', 0); load('mus_shaku', 5);
+    var out = ctx.createGain(); out.gain.value = 0; out.gain.setTargetAtTime(1, t, 0.6); out.connect(musicGain);
+    var g = [0, 1, 2].map(function (k) { var x = ctx.createGain(); x.gain.value = 0; x.connect(out); return x; });
+    mus = { out: out, g: g, lv: [1, 0, 0], src: [], on: [0, 0, 0], cyc: 0, c0: t + 0.3, next: t + 0.3, calmAt: t + 0.8, shakuAt: t + 6, deg: 1, lastShaku: -1, fight: false };
+    musMix(0.5); musTick();
+  }
+  function musStop() {
+    if (!mus) return; var m = mus, t = ctx.currentTime; mus = null; clearTimeout(m.timer);
+    m.out.gain.cancelScheduledValues(t); m.out.gain.setTargetAtTime(0.0001, t, 0.3);
+    m.src.forEach(function (s) { try { s.stop(t + 1.5); } catch (e) { } }); setTimeout(function () { m.out.disconnect(); }, 1800);
   }
   return {
     unlock: ensure,
     // type: Truppentyp 1–14 (Feudal) für eigene Klänge, sonst allgemein
-    play: function (name, arg, type) { if (vol.mute || vol.sfx <= 0 || !ensure()) return; try { S[name] && S[name](arg, type); } catch (e) { } },
+    play: function (name, arg, type) { if (FIGHT[name] && ctx) { var low = musLevel() < 0.8; fightAt = ctx.currentTime; if (low) musMix(0.7); } if (vol.mute || vol.sfx <= 0 || !ensure()) return; try { S[name] && S[name](arg, type); } catch (e) { } },
     music: function (on) {
-      wantMusic = on; if (!ensure()) return; musicOn = on && vol.music > 0;
-      clearTimeout(musicTimer);
-      if (musicOn) { startDrone(); drone.g.gain.cancelScheduledValues(ctx.currentTime); drone.g.gain.linearRampToValueAtTime(0.05, ctx.currentTime + 2); musicTick(); }
-      else if (drone) { drone.g.gain.cancelScheduledValues(ctx.currentTime); drone.g.gain.linearRampToValueAtTime(0, ctx.currentTime + 1); }
+      wantMusic = on; if (!ensure()) return;
+      if (on && vol.music > 0) musStart(); else musStop();
     },
-    setIntensity: function (x) { intensity = Math.max(0, Math.min(1, x)); },
+    setIntensity: function (x) { intensity = Math.max(0, Math.min(1, x)); musMix(); },
     setVolume: function (sfx, music, mute) {
       var wasOn = vol.music > 0; vol.sfx = sfx; vol.music = music; vol.mute = !!mute;
       if (!ctx) return;
