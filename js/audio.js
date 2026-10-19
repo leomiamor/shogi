@@ -29,25 +29,59 @@ var Sfx = (function () {
   // Echte Kampfklänge (CC0, snd/credits.txt) statt Synthesizer. Wie in Strategiespielen:
   // Varianten, Tonhöhe ±8 %, nie zweimal dieselbe, Mindestabstand je Art, höchstens 6 gleichzeitig, Schlacht-Teppich als Loop.
   var SMP = { clash: 3, hit: 2, cry: 2, impact: 0, drum: 0, fall: 0, whoosh: 0, cheer: 0, bed: 0 }, buf = {}, lastVar = {}, lastAt = {}, voices = 0, bedSrc = null, bedGain = null, bedTimer = null;
-  var GAP = { clash: 70, hit: 70, fall: 110, whoosh: 90, cry: 400, impact: 120, drum: 120, cheer: 1500 };
-  function loadSamples() {
-    if (loadSamples.done) return; loadSamples.done = true;
-    Object.keys(SMP).forEach(function (k) {
-      var n = SMP[k]; (n ? Array.from({ length: n }, function (_, i) { return k + (i + 1); }) : [k]).forEach(function (f) {
-        fetch('snd/' + f + '.mp3').then(function (r) { return r.arrayBuffer(); }).then(function (a) { return new Promise(function (ok, no) { ctx.decodeAudioData(a, ok, no); }); })
-          .then(function (b) { (buf[k] = buf[k] || []).push(b); }).catch(function () { });
-      });
+  var GAP = { clash: 70, hit: 70, fall: 110, whoosh: 90, cry: 400, impact: 120, drum: 120, cheer: 1500, yip: 220, snarl: 160, foxcry: 500, yelp: 260, horn: 20000,
+    thrust: 90, stab: 90, slash: 90, cut: 90, kiai: 300, warcry: 600, die: 230, ofuda: 140, wing: 160, caw: 280, stag: 500, snort: 300, dragon: 900, dgrowl: 250, flame: 400 };
+  // Klänge je Truppentyp (nur Feudal): Waffe, Stimme, Kreatur, Laufen. Sets laden erst, wenn der Typ zum ersten Mal klingt (Handy).
+  var XS = { yip: 3, foxcry: 2, snarl: 3, yelp: 3, paws: 0, horn: 0, thrust: 3, stab: 2, slash: 4, cut: 2, kiai: 4, warcry: 2, die: 5, march: 0, ofuda: 3, wing: 3, caw: 3, flap: 0,
+    stag: 3, snort: 2, hooves: 0, dragon: 2, dgrowl: 2, flame: 0 }, loaded = {};
+  var KIND = { 1: 'speer', 2: 'speer', 5: 'speer', 9: 'speer', 10: 'speer', 4: 'schwert', 8: 'schwert', 12: 'schwert', 3: 'fuchs', 11: 'fuchs', 6: 'ofuda', 7: 'tengu', 13: 'hirsch', 14: 'drache' };
+  // Ereignis -> [Sample, Lautstärke, Tonhöhe]: swing Ausholen/Sprung, hit Treffer, parry Parade, shout Zwischenruf beim Treffer, cry Schlachtruf (pack = mehrstimmig),
+  // die Sterbelaut, mag Fernangriff, step Laufen (Loop). Fehlt ein Eintrag, klingt der allgemeine Kampfklang.
+  var VOX = {
+    speer: { swing: ['thrust', 0.6], hit: ['stab', 0.7], shout: ['kiai', 0.4], cry: ['warcry', 0.9], die: ['die', 0.45], step: ['march', 1.1] },
+    schwert: { swing: ['slash', 0.6], hit: ['cut', 0.65], shout: ['kiai', 0.45], cry: ['cry', 0.9], also: ['kiai', 0.6], die: ['die', 0.45], step: ['march', 1.1, 0.9] },
+    ofuda: { mag: ['ofuda', 0.7], hit: ['ofuda', 0.4], shout: ['kiai', 0.35], cry: ['ofuda', 0.8], also: ['kiai', 0.5], die: ['die', 0.45], step: ['march', 0.9, 1.05] },
+    fuchs: { swing: ['yip', 0.45], hit: ['snarl', 0.6], parry: ['snarl', 0.45], shout: ['yip', 0.35], cry: ['foxcry', 0.75], pack: 3, die: ['yelp', 0.5], step: ['paws', 1.6] },
+    tengu: { swing: ['wing', 0.55], shout: ['caw', 0.35], cry: ['caw', 0.75], pack: 3, also: ['wing', 0.6], die: ['caw', 0.45, 0.85], step: ['flap', 1, 0.9] },
+    hirsch: { swing: ['snort', 0.5], shout: ['snort', 0.35], cry: ['stag', 0.85], die: ['stag', 0.4, 1.2], step: ['hooves', 1.2] },
+    drache: { swing: ['wing', 0.6, 0.6], hit: ['dgrowl', 0.6], shout: ['dgrowl', 0.4], cry: ['dragon', 0.9], die: ['dragon', 0.6, 0.8], mag: ['flame', 0.8], step: ['flap', 1.3, 0.55] }
+  };
+  function load(k, n) {
+    if (loaded[k]) return; loaded[k] = true;
+    (n ? Array.from({ length: n }, function (_, i) { return k + (i + 1); }) : [k]).forEach(function (f) {
+      fetch('snd/' + f + '.mp3').then(function (r) { if (!r.ok) throw r.status; return r.arrayBuffer(); }).then(function (a) { return new Promise(function (ok, no) { ctx.decodeAudioData(a, ok, no); }); })
+        .then(function (b) { (buf[k] = buf[k] || []).push(b); }).catch(function () { });
     });
   }
+  function loadSamples() {
+    if (loadSamples.done) return; loadSamples.done = true;
+    Object.keys(SMP).forEach(function (k) { load(k, SMP[k]); });
+  }
+  // Eintrag für Typ t und Ereignis ev (lädt das Set des Typs nach)
+  function vx(t, ev) {
+    var kd = t && KIND[t], v = kd && VOX[kd]; if (!v) return null;
+    if (!v._ld) { v._ld = true; load('horn', 0); Object.keys(v).forEach(function (e) { var s = v[e]; if (s && s.length && XS[s[0]] != null) load(s[0], XS[s[0]]); }); }
+    return v[ev] || null;
+  }
+  function vplay(t, ev, k, opt) { var e = vx(t, ev); if (!e) return false; opt = opt || {}; opt.rate = (opt.rate || 1) * (e[2] || 1); return smp(e[0], e[1] * (k == null ? 1 : k), opt); }
   function has(k) { return buf[k] && buf[k].length; }
   function smp(k, v, opt) {
     if (!has(k)) return false; opt = opt || {};
-    var now = ctx.currentTime * 1000; if (lastAt[k] && now - lastAt[k] < (GAP[k] || 60)) return true; if (voices >= 6 && !opt.force) return true; lastAt[k] = now;
+    var now = ctx.currentTime * 1000; if (!opt.nogap && lastAt[k] && now - lastAt[k] < (GAP[k] || 60)) return true; if (voices >= 6 && !opt.force) return true; lastAt[k] = now;
     var list = buf[k], i = Math.floor(Math.random() * list.length); if (list.length > 1 && i === lastVar[k]) i = (i + 1) % list.length; lastVar[k] = i;
     var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = list[i];
     src.playbackRate.value = (opt.rate || 1) * (0.92 + Math.random() * 0.16); g.gain.value = (v == null ? 0.8 : v) * (0.75 + Math.random() * 0.25);
     src.connect(g); g.connect(sfxGain); if (opt.wet) g.connect(reverb);
-    voices++; src.onended = function () { voices--; }; src.start(ctx.currentTime + 0.005); return true;
+    voices++; src.onended = function () { voices--; }; src.start(ctx.currentTime + 0.005 + (opt.delay || 0)); return true;
+  }
+  var stepSrc = null, stepG = null;
+  function stepStop(f) { if (!stepSrc) return; var t = ctx.currentTime; stepG.gain.cancelScheduledValues(t); stepG.gain.setTargetAtTime(0.0001, t, f / 3); stepSrc.stop(t + f + 0.05); stepSrc = null; }
+  function stepLoop(k, ms, v, rate) {
+    if (!has(k)) return; stepStop(0.08);
+    var b = buf[k][0], src = ctx.createBufferSource(), g = ctx.createGain(), t = ctx.currentTime, d = Math.max(0.3, ms / 1000);
+    src.buffer = b; src.loop = true; src.playbackRate.value = (rate || 1) * (0.95 + Math.random() * 0.1);
+    g.gain.setValueAtTime(0.0001, t); g.gain.setTargetAtTime(v, t, 0.08); g.gain.setTargetAtTime(0.0001, t + d - 0.25, 0.08);
+    src.connect(g); g.connect(sfxGain); src.start(t, Math.random() * b.duration); src.stop(t + d + 0.3); stepSrc = src; stepG = g;
   }
   // Teppich kurz absenken (Schrei, Aufprall)
   function duck(ms) { if (!bedGain) return; var t = ctx.currentTime; bedGain.gain.cancelScheduledValues(t); bedGain.gain.setTargetAtTime(bedGain._lvl * 0.55, t, 0.03); bedGain.gain.setTargetAtTime(bedGain._lvl, t + ms / 1000, 0.15); }
@@ -90,14 +124,17 @@ var Sfx = (function () {
     promote: function () { var t = t0(); for (var i = 0; i < 7; i++) { osc('sine', note(i + 5), t + i * 0.07, 0.8, 0.14, null, null, true); osc('sine', note(i + 5) * 3.01, t + i * 0.07, 0.3, 0.03, null, null, true); } noise(t, 0.6, 0.2, 'highpass', 3000, 1, 9000, null, true); },
     // Kampf: Klingen-Klirren, Luftzug, Magie/Schuss, Feuer, Zerbröseln der Statue
     // Hieb: kurzes Krachen von Stahl auf Rüstung/Holz, jedes Mal leicht anders, kein Nachklingen
-    clash: function (v) {
+    clash: function (v, t) {
+      if (t && vplay(t, 'parry', v || 0.8)) return;
       if (smp('clash', (v || 0.8) * 0.9)) return;
       var t = t0(), k = v || 0.8, r = 0.75 + Math.random() * 0.5;
       noise(t, 0.05, 0.9 * k, 'bandpass', 1900 * r, 1.6); noise(t, 0.025, 0.4 * k, 'highpass', 5200 * r, 0.7);
       noise(t + 0.01, 0.09, 0.45 * k, 'bandpass', 520 * r, 1.2, 260); osc('sine', 120 * r, t, 0.08, 0.35 * k, null, 60);
     },
     // Schlachtruf der Armee: viele Stimmen „Uooo!“ (Sägezahn durch Vokal-Formanten), dazu Atemrauschen
-    roar: function (v) {
+    roar: function (v, t) {
+      var e = t && vx(t, 'cry');
+      if (e && has(e[0])) { for (var j = 0, n = VOX[KIND[t]].pack || 1; j < n; j++) smp(e[0], e[1] * (v || 1) * (j ? 0.6 : 1), { force: true, nogap: j > 0, wet: true, delay: j * (0.08 + Math.random() * 0.14) }); if (VOX[KIND[t]].also) vplay(t, 'also', v, { force: true, nogap: true, delay: 0.25 }); duck(500); return; }
       if (smp('cry', v || 1, { force: true, wet: true })) { duck(500); return; }
       var t = t0(), k = v || 1;
       for (var i = 0; i < 9; i++) {
@@ -111,8 +148,15 @@ var Sfx = (function () {
       }
       noise(t, 1.1, 0.25 * k, 'bandpass', 800, 0.7, 500, null, true);
     },
-    hit: function (v) { if (!smp('hit', v || 0.7)) S.clash(v); },
-    fall: function (v) { smp('fall', v || 0.6); },
+    hit: function (v, t) {
+      if (t && vplay(t, 'hit', v || 0.7)) { if (Math.random() < 0.4) smp('hit', (v || 0.7) * 0.45); if (Math.random() < 0.2) vplay(t, 'shout'); return; }
+      if (!smp('hit', v || 0.7)) S.clash(v);
+    },
+    fall: function (v, t) { smp('fall', v || 0.6); if (t && Math.random() < 0.55) vplay(t, 'die', v ? 0.6 + v * 0.5 : 1, { force: true }); },
+    // Laufen je Typ (Schritte, Pfoten, Hufe, Flügel) als Loop über die Zugdauer
+    march: function (ms, t) { var e = vx(t, 'step'); if (e) stepLoop(e[0], ms, e[1], e[2]); },
+    // Horagai (Muschelhorn) zum Schlachtbeginn, höchstens alle 20 s
+    horn: function (v, t) { vx(t, 'cry'); smp('horn', v || 0.7, { force: true, wet: true }); },
     cheer: function (v) { bedStop(1.2); smp('cheer', v || 0.8, { force: true, wet: true }); },
     bedStop: function () { bedStop(0.8); },
     // Taiko-Schlag beim Aufprall der Linien
@@ -129,9 +173,9 @@ var Sfx = (function () {
       for (var j = 0; j < (sec || 3) * 1.5; j++) { var w = t + Math.random() * (sec || 3), f = 120 + Math.random() * 120; osc('sawtooth', f * 1.1, w, 0.25, 0.025, null, f * 0.75, true); }
       noise(t, sec || 3, 0.12, 'bandpass', 700, 0.5, 400, null, true);
     },
-    whoosh: function (v) { if (smp('whoosh', (v || 0.6) * 0.8)) return; var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
-    zap: function () { var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
-    fire: function () { var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
+    whoosh: function (v, t) { if (t && vplay(t, 'swing', v ? v * 1.6 : 1)) return; if (smp('whoosh', (v || 0.6) * 0.8)) return; var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
+    zap: function (v, k) { if (k && vplay(k, 'mag', v ? v * 1.6 : 1, { wet: true })) return; var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
+    fire: function (v, k) { if (k && vplay(k, 'mag', 1, { force: true, wet: true })) { vplay(k, 'cry', 0.8, { force: true, delay: 0.05 }); return; } var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
     crumble: function () { var t = t0(); noise(t, 0.6, 0.6, 'lowpass', 1800, 0.7, 200, null, true); for (var i = 0; i < 5; i++) noise(t + i * 0.06 + Math.random() * 0.04, 0.05, 0.4, 'bandpass', 1500 + Math.random() * 2000, 4); },
     check: function () { var t = t0(); osc('sine', 90, t, 0.5, 1, null, 45, true); noise(t, 0.12, 0.5, 'lowpass', 400, 1); osc('sine', 90, t + 0.22, 0.45, 0.8, null, 45, true); },
     win: function () { var t = t0(); [0, 2, 4, 5, 7, 9, 10].forEach(function (d, i) { osc('triangle', note(d + 5), t + i * 0.12, 0.9, 0.18, null, null, true); }); for (var i = 0; i < 6; i++) osc('sine', 80, t + i * 0.15, 0.3, 0.6, null, 50); },
@@ -167,7 +211,8 @@ var Sfx = (function () {
   }
   return {
     unlock: ensure,
-    play: function (name, arg) { if (vol.mute || vol.sfx <= 0 || !ensure()) return; try { S[name] && S[name](arg); } catch (e) { } },
+    // type: Truppentyp 1–14 (Feudal) für eigene Klänge, sonst allgemein
+    play: function (name, arg, type) { if (vol.mute || vol.sfx <= 0 || !ensure()) return; try { S[name] && S[name](arg, type); } catch (e) { } },
     music: function (on) {
       wantMusic = on; if (!ensure()) return; musicOn = on && vol.music > 0;
       clearTimeout(musicTimer);

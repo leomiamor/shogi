@@ -14,3 +14,52 @@ hit2.mp3    Kenney - "Impact Sounds" (impactPunch_heavy_003) - https://kenney.nl
 fall.mp3    leonelmail - "BODY FALL - V HVY - DIRT" - https://freesound.org/people/leonelmail/sounds/504626/ - CC0
 whoosh.mp3  Kenney - "RPG Audio" (knifeSlice) - https://kenney.nl/assets/rpg-audio - CC0
 cheer.mp3   craigsmith - "S12-03 Small group men cheering; encouraging" - https://freesound.org/people/craigsmith/sounds/675103/ - CC0
+
+Klänge je Truppentyp (Armee-Modus, Feudal). Alle CC0, Freesound-Vorschauen geschnitten, mono 44.1 kHz MP3 64 kbps (Loops 48 kbps), Lautheit angeglichen, Fades.
+ofuda1-3 sind gemischt (Papier + Magie). Loops (paws, flap, hooves, march) an leisen Stellen geschnitten.
+
+yip1-3         Simon Spiers - "Fox Cry.wav" - https://freesound.org/s/431302/ - CC0
+foxcry1-2      nielstii - "Fox scream in the forest" - https://freesound.org/s/554308/ - CC0
+snarl1-2       SmallQuadruped - "snarl.wav" - https://freesound.org/s/42201/ - CC0
+snarl3         Reitanna - "hiss2.wav" - https://freesound.org/s/343927/ - CC0
+yelp1-2        unfa - "Dog's Yelping 7" - https://freesound.org/s/160478/ - CC0
+yelp3          haulaway - "Small Dog Cry" - https://freesound.org/s/735365/ - CC0
+paws (Loop)    IENBA - "Animal Footsteps" - https://freesound.org/s/658429/ - CC0
+thrust1-2      qubodup - "Multi-Swing Bamboo Staff Weapon Attack" - https://freesound.org/s/60010/ - CC0
+thrust3        Sadiquecat - "Whoosh - Long Bamboo stick - OS ST 13" - https://freesound.org/s/855844/ - CC0
+stab1          minituffy - "Large Swede Stab with Whoosh.wav" - https://freesound.org/s/385966/ - CC0
+stab2          ihitokage - "Sword stab 2" - https://freesound.org/s/395373/ - CC0
+slash1         nekoninja - "samurai slash" - https://freesound.org/s/370204/ - CC0
+slash2-3       nekoninja - "Samurai Slash2" - https://freesound.org/s/512785/ - CC0
+slash4         ethanchase7744 - "sword slash.wav" - https://freesound.org/s/441666/ - CC0
+cut1           SypherZent - "Deep Cut / Slash / Gash" - https://freesound.org/s/420674/ - CC0
+cut2           Kreastricon62 - "Bloody Blade 2.wav" - https://freesound.org/s/323526/ - CC0
+ofuda1         mickdow - "Paper Flutter .wav" - https://freesound.org/s/320913/ + spookymodem - "Magic Smite.wav" - https://freesound.org/s/249819/ - CC0
+ofuda2         mickdow - "Paper Flutter .wav" - https://freesound.org/s/320913/ + Aleks41 - "Magic Strike.wav" - https://freesound.org/s/406063/ - CC0
+ofuda3         eyesonlegs - "PaperSlide.wav" - https://freesound.org/s/464302/ + suntemple - "Magic SFX for Games " - https://freesound.org/s/241809/ - CC0
+wing1-2        tommy_mooney - "wings flapping.wav" - https://freesound.org/s/386706/ - CC0
+wing3          Godowan - "wings.wav" - https://freesound.org/s/240476/ - CC0
+flap (Loop)    philberts - "wingflap_fast.wav" - https://freesound.org/s/71417/ - CC0
+caw1           egomassive - "Caw.ogg" - https://freesound.org/s/536732/ - CC0
+caw2           iwanPlays - "CrowOrRaven1.wav" - https://freesound.org/s/512781/ - CC0
+caw3           qubodup - "U.S. National Park Service - American Crow.flac" - https://freesound.org/s/182090/ - CC0
+stag1-2        IchBinChrist - "Bellowing deer - Animal - Nature - Hirsch - Röhren - Tiere - Wald" - https://freesound.org/s/407631/ - CC0
+stag3          L.Finck - "Deer rut - Brame Cerf 02.wav" - https://freesound.org/s/653533/ - CC0
+snort1         craigsmith - "G38-16-Four Horse Snorts.wav" - https://freesound.org/s/437111/ - CC0
+snort2         o_ciz - "Horse(snort)_3.wav" - https://freesound.org/s/475483/ - CC0
+hooves (Loop)  HebronTheatre - "Horse Gallop - Loopable.mp3" - https://freesound.org/s/197212/ - CC0
+dragon1        JoelAudio - "DRAGON_ROAR.wav" - https://freesound.org/s/85568/ - CC0
+dragon2        qubodup - "Dragon Roar" - https://freesound.org/s/442964/ - CC0
+dgrowl1-2      Breviceps - "Dragon: Several roars, growls and snarls" - https://freesound.org/s/479380/ - CC0
+flame          LookIMadeAThing - "Basic Fire whoosh" - https://freesound.org/s/260554/ - CC0
+kiai1-2        oldedgar - "Kung Fu Yell.aif" - https://freesound.org/s/97977/ - CC0
+kiai3-4        WannyManny - "Ninja Vocalizations, Several Types.wav" - https://freesound.org/s/632075/ - CC0
+warcry1        florianreichelt - "People screaming in agony when charging into battle" - https://freesound.org/s/563011/ - CC0
+warcry2        Jace - "Men Shouting Hey.wav" - https://freesound.org/s/57204/ - CC0
+die1           tonsil5 - "Grunt2 - Death Pain.wav" - https://freesound.org/s/416838/ - CC0
+die2           tonsil5 - "Grunt1 - Death Pain.wav" - https://freesound.org/s/416839/ - CC0
+die3           Replix - "Death sound (male)" - https://freesound.org/s/173126/ - CC0
+die4           Christopherderp - "Hurt 2 - (Male)" - https://freesound.org/s/342230/ - CC0
+die5           alexaxy - "man scream" - https://freesound.org/s/278177/ - CC0
+march (Loop)   craigsmith - "R16-15-Army Marching.wav" - https://freesound.org/s/480656/ - CC0
+horn           Ohrwurm - "Snailhorn.wav" - https://freesound.org/s/64830/ - CC0
