@@ -1051,7 +1051,7 @@ Board3D.prototype.figUrl = function (t, col) {
 // Statuen-Look: alle Figuren eines Spielers in einem Material, Normal-Map des Modells bleibt für die Details
 Board3D.STATUE_READY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // Typen, deren Statuen-Modell die Prüfung bestanden hat
 Board3D.promoOnBase = function (ed, t) { return t >= 9 && t <= 12 && ((ed === 'feudal' ? Board3D.STATUE_READY : Board3D.STATUE_READY_ED[ed]) || []).indexOf(t) < 0; };
-Board3D.STATUE_READY_ED = { mecha: [1, 3, 4, 5, 8, 9, 10, 11, 12], fantasy: [1, 8, 9, 10, 11, 12], hunde: [9, 10, 11, 12] }; // dito für die anderen Editionen
+Board3D.STATUE_READY_ED = { mecha: [1, 3, 4, 5, 8, 9, 10, 11, 12], fantasy: [1, 8, 9, 10, 11, 12], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] }; // dito für die anderen Editionen
 Board3D.STATUE = { gold: [0xd9a93a, 0.28, 1], silber: [0xc9ced6, 0.25, 1], bronze: [0x7a4a26, 0.35, 0.85] };
 Board3D.prototype.statueMat = function (col, normalMap, rim) {
   var name = (this.settings.statueMats || ['gold', 'silber'])[col], M = Board3D.STATUE[name] || Board3D.STATUE.gold;
@@ -1210,7 +1210,7 @@ Board3D.SASHI = [[[0.85, 0.55, 0.12], [0.02, 0.018, 0.015]], [[0.8, 0.82, 0.85],
 Board3D.WHITE_FUR = [3]; // Kitsune (Springer): weißes Fell wie die Inari-Füchse statt Orange
 // je Edition: Kitsune-Fell nur bei Feudal (sonst würde der Sprung-Mech/Greif/Jack Russell umgefärbt); Rückenfähnchen nur bei Menschen/Mechs, nie bei Kreaturen, Fliegern und Hunden
 Board3D.WHITE_FUR_ED = { feudal: [3] };
-Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 3, 7, 13, 14], fantasy: [1, 3, 7, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14] };
+Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 3, 7, 13, 14], fantasy: [1, 3, 7, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] };
 Board3D.edLists = function (ed) { Board3D.WHITE_FUR = Board3D.WHITE_FUR_ED[ed] || []; Board3D.NO_SASHI = Board3D.NO_SASHI_ED[ed] || Board3D.NO_SASHI_ED.feudal; };
 Board3D.KUMADORI = [[0.85, 0.52, 0.1], [0.62, 0.05, 0.03]]; // Zeichnung im Fell (dunkle Partien des Originals): Sente Gold, Gote Zinnober
 Board3D.paintPatch = function (sh, col, t) {
