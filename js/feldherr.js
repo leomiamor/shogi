@@ -5,6 +5,15 @@
 (function () {
   if (typeof Board3D === 'undefined') return;
   var T = THREE;
+  // Mehr Truppen (Wunsch „viel größer, mehr Truppenanzahl“): je Regiment PC ×2, Handy ×1,44 Mann, dafür kleiner,
+  // Formation bleibt gleich groß (ein Feld = ein großes Stück Land). Kampfkraft skaliert für alle gleich, das Kräfteverhältnis bleibt.
+  (function () {
+    var kc = Board3D.MOBILE ? 1.2 : 1.42, ks = Board3D.ARMY_KS = Board3D.MOBILE ? 0.84 : 0.74;
+    Object.keys(Board3D.ARMY).forEach(function (k) {
+      var F = Board3D.ARMY[k]; if (F.cols * F.rows <= 1) return; // Helden bleiben allein und groß
+      F.cols = Math.round(F.cols * kc); F.rows = Math.round(F.rows * kc); F.sx /= kc; F.sz /= kc; F.h *= ks; F.pw *= ks; F.foot *= ks;
+    });
+  })();
   function sm(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
 
   // kleine Quader mit Farbe und Wind-Gewicht zu einer Geometrie zusammenfügen
@@ -56,7 +65,8 @@
   };
 
   var bf0 = Board3D.prototype.buildFeldzug;
-  Board3D.prototype.buildFeldzug = function (hi) { bf0.call(this, hi); this.buildFeldGelaende(hi); this.buildHeer(hi); };
+  Board3D.prototype.buildFeldzug = function (hi) { bf0.call(this, hi); this.maxR = 70; // weit herauszoomen: beide Länder im Blick
+    this.buildSiedlung(hi); this.buildFeldGelaende(hi); this.buildHeer(hi); };
 
   // ---- Gelände im Feld ----
   Board3D.prototype.buildFeldGelaende = function (hi) {
@@ -126,7 +136,7 @@
   Board3D.prototype.buildHeer = function (hi) {
     var self = this, scene = this.scene, Y = this.BT, H = Board3D.fieldH, mob = this.mobile, rnd = Board3D.rnd(313), V = Board3D.VILLAGES, RX = Board3D.riverG;
     var m4 = new T.Matrix4(), p3 = new T.Vector3(), q = new T.Quaternion(), up = new T.Vector3(0, 1, 0), sc = new T.Vector3(1, 1, 1), cc = new T.Color();
-    var COLS = mob ? 10 : 16, ROWS = mob ? 7 : 10, NB = mob ? 4 : 7, SX = 0.17, SZ = 0.2, BW = COLS * SX, BD = ROWS * SZ;
+    var KS = Board3D.ARMY_KS || 1, COLS = mob ? 12 : 20, ROWS = mob ? 8 : 12, NB = mob ? 9 : 20, SX = 0.17 * KS, SZ = 0.2 * KS, BW = COLS * SX, BD = ROWS * SZ;
     function okSpot(x, z) {
       var c = [[0, 0], [-BW / 2, -BD / 2], [BW / 2, -BD / 2], [-BW / 2, BD / 2], [BW / 2, BD / 2]], hs = [];
       for (var i = 0; i < c.length; i++) {
@@ -140,9 +150,9 @@
     var land = [[], []];
     [0, 1].forEach(function (col) {
       var sg = col === 0 ? 1 : -1, cand = [];
-      for (var z = 15.8; z <= 25; z += 0.9) for (var x = -20; x <= 20; x += 0.9) if (okSpot(x, z * sg)) cand.push([x, z * sg, Math.abs(x) * 0.6 + (z - 15.8)]);
+      for (var z = 15.8; z <= 36; z += 0.8) for (var x = -30; x <= 30; x += 0.8) if (okSpot(x, z * sg)) cand.push([x, z * sg, Math.abs(x) * 0.5 + (z - 15.8) + rnd() * 3]);
       cand.sort(function (a, b) { return a[2] - b[2]; });
-      cand.forEach(function (c) { if (land[col].length < NB && land[col].every(function (b) { return Math.hypot(b[0] - c[0], b[1] - c[1]) > 4.4; })) land[col].push(c); });
+      cand.forEach(function (c) { if (land[col].length < NB && land[col].every(function (b) { return Math.abs(b[0] - c[0]) > BW + 0.6 || Math.abs(b[1] - c[1]) > BD + 0.8; })) land[col].push(c); });
     });
     // Marschkolonnen: Straße vom fernen Land zum Lager (Proben alle 0,2 m mit Höhe und Richtung)
     function path(road, col) {
@@ -156,14 +166,14 @@
       }
       return out;
     }
-    var MR = mob ? 14 : 26, MC = 4;
+    var MR = mob ? 22 : 40, MC = mob ? 4 : 6;
     this.heer = [];
     [0, 1].forEach(function (col) {
       var road = path(Board3D.ROADS[col === 0 ? 0 : 1], col), nStat = land[col].length * COLS * ROWS, nMarch = road.length > 40 ? MR * MC : 0;
       var im = new T.InstancedMesh(soldierGeo(col), self.heerMat(), nStat + nMarch), n = 0, ry = col === 0 ? Math.PI : 0;
       land[col].forEach(function (b) {
         for (var r = 0; r < ROWS; r++) for (var c = 0; c < COLS; c++) {
-          var x = b[0] + (c - (COLS - 1) / 2) * SX + (rnd() - 0.5) * 0.04, z = b[1] + ((r - (ROWS - 1) / 2) * SZ) * (col === 0 ? -1 : 1) + (rnd() - 0.5) * 0.04, s = 0.92 + rnd() * 0.16;
+          var x = b[0] + (c - (COLS - 1) / 2) * SX + (rnd() - 0.5) * 0.04 * KS, z = b[1] + ((r - (ROWS - 1) / 2) * SZ) * (col === 0 ? -1 : 1) + (rnd() - 0.5) * 0.04 * KS, s = (0.92 + rnd() * 0.16) * KS;
           q.setFromAxisAngle(up, ry + (rnd() - 0.5) * 0.25); m4.compose(p3.set(x, Y + H(x, z) - 0.01, z), q, sc.set(s, s, s)); im.setMatrixAt(n, m4);
           im.setColorAt(n++, cc.setScalar(0.8 + rnd() * 0.35));
         }
@@ -176,25 +186,58 @@
         for (var j = 0; j < 5; j++) { var x = b[0] + (j - 2) * BW / 4.4, z = b[1] + (BD / 2 + 0.15) * (col === 0 ? -1 : 1); q.setFromAxisAngle(up, ry + Math.PI / 2 + (rnd() - 0.5) * 0.3); m4.compose(p3.set(x, Y + H(x, z) - 0.02, z), q, sc.set(1, 1, 1)); bm.setMatrixAt(n++, m4); }
       });
       bm.count = bn; bm.castShadow = false; bm.receiveShadow = true; bm.raycast = function () { }; bm.computeBoundingSphere(); scene.add(bm);
-      if (nMarch) self.heer.push({ im: im, n0: nStat, road: road, ph: rnd() * 100 });
+      if (nMarch) self.heer.push({ im: im, n0: nStat, road: road, ph: rnd() * 100, mc: MC });
     });
+  };
+  // ---- Jedes Feld ist ein Gebiet: das Regiment darauf hält es mit seiner kleinen Siedlung (zwei Hütten an den vorderen Ecken),
+  // die Feldgrenze leuchtet in der Farbe des Besitzers. Beim Abmarsch und im Kampf fallen die Hütten zusammen, am Ziel entstehen sie neu.
+  Board3D.prototype.buildSiedlung = function (hi) {
+    var N = 96, wall = new T.BoxGeometry(1, 0.55, 0.75); wall.translate(0, 0.275, 0);
+    var roof = new T.ConeGeometry(0.78, 0.5, 4, 1); roof.rotateY(Math.PI / 4); roof.scale(1, 1, 0.8); roof.translate(0, 0.8, 0);
+    var wi = new T.InstancedMesh(wall, new T.MeshLambertMaterial({ color: 0xe8e0cc }), N), ri = new T.InstancedMesh(roof, new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), N);
+    [wi, ri].forEach(function (o) { o.count = 0; o.castShadow = hi; o.receiveShadow = true; o.frustumCulled = false; o.raycast = function () { }; o.instanceMatrix.setUsage(T.DynamicDrawUsage); }); ri.setColorAt(0, new T.Color());
+    this.scene.add(wi); this.scene.add(ri); this.huts = { w: wi, r: ri, N: N };
+    var d = new Uint8Array(81 * 4), tex = new T.DataTexture(d, 9, 9, T.RGBAFormat); tex.magFilter = tex.minFilter = T.NearestFilter; tex.needsUpdate = true;
+    this.fieldU.tOwn.value = tex; this.ownTex = tex; this.ownKey = '';
+  };
+  var ROOF = [new T.Color(0xc39a52), new T.Color(0x4c5462)], OWN = [[236, 186, 74], [196, 214, 240]];
+  Board3D.prototype.siedlungTick = function (dt) {
+    var H = this.huts, st = this.state, gh = this.gH; if (!H) return;
+    if (st && st.board) {
+      var key = st.board.map(function (p) { return p > 0 ? 1 : p < 0 ? 2 : 0; }).join('');
+      if (key !== this.ownKey) { this.ownKey = key; var d = this.ownTex.image.data; for (var i = 0; i < 81; i++) { var o = +key[i]; d[i * 4] = o ? OWN[o - 1][0] : 0; d[i * 4 + 1] = o ? OWN[o - 1][1] : 0; d[i * 4 + 2] = o ? OWN[o - 1][2] : 0; d[i * 4 + 3] = o ? 255 : 0; } this.ownTex.needsUpdate = true; }
+    }
+    var n = 0, m4 = this._sm4 || (this._sm4 = new T.Matrix4()), p3 = new T.Vector3(), q = new T.Quaternion(), up = new T.Vector3(0, 1, 0), sc = new T.Vector3(), Y = this.BT;
+    this.pieceGroup.children.forEach(function (g) {
+      var u = g.userData; if (!u.troops || n + 2 > H.N) return;
+      var live = g.visible && !u.marching && !u.fighting && !u.fleeing && u.troops.some(function (s) { return !s.userData.dead && !s.userData.dying; });
+      var k = u.hutK || 0; k = live ? Math.min(1, k + dt / 900) : Math.max(0, k - dt / 300); u.hutK = k; if (k <= 0) return;
+      var e = k * k * (3 - 2 * k), r = g.rotation.y, c = Math.cos(r), s = Math.sin(r), col = u.p > 0 ? 0 : 1;
+      [[-0.37, -0.37, 0.35], [0.37, -0.35, -0.3]].forEach(function (h) {
+        var x = g.position.x + h[0] * c + h[1] * s, z = g.position.z - h[0] * s + h[1] * c;
+        q.setFromAxisAngle(up, r + h[2]); m4.compose(p3.set(x, Y + (gh ? gh(x, z) : 0) - 0.01, z), q, sc.set(0.19 * e, 0.19 * e, 0.19 * e));
+        H.w.setMatrixAt(n, m4); H.r.setMatrixAt(n, m4); H.r.setColorAt(n, ROOF[col]); n++;
+      });
+    });
+    H.w.count = H.r.count = n; H.w.instanceMatrix.needsUpdate = H.r.instanceMatrix.needsUpdate = true; if (H.r.instanceColor) H.r.instanceColor.needsUpdate = true;
   };
   // Kolonnen marschieren Richtung Lager; vorn und hinten blenden sie über die Größe ein/aus
   var tick0 = Board3D.prototype.fieldTick;
   Board3D.prototype.fieldTick = function (now, dt) {
     var r = tick0.apply(this, arguments);
+    this.siedlungTick(dt || 16);
     if (!this.heer || !this.heer.length) return r;
-    var Y = this.BT, m4 = this._hm4 || (this._hm4 = new T.Matrix4()), p3 = new T.Vector3(), q = new T.Quaternion(), up = new T.Vector3(0, 1, 0), sc = new T.Vector3(), MC = 4;
+    var Y = this.BT, m4 = this._hm4 || (this._hm4 = new T.Matrix4()), p3 = new T.Vector3(), q = new T.Quaternion(), up = new T.Vector3(0, 1, 0), sc = new T.Vector3();
     this.heer.forEach(function (C) {
-      var R = C.road, L = R.length, nM = C.im.count - C.n0, rows = nM / MC, head = (now / 1000 * 0.9 + C.ph) % L; // 0,9 Proben/s = 0,18 m/s
+      var R = C.road, L = R.length, nM = C.im.count - C.n0, MC = C.mc, KS = Board3D.ARMY_KS || 1, rows = nM / MC, head = (now / 1000 * 0.9 + C.ph) % L; // 0,9 Proben/s = 0,18 m/s
       for (var r = 0; r < rows; r++) {
-        var s = head - r * 1.1; if (s < 0) s += L;
+        var s = head - r * 1.1 * KS; if (s < 0) s += L;
         var i = Math.floor(s), f = s - i, a = R[i], b = R[Math.min(L - 1, i + 1)], fade = sm(0, 6, s) * (1 - sm(L - 6, L - 1, s));
         var x = a[0] + (b[0] - a[0]) * f, z = a[1] + (b[1] - a[1]) * f, y = a[2] + (b[2] - a[2]) * f, ang = a[3], cs = Math.cos(ang), sn = Math.sin(ang);
         q.setFromAxisAngle(up, ang + Math.PI);
         for (var c = 0; c < MC; c++) {
-          var o = (c - 1.5) * 0.17, bob = Math.abs(Math.sin(now / 160 + r * 0.9 + c)) * 0.008;
-          m4.compose(p3.set(x + o * cs, Y + y - 0.01 + bob, z - o * sn), q, sc.setScalar(Math.max(0.001, fade))); C.im.setMatrixAt(C.n0 + r * MC + c, m4);
+          var o = (c - (MC - 1) / 2) * 0.17 * KS, bob = Math.abs(Math.sin(now / 160 + r * 0.9 + c)) * 0.008;
+          m4.compose(p3.set(x + o * cs, Y + y - 0.01 + bob, z - o * sn), q, sc.setScalar(Math.max(0.001, fade) * KS)); C.im.setMatrixAt(C.n0 + r * MC + c, m4);
         }
       }
       var ia = C.im.instanceMatrix; if (ia.updateRange) { ia.updateRange.offset = C.n0 * 16; ia.updateRange.count = nM * 16; } ia.needsUpdate = true;
