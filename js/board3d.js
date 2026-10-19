@@ -1733,7 +1733,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   // Total-War-Gemenge: alle kämpfen gleichzeitig. Jeder sucht den nächsten Gegner, rückt nach, holt aus, trifft oder wird pariert.
   // Größere Soldaten halten mehr aus und schlagen härter (Helden und schwere Krieger treffen mehrere). Bricht der Verteidiger ein, flieht der Rest und wird verfolgt.
   function brawl() {
-    var all = [], sA = [], sD = [], T0 = self.vt, maxT = (short ? 3 : 6) * 1000, liveA = at.filter(function (a) { return !a.userData.dead && !a.userData.dying; }).length, keepA = Math.max(1, Math.ceil(at.length * 0.25)), capA = Math.max(0, Math.min(Math.floor(liveA * 0.3), liveA - keepA)), lostA = 0 /* Sieger verliert pro Kampf höchstens 30 % der Lebenden und nie unter ein Viertel der Sollstärke */, lastSnd = 0, el = 0, routed = false;
+    var all = [], sA = [], sD = [], T0 = self.vt, maxT = (short ? 3 : 6) * 1000, liveA = at.filter(function (a) { return !a.userData.dead && !a.userData.dying; }).length, capA = Math.max(0, Math.min(Math.ceil(liveA * 0.3), liveA - 1)), lostA = 0 /* Sieger verliert pro Kampf bis zu 30 % der Lebenden, der letzte Mann stirbt nie */, lastSnd = 0, el = 0, routed = false;
     function mk(s, side) {
       var h = (s.userData.hh || 0.2) / 0.8, pw = Math.pow(h / 0.22, 1.6), o = { s: s, side: side, w: wp(s), h: h, pw: pw, hp: pw, st: 'idle', t: 0, cd: Math.random() * 0.5, tg: null, re: 0, act: (U(s) || { uAct: { value: 0 } }).uAct.value, ang: 0, nx: 0, nz: 1, rout: false, run: 0 };
       s.parent.updateWorldMatrix(true, false); o.inv = new T.Matrix4().copy(s.parent.matrixWorld).invert(); all.push(o); (side ? sD : sA).push(o);
