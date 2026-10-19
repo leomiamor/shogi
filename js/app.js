@@ -374,6 +374,14 @@
     return '<div class="mv-grid">' + cells.map(function (c) { return '<i class="' + c + '"></i>'; }).join('') + '</div>';
   }
 
+  // ---------- 3D-Ansicht: Steine / Steine mit Figur / Armee ----------
+  var VIEW3D = [['steine', 'Steine'], ['figuren', 'Figuren'], ['armee', 'Armee']];
+  function view3d() { return S.army ? 'armee' : S.models === false ? 'steine' : 'figuren'; }
+  function setView3d(v) { S.models = v !== 'steine'; S.army = v === 'armee'; if (v === 'armee') S.quality = 'high'; }
+  function view3dSeg() {
+    return '<div class="seg">' + VIEW3D.map(function (o) { return '<button data-v3="' + o[0] + '" class="' + (view3d() === o[0] ? 'on' : '') + '">' + o[1] + '</button>'; }).join('') + '</div>';
+  }
+
   // ---------- Stil & Welt ----------
   function mapName() { var m = (TH.maps || []).filter(function (x) { return x.id === S.scene; })[0]; return m ? m.name : ''; }
   // Edition (Fantasy, Sci-Fi, ...) und deren Welten wählen; done() baut danach neu (z. B. Brett im Spiel)
@@ -382,7 +390,8 @@
     function render() {
       var T = THEMES[sel], html = '<h2>Stil & Welt</h2><div class="sw-h">Stil</div><div class="sw-grid sw-themes">';
       Object.keys(THEMES).forEach(function (k) { var t = THEMES[k]; html += '<button class="sw-card' + (k === sel ? ' on' : '') + (t.ready ? '' : ' soon') + '" data-th="' + k + '"><b>' + t.sub + '</b><small>' + t.name + (t.ready ? '' : ' · bald') + '</small></button>'; });
-      html += '</div><div class="sw-h">Welt' + (S.render === '3d' ? '' : ' <small>(nur in 3D, wird eingeschaltet)</small>') + '</div><div class="sw-grid sw-maps">';
+      html += '</div><div class="sw-h">3D-Ansicht' + (S.render === '3d' ? '' : ' <small>(schaltet 3D ein)</small>') + '</div>' + view3dSeg();
+      html += '<div class="sw-h">Welt' + (S.render === '3d' ? '' : ' <small>(nur in 3D, wird eingeschaltet)</small>') + (S.army ? ' <small>(Armee spielt immer auf dem Schlachtfeld)</small>' : '') + '</div><div class="sw-grid sw-maps">';
       (T.maps || []).forEach(function (m) {
         var on = T.ready && S.scene === m.id;
         html += '<button class="sw-card sw-map' + (on ? ' on' : '') + (T.ready ? '' : ' soon') + '" data-map="' + m.id + '"' + (T.ready ? ' style="background-image:url(img/maps/' + m.id + '.webp)"' : '') + '><b>' + m.name + '</b><small>' + (T.ready ? m.sub || '' : 'bald') + '</small></button>';
@@ -396,6 +405,7 @@
         Sfx.play('ui'); if (S.theme !== sel && THEMES[sel].board) S.boardTone = THEMES[sel].board;
         S.theme = sel; TH = THEMES[sel]; $('#theme-name').textContent = TH.name; S.scene = b.dataset.map; if (HAS3D) S.render = '3d'; save(); render(); done && done();
       }; });
+      box.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); setView3d(b.dataset.v3); if (HAS3D) S.render = '3d'; save(); render(); done && done(); }; });
       box.querySelectorAll('[data-tone]').forEach(function (b) { b.onclick = function () { Sfx.play('ui'); S.boardTone = b.dataset.tone; save(); render(); done && done(); }; });
       $('#sw-ok', box).onclick = closeModal;
     }
@@ -415,12 +425,13 @@
     var swb = h('button', 'btn small', '🗺 Ändern'); swb.onclick = function () { Sfx.play('ui'); styleWorld(renderSettings); }; sw.appendChild(swb); box.appendChild(sw);
     seg('palette', 'Farbstil', 'Menüs und Titelbild', [['abend', 'Abendrot'], ['tusche', 'Tusche & Gold'], ['lack', 'Zinnober-Lack'], ['jade', 'Mitternacht-Jade']], applyPalette);
     seg('render', 'Grafik', HAS3D ? '2D-Brett oder 3D-Schlachtfeld' : '3D nicht verfügbar (offline?)', HAS3D ? [['2d', '2D'], ['3d', '3D']] : [['2d', '2D']]);
-    seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']]);
-    seg('models', '3D-Figuren', 'Kleine Einheiten-Modelle auf den Steinen', [[true, 'An'], [false, 'Aus']]);
+    seg('quality', '3D-Qualität', 'Niedrig für ältere Handys', [['high', 'Hoch'], ['low', 'Niedrig']], function () { if (S.quality === 'low' && S.army) { setView3d('figuren'); save(); } });
+    var v3 = h('div', 'set'); v3.innerHTML = '<div class="l"><b>3D-Ansicht</b><small>Steine, Figur auf Stein oder Armee</small></div>' + view3dSeg();
+    v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
+    box.appendChild(v3);
     seg('fights', 'Kampf beim Schlagen (3D)', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
-    if (OWNER) seg('army', 'Armee-Modus (Test)', 'Trupps in Formation statt Einzelfiguren, Schlacht beim Schlagen (nur 3D-Statuen)', [[false, 'Aus'], [true, 'An']]);
-    if (OWNER) seg('armyLook', 'Armee-Aussehen', 'Bemalte Soldaten oder Gold/Silber-Statuen', [['farbe', 'Bemalt'], ['statue', 'Statuen']]);
-    if (OWNER) seg('armySashi', 'Rückenfähnchen', 'Sashimono in Spielerfarbe (Sente gold, Gote weiß)', [[true, 'An'], [false, 'Aus']]);
+    if (S.army) seg('armyLook', 'Armee-Aussehen', 'Bemalte Soldaten oder Gold/Silber-Statuen', [['farbe', 'Bemalt'], ['statue', 'Statuen']]);
+    if (S.army) seg('armySashi', 'Rückenfähnchen', 'Sashimono in Spielerfarbe (Sente gold, Gote weiß)', [[true, 'An'], [false, 'Aus']]);
     seg('pieceStyle', 'Steine im 3D', '2D zeigt immer Kanji wie echtes Shogi', [['icon', 'Symbol'], ['both', 'Beides'], ['kanji', 'Kanji']]);
     var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); box.appendChild(vs);
     if (OWNER && P.skins.length > 1) seg('skin', 'Brett', 'Freigespielt in der Kampagne', P.skins.map(function (k) { return [k, SKINS[k].name]; }));
