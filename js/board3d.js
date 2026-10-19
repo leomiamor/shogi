@@ -2461,8 +2461,7 @@ Board3D.prototype.makePiece = function (p, cap) {
     var skb = army && this.theme.id === 'feudal' && this.settings.skel !== false && window.SkinAnim && Board3D.SKIN[t], ska = skb ? SkinAnim.cached(skb) : null;
     if (ska === false) skb = null;
     var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, tt, c) { this.attachGlb(g, s, c); }.bind(this);
-    if (!army && this.figSkinTry && this.figSkinTry(g, url, col)) { /* Statue mit Skelett (figanim.js) */ }
-    else if (ska) this.buildSquad(g, ska.src, t, col, ska);
+    if (ska) this.buildSquad(g, ska.src, t, col, ska);
     else if (skb) {
       // Skelett-Modell nachladen, solange Platzhalter; schlägt es fehl, normales Statuen-Regiment
       var fig2 = Figures3D.build(T, t, col, f.color); fig2.position.set(0, 0.2, -0.02); fig2.scale.multiplyScalar(1.6); g.add(fig2); g.userData.fig = fig2;
@@ -2488,11 +2487,9 @@ Board3D.prototype.sync = function (state) {
   this.state = state;
   var grp = this.pieceGroup, mv = this._lastMove; this._lastMove = null;
   if (this.look !== 'feld') {
-    // Figur mit Skelett, die gerade gezogen hat, bleibt stehen (ihr Clip läuft weiter), alle anderen werden neu aufgestellt
-    var km = mv && mv.g && mv.g.userData.sk && mv.g.parent === grp && state.board[mv.to] === mv.g.userData.p ? mv.g : null;
-    while (grp.children.length) { var c0 = grp.children[0]; grp.remove(c0); if (c0 !== km && this.figFree) this.figFree(c0); }
-    this.pieces = {}; this._selG = null;
-    for (var q = 0; q < 81; q++) { var p = state.board[q]; if (!p) continue; var g = km && q === mv.to ? km : this.makePiece(p); this.placePiece(g, q); grp.add(g); this.pieces[q] = g; }
+    while (grp.children.length) grp.remove(grp.children[0]);
+    this.pieces = {};
+    for (var q = 0; q < 81; q++) { var p = state.board[q]; if (!p) continue; var g = this.makePiece(p); this.placePiece(g, q); grp.add(g); this.pieces[q] = g; }
     return;
   }
   // Armee-Modus: bestehende Regimenter bleiben (Formation, Verluste), nur Neues wird aufgestellt
@@ -2512,7 +2509,6 @@ Board3D.prototype.sync = function (state) {
 };
 Board3D.prototype.setHighlights = function (h) {
   this.hl = h || {}; h = this.hl;
-  if (this.figSelect) this.figSelect(h.selected);
   if (this.look === 'feld') this.showTag(this.hoverSq != null ? this.hoverSq : h.selected);
   var col = new Array(81).fill(null), dots = new Array(81).fill(0);
   function set(sq, c) { if (sq >= 0 && sq < 81) col[sq] = c; }
@@ -2633,7 +2629,7 @@ Board3D.prototype.update = function (now, dt) {
   if (this.checkRing.visible) { var k = 1 + Math.sin(now / 120) * 0.15; this.checkRing.scale.set(k, k, k); this.checkRing.material.opacity = 0.6 + Math.sin(now / 120) * 0.3; }
   // Figuren-Details
   var t = now / 1000, me = this; Board3D.ARMY_TIME.value = t;
-  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0); if (g.userData.sk) me.figTick(g); });
+  this.pieceGroup.children.forEach(function (g) { if (g.userData.troops) me.armyIdle(g, t, dt); var fig = g.userData.fig, m = g.userData.glb, sd = g.position.x * 1.7 + g.position.z; if (fig) Figures3D.animate(fig, t, sd); if (m) m.rotation.y = (m.userData.ry0 || 0) + (m.userData.face || 0); });
   // Tweens (laufen auf einer eigenen Uhr, damit Zeitlupe geht)
   var self = this;
   if (this.slowUntil && now > this.slowUntil) { this.timeScale = 1; this.slowUntil = 0; }
@@ -2733,7 +2729,6 @@ Board3D.prototype.animate = function (info) {
     pillar.position.set(to.x, self.BT + 5, to.z); self.scene.add(pillar);
     self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * 0.55; }).then(function () { self.scene.remove(pillar); });
     if (mover.userData.troops || self.look === 'feld') return self.tween(450, function () { }).then(function () { self.emit(to.x, self.BT + 0.3, to.z, 0xffd76a, 50, 2.5, 1.2); });
-    if (mover.userData.sk) return self.figPromo(mover, after.board[info.to], to).then(function (np) { mover = np; }); // Statue mit Skelett: Jubel statt Umdrehen
     return self.tween(220, function (k) { mover.position.y = self.BT + k * 0.9; mover.rotation.z = k * Math.PI / 2; }).then(function () {
       var np = self.makePiece(after.board[info.to]); np.position.copy(mover.position); np.rotation.z = -Math.PI / 2; self.pieceGroup.remove(mover); self.pieceGroup.add(np); mover = np;
       self.emit(to.x, self.BT + 0.9, to.z, 0xffd76a, 80, 4, 1.4);
@@ -2744,24 +2739,18 @@ Board3D.prototype.animate = function (info) {
   if (capG && !info.drop && (this.settings.fights || 'voll') !== 'aus') {
     info.usesHit = true;
     var army = mover.userData.troops || capG.userData.troops;
-    var fst = this.fightStyle(Shogi && info.promo ? (Shogi.BASE[Math.abs(after.board[info.to])] || 0) : after.board[info.to]);
-    return (army ? this.armyFight(info, mover, from, to, capG, fst) : mover.userData.sk ? this.figFight(info, mover, from, to, capG, fst) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
+    return (army ? this.armyFight(info, mover, from, to, capG, this.fightStyle(Shogi && info.promo ? (Shogi.BASE[Math.abs(after.board[info.to])] || 0) : after.board[info.to])) : this.fight(info, mover, from, to, capG)).then(promoFx).then(function () { self.sync(after); });
   }
   var dist = Math.hypot(to.x - from.x, to.z - from.z), dur = info.drop ? 380 : 230 + dist * 45, height = info.drop ? 0 : 0.5 + dist * 0.12;
   // Armee: Regiment läuft über den Boden (umdrehen, laufen, wieder nach vorn) statt wie ein Spielstein zu hüpfen
   if (!info.drop && mover.userData.troops && !capG) return this.armyRun(mover, from, to).then(promoFx).then(function () { self.sync(after); });
-  // Statue mit Skelett geht/läuft hinüber; ohne Kampf fliegt die geschlagene Figur kurz vor der Ankunft weg
-  if (!info.drop && mover.userData.sk) return this.figWalk(mover, from, to, capG && function () {
-    self.shakeAmt = 0.3; self.emit(to.x, self.BT + 0.3, to.z, f.color, 60, 5, 1.2); var side = info.col === 0 ? 1 : -1, cs = capG.position.clone();
-    return self.tween(450, function (k) { capG.position.set(cs.x + (6.5 * side - cs.x) * k, cs.y + Math.sin(k * Math.PI) * 3, cs.z + (4 * side - cs.z) * k); capG.rotation.x = k * 8; capG.scale.setScalar(1 - k * 0.7); }).then(function () { self.pieceGroup.remove(capG); });
-  }).then(promoFx).then(function () { self.sync(after); });
   return this.tween(dur, function (k) {
     var e = info.drop ? k * k : (k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
     mover.position.x = from.x + (to.x - from.x) * e; mover.position.z = from.z + (to.z - from.z) * e;
     mover.position.y = info.drop ? from.y + (self.BT - from.y) * e : self.BT + Math.sin(k * Math.PI) * height;
     if (info.drop) mover.rotation.y = (info.col === 1 ? Math.PI : 0) + (1 - k) * 6;
   }).then(function () {
-    if (info.drop) { mover.rotation.y = info.col === 1 ? Math.PI : 0; if (self.figLand) self.figLand(mover); }
+    if (info.drop) mover.rotation.y = info.col === 1 ? Math.PI : 0;
     self.emit(to.x, self.BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3);
     if (capG) {
       // Hit-Stop + Explosion + gefangene Figur fliegt zur Hand
@@ -2862,7 +2851,6 @@ Board3D.prototype.fight = function (info, A, from, to, D) {
   function die() {
     if (info.onHit) info.onHit();
     hit(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35);
-    if (D.userData.sk) return self.figDie(D, dust, sp, ux, uz); // Verteidiger mit Skelett: Sterbe-Animation
     var p0 = D.position.clone();
     return self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, ux, uz, e * 1.45); D.position.x = p0.x + ux * e * 0.35; D.position.z = p0.z + uz * e * 0.35; }).then(function () {
       snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
@@ -2977,7 +2965,6 @@ Board3D.prototype.fight = function (info, A, from, to, D) {
 Board3D.prototype.fx = function (name, sq) {
   var p = this.sqPos(sq);
   if (name === 'check') { this.shakeAmt = 0.25; this.emit(p.x, this.BT + 0.2, p.z, 0xff3030, 40, 2.5, 0.6); }
-  if (name === 'mate' && this.figMate) this.figMate(sq);
   if (name === 'mate') { this.shakeAmt = 0.6; var self = this; [0xffd76a, 0xff5a4e, 0x46d7ff, 0xffffff].forEach(function (c, i) { setTimeout(function () { self.emit(p.x, self.BT + 0.5, p.z, c, 120, 6, 1.6); }, i * 150); }); }
   if (name === 'sparkle') this.emit(p.x, this.BT + 0.4, p.z, 0xffd76a, 30, 2, 1.2);
 };
