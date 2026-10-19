@@ -1074,7 +1074,7 @@ Board3D.prototype.promoFlag = function () {
   var flag = new T.Mesh(new T.PlaneGeometry(0.2, 0.45), new T.MeshStandardMaterial({ map: this._flagTex, roughness: 0.7, side: T.DoubleSide, emissive: 0x330000 })); flag.position.set(0.105, 0.7, 0); g.add(flag);
   return g;
 };
-Board3D.FIG_KANJI = { fz: -0.08, lim: 0.07, front: -0.5 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
+Board3D.FIG_KANJI = { fz: -0.08, lim: 0.0, front: -0.5 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
   var m = Models.fit(src, 1.15, 0.95), self = this; m.position.set(0, 0.2, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0);
