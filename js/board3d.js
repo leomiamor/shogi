@@ -1283,7 +1283,7 @@ Board3D.prototype.skinShot = function (s, name, hitAt) {
 };
 Board3D.SKIN = { 1: 'models/anim/ashigaru', 2: 'models/anim/naginata', 3: 'models/anim/kitsune', 4: 'models/anim/kenshi', 5: 'models/anim/yari', 6: 'models/anim/onmyoji', 7: 'models/anim/tengu', 8: 'models/anim/samurai', 9: 'models/anim/veteran', 10: 'models/anim/hauptmann', 11: 'models/anim/kitsune5', 12: 'models/anim/general', 13: 'models/anim/kirin', 14: 'models/anim/ryu' }; // Typen mit Skelett (nur Feudal-Statuen)
 // andere Editionen: Edition -> Typ -> Clip-Datei; fehlt ein Eintrag, steht die Statue (ohne Skelett)
-Board3D.SKIN_ED = { mecha: {}, fantasy: {}, hunde: {} };
+Board3D.SKIN_ED = { mecha: {}, fantasy: { 1: 'models/anim/fantasy_1', 8: 'models/anim/fantasy_8', 9: 'models/anim/fantasy_9', 10: 'models/anim/fantasy_10', 11: 'models/anim/fantasy_11', 12: 'models/anim/fantasy_12' }, hunde: {} };
 Board3D.skinOf = function (ed, t) { return ed === 'feudal' ? Board3D.SKIN[t] || null : (Board3D.SKIN_ED[ed] || {})[t] || null; };
 Board3D.ATK = ['atk1', 'atk2', 'atk3', 'atk4'];
 // Instanzen-Topf je Modell + Farbe (wächst bei Bedarf)
