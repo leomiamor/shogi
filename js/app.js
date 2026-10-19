@@ -46,9 +46,9 @@
   function volControls() {
     var box = h('div', 'vol-box');
     var mb = h('button', 'btn vol-mute'); box.appendChild(mb);
-    function paintMute() { mb.innerHTML = S.mute ? '🔇 Stumm · tippen für Ton' : '🔊 Ton an · tippen für stumm'; mb.classList.toggle('on', S.mute); box.classList.toggle('is-muted', S.mute); }
+    function paintMute() { mb.innerHTML = S.mute ? 'Stumm · tippen für Ton' : 'Ton an · tippen für stumm'; mb.classList.toggle('on', S.mute); box.classList.toggle('is-muted', S.mute); }
     mb.onclick = function () { toggleMute(); paintMute(); };
-    [['music', '🎵 Musik'], ['sfx', '🔔 Effekte']].forEach(function (o) {
+    [['music', 'Musik'], ['sfx', 'Effekte']].forEach(function (o) {
       var key = o[0], row = h('label', 'vol-row');
       row.innerHTML = '<span class="vl">' + o[1] + '</span><input type="range" min="0" max="100" step="1"><b class="vp"></b>';
       var r = row.querySelector('input'), vp = row.querySelector('.vp');
@@ -298,16 +298,16 @@
       '<p style="color:var(--mute);font-size:13px">' + P.rating.n + ' gewertete Partien. Skala wie Lishogi (15 Kyū bis 8 Dan). ' + (R.sure ? '' : 'Der Rang wird fest, sobald die Unsicherheit unter 110 fällt (ca. 10 bis 15 Partien). ') + 'Die KI-Stärken sind geschätzt.</p>';
     box.appendChild(me);
     if (!P.rating.n) {
-      var st = h('div', 'card', '<h3>Wo startest du?</h3><p>Nur für den Startwert. Danach zählt jede Partie.</p><div class="seg" id="r-start"></div>');
+      var st = h('div', 'card', '<h3>Wo startest du?</h3><p>Nur für den Startwert. Danach zählt jede Partie.</p><div class="seg n3" id="r-start"></div>');
       box.appendChild(st);
       [['never', 'Nie gespielt'], ['rules', 'Kenne die Regeln'], ['chess', 'Starker Schachspieler']].forEach(function (o) { var b = h('button', P.rating.r === Rating.START[o[0]] ? 'on' : '', o[1]); b.onclick = function () { P.rating.r = Rating.START[o[0]]; save(); renderRating(); }; $('#r-start', st).appendChild(b); });
     }
-    box.appendChild(h('div', 'card', '<h3>🧩 Rätsel-Wertung</h3><div class="big-num">' + P.prating.r + ' <small>± ' + P.prating.rd + ' · ' + P.prating.n + ' Rätsel</small></div><p style="color:var(--mute);font-size:13px">Wie bei Lichess: Jedes Rätsel ist ein Gegner. Ein Hinweis zählt als Fehlversuch.</p>'));
+    box.appendChild(h('div', 'card', '<h3>Rätsel-Wertung</h3><div class="big-num">' + P.prating.r + ' <small>± ' + P.prating.rd + ' · ' + P.prating.n + ' Rätsel</small></div><p style="color:var(--mute);font-size:13px">Wie bei Lichess: Jedes Rätsel ist ein Gegner. Ein Hinweis zählt als Fehlversuch.</p>'));
     // Gegenspieler
     var riv = h('div', 'card'), plats = Object.keys(Rating.PLATFORMS);
     var est = P.rival.chess ? Rating.chessToShogi(P.rival.platform, P.rival.chess) : null, mine = Rating.shogiToChess(R.r);
     var dr = rivalR(), diff = dr - R.r, sug = Rating.suggestHC(Math.abs(diff));
-    riv.innerHTML = '<h3>👤 Du gegen den Schachspieler</h3>' +
+    riv.innerHTML = '<h3>Du gegen den Schachspieler</h3>' +
       '<div class="row"><label>Seine Schach-Wertung</label><select id="riv-pf">' + plats.map(function (k) { return '<option value="' + k + '"' + (P.rival.platform === k ? ' selected' : '') + '>' + Rating.PLATFORMS[k] + '</option>'; }).join('') + '</select><input id="riv-val" type="number" inputmode="numeric" placeholder="z. B. 1800" value="' + (P.rival.chess || '') + '"></div>' +
       (est ? '<p>Er ist besser als etwa <b>' + est.pct + ' %</b> der Online-Schachspieler. Derselbe Prozentrang im Shogi wäre <b>' + est.rank + '</b> (~' + est.shogi + '). <small style="color:var(--mute)">Schätzung, es gibt keine offizielle Umrechnung.</small></p>' +
         '<p>Aber: Beim Umstieg starten starke Schachspieler laut Erfahrungswerten bei etwa <b>10 bis 6 Kyū</b> und brauchen 6 bis 12 Monate bis 1 oder 2 Dan, wenn sie Burgen und Tsume lernen. Genau da liegt dein Vorsprung.</p>' : '<p style="color:var(--mute)">Trag seine Schach-Wertung ein, dann schätze ich, wo er im Shogi stünde.</p>') +
@@ -324,7 +324,7 @@
     mark(R.r, '<b class="me">Du</b>'); if (P.rival.r != null) mark(P.rival.r, '<b class="riv">Schachspieler</b>'); if (est) mark(est.shogi, '<span class="riv">Schachspieler (Schach-%)</span>');
     LESSONS.forEach(function (L) { if (L.type === 'B') mark(foeOpp(L).r, '<span class="boss">' + FOES[L.foe].name + '</span>'); });
     for (var i = Rating.RANKS.length - 1; i >= 0; i--) rows += '<tr' + (i === R.i ? ' class="cur"' : '') + '><td>' + Rating.RANKS[i][0] + '</td><td>' + Rating.RANKS[i][1] + '+</td><td>' + (marks[i] || []).join(' ') + '</td></tr>';
-    lad.innerHTML = '<h3>🏯 Kyū/Dan-Leiter</h3><table class="ladder">' + rows + '</table>';
+    lad.innerHTML = '<h3>Kyū/Dan-Leiter</h3><table class="ladder">' + rows + '</table>';
     box.appendChild(lad);
   }
   // Duell gegen den Gegenspieler werten (beide Wertungen, Vorgabe zählt für den Empfänger)
@@ -347,7 +347,7 @@
   // ---------- Kodex ----------
   function renderCodex() {
     var list = $('#codex'); list.innerHTML = '';
-    var album = h('div', 'card', '<h3>🃏 Sammelkarten</h3><div class="album">' + Object.keys(CARDS).map(function (k) { var c = CARDS[k], has = P.cards[k]; return '<div class="tcard' + (has ? '' : ' off') + '"><div class="jp">' + (has ? c.jp : '?') + '</div><b>' + (has ? c.name : '???') + '</b><small>' + (has ? c.txt : 'In der Kampagne finden') + '</small></div>'; }).join('') + '</div>');
+    var album = h('div', 'card', '<h3>Sammelkarten</h3><div class="album">' + Object.keys(CARDS).map(function (k) { var c = CARDS[k], has = P.cards[k]; return '<div class="tcard' + (has ? '' : ' off') + '"><div class="jp">' + (has ? c.jp : '?') + '</div><b>' + (has ? c.name : '???') + '</b><small>' + (has ? c.txt : 'In der Kampagne finden') + '</small></div>'; }).join('') + '</div>');
     list.appendChild(album);
     [8, 7, 6, 5, 4, 3, 2, 1, 14, 13, 9].forEach(function (t) {
       var u = TH.units[t], c = h('div', 'card');
@@ -600,7 +600,6 @@
     var tb = $('#toolbar'), self = this; tb.innerHTML = '';
     function btn(label, title, fn, on) { var b = h('button', 'btn' + (on ? ' on' : ''), label); b.title = title; b.onclick = function () { Sfx.play('ui'); fn(b); }; tb.appendChild(b); return b; }
     btn('☰', 'Menü', function () { self.menu(); });
-    btn(volIcon(), 'Lautstärke (M = stumm)', volPanel).classList.add('vol-ico');
     if (this.assist.hint) this.hintBtn = btn(this.boss ? '🦊' + P.charges : '💡', this.boss ? 'Fuchsgeist (kostet 1 Ladung)' : 'Hinweis', function () { self.hint(); });
     if (this.assist.undo) btn('↶', 'Zug zurück', function () { self.undo(); });
     if (OWNER && (this.mode === 'battle' || this.mode === 'lessonBattle')) btn('👁', 'Gefahren-Sicht', function (b) { self.assist.threats = !self.assist.threats; S.threats = self.assist.threats; save(); b.classList.toggle('on', self.assist.threats); self.highlights(); }, this.assist.threats);
@@ -612,8 +611,9 @@
   // Renderer neu bauen (z. B. nach Wechsel von Welt oder 2D/3D)
   Game.prototype.rerender = function () { $('#board-wrap').classList.toggle('mode3d', S.render === '3d'); this.makeRenderer(); this.r.setFlip(this.flip); this.r.sync(this.state); this.updateAll(); this.buildToolbar(); };
   Game.prototype.menu = function () {
-    var self = this, box = modal('<h2>Pause</h2><div class="acts" style="flex-direction:column"><button class="btn" id="pm-go">Weiterspielen</button>' + (this.mode === 'mission' || this.mode === 'tsume' || this.mode === 'puzzle' ? '<button class="btn" id="pm-re">Neu starten</button>' : '') + (this.mode === 'online' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + (this.mode === 'battle' || this.mode === 'lessonBattle' || this.mode === 'hotseat' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + '<button class="btn" id="pm-q">Zum Hauptmenü</button></div>');
+    var self = this, box = modal('<h2>Pause</h2><div class="acts" style="flex-direction:column"><button class="btn" id="pm-go">Weiterspielen</button>' + (this.mode === 'mission' || this.mode === 'tsume' || this.mode === 'puzzle' ? '<button class="btn" id="pm-re">Neu starten</button>' : '') + (this.mode === 'online' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + (this.mode === 'battle' || this.mode === 'lessonBattle' || this.mode === 'hotseat' ? '<button class="btn" id="pm-res">Aufgeben</button>' : '') + '<button class="btn" id="pm-vol">Lautstärke</button><button class="btn" id="pm-q">Zum Hauptmenü</button></div>');
     $('#pm-go', box).onclick = closeModal;
+    $('#pm-vol', box).onclick = volPanel;
     if ($('#pm-re', box)) $('#pm-re', box).onclick = function () { closeModal(); self.restart(); };
     if ($('#pm-res', box)) $('#pm-res', box).onclick = function () { closeModal(); self.resign(); };
     $('#pm-q', box).onclick = function () { closeModal(); self.saveProgress(); go(self.cfg.back || 'title'); };

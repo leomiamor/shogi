@@ -26,15 +26,15 @@
       <div id="tap-start" class="tap-start">Tippen zum Beginnen</div>
       <div id="main-menu" class="menu hidden">
         <div id="profile-badge" class="profile-badge owner-only"></div>
-        <button class="btn big owner-only" data-go="map"><span>⛩</span> Kampagne</button>
-        <button class="btn owner-only" data-go="puzzles"><span>🧩</span> Rätsel</button>
-        <button class="btn owner-only" data-go="battle"><span>⚔</span> Gefecht gegen KI</button>
-        <button class="btn" data-go="duel"><span>🏯</span> Duell</button>
-        <button class="btn owner-only" data-go="rating"><span>📈</span> Wertung</button>
-        <button class="btn owner-only hidden" id="btn-resume"><span>↻</span> Fortsetzen</button>
+        <button class="btn big owner-only" data-go="map"><span class="mk">道</span> Kampagne</button>
+        <button class="btn owner-only" data-go="puzzles"><span class="mk">詰</span> Rätsel</button>
+        <button class="btn owner-only" data-go="battle"><span class="mk">戦</span> Gefecht gegen KI</button>
+        <button class="btn" data-go="duel"><span class="mk">対</span> Duell</button>
+        <button class="btn owner-only" data-go="rating"><span class="mk">段</span> Wertung</button>
+        <button class="btn owner-only hidden" id="btn-resume"><span class="mk">続</span> Fortsetzen</button>
         <div class="menu-row">
-          <button class="btn small owner-only" data-go="codex">📜 Kodex</button>
-          <button class="btn small" data-go="settings">⚙ Einstellungen</button>
+          <button class="btn small owner-only" data-go="codex">Kodex</button>
+          <button class="btn small" data-go="settings">Einstellungen</button>
         </div>
       </div>
     </div>
@@ -64,18 +64,18 @@
     <header class="bar"><button class="btn icon" data-go="title">‹</button><h2>Duell</h2></header>
     <div class="duel-box">
       <div class="card wide">
-        <h3>🎌 Vorgabe (optional)</h3>
+        <h3>Vorgabe (optional)</h3>
         <p>Der Stärkere spielt Oni (oben), nimmt Figuren weg und zieht zuerst. So wird es fair.</p>
         <div class="row"><select id="duel-hc"></select></div>
         <small id="duel-hc-tip" class="owner-only" style="color:var(--gold)"></small>
       </div>
       <div class="card wide">
-        <h3>📱 Ein Handy, hin und her</h3>
+        <h3>Ein Handy, hin und her</h3>
         <p>Ihr reicht das Gerät weiter. Das Brett dreht sich nach jedem Zug.</p>
         <button class="btn" id="btn-hotseat">Hot-Seat starten</button>
       </div>
       <div class="card wide">
-        <h3>🌐 Jeder am eigenen Handy</h3>
+        <h3>Jeder am eigenen Handy</h3>
         <p>Erstelle eine Partie und schick den Link. Die Partie bleibt gespeichert, ihr könnt auch über Stunden Zug um Zug spielen.</p>
         <div class="row"><label>Deine Farbe</label>
           <select id="duel-color"><option value="0">Kitsune (zieht zuerst)</option><option value="1">Oni</option><option value="r">Zufall</option></select></div>

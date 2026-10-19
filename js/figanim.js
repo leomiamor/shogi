@@ -8,66 +8,85 @@
   Board3D._figTransfer = function (d, A) { return transfer(d, A); }; // für Messungen
 
   // ---------- Gewichte vom Rig auf die Detail-Statue übertragen ----------
+  // Ecken roh lesen (quantisiert, evtl. verschachtelt): liefert Array, Abstand, Versatz, Skala
+  function raw(at) {
+    var a = at.isInterleavedBufferAttribute ? at.data.array : at.array, st = at.isInterleavedBufferAttribute ? at.data.stride : at.itemSize, of = at.isInterleavedBufferAttribute ? at.offset : 0;
+    var sc = !at.normalized ? 1 : a instanceof Int16Array ? 1 / 32767 : a instanceof Uint16Array ? 1 / 65535 : a instanceof Int8Array ? 1 / 127 : a instanceof Uint8Array ? 1 / 255 : 1;
+    return { a: a, st: st, of: of, sc: sc };
+  }
+  // kurz abgeben, damit das Bild nicht hängt (MessageChannel: wird auch im Hintergrund nicht gedrosselt)
+  function yieldNow() { return new Promise(function (res) { var ch = new MessageChannel(); ch.port1.onmessage = function () { res(); }; ch.port2.postMessage(0); }); }
   function transfer(d, A) {
     var T = THREE, m = null; d.updateMatrixWorld(true); d.traverse(function (o) { if (o.isMesh && !m) m = o; });
-    var pa = m.geometry.getAttribute('position'), n = pa.count, rp = A.geo.getAttribute('position'), si = A.geo.getAttribute('aSkinI'), sw = A.geo.getAttribute('aSkinW'), rn = rp.count;
+    var pa = m.geometry.getAttribute('position'), n = pa.count, P = raw(pa), rp = A.geo.getAttribute('position'), rn = rp.count, i, c, k;
+    var si = A.geo.getAttribute('aSkinI'), sw = A.geo.getAttribute('aSkinW'), SI = new Int32Array(rn * 4), SW = new Float32Array(rn * 4);
+    for (i = 0; i < rn; i++) { SI[i * 4] = si.getX(i); SI[i * 4 + 1] = si.getY(i); SI[i * 4 + 2] = si.getZ(i); SI[i * 4 + 3] = si.getW(i); SW[i * 4] = sw.getX(i); SW[i * 4 + 1] = sw.getY(i); SW[i * 4 + 2] = sw.getZ(i); SW[i * 4 + 3] = sw.getW(i); }
     // Raster über die Rig-Ecken (CSR: Zellstart + Ecken je Zelle)
     var bb = new T.Box3().setFromBufferAttribute(rp), h = 0.03, ox = bb.min.x - h, oy = bb.min.y - h, oz = bb.min.z - h;
     var nx = Math.ceil((bb.max.x - ox) / h) + 2, ny = Math.ceil((bb.max.y - oy) / h) + 2, nz = Math.ceil((bb.max.z - oz) / h) + 2;
-    var R = new Float32Array(rn * 3), cellOf = new Int32Array(rn), start = new Int32Array(nx * ny * nz + 1), items = new Int32Array(rn), i, c;
-    function cx(v, o, nn) { var k = Math.floor((v - o) / h); return k < 0 ? 0 : k >= nn ? nn - 1 : k; }
+    var R = new Float32Array(rn * 3), cellOf = new Int32Array(rn), start = new Int32Array(nx * ny * nz + 1), items = new Int32Array(rn);
+    function cx(v, o, nn) { var q = Math.floor((v - o) / h); return q < 0 ? 0 : q >= nn ? nn - 1 : q; }
     for (i = 0; i < rn; i++) { R[i * 3] = rp.getX(i); R[i * 3 + 1] = rp.getY(i); R[i * 3 + 2] = rp.getZ(i); c = (cx(R[i * 3], ox, nx) * ny + cx(R[i * 3 + 1], oy, ny)) * nz + cx(R[i * 3 + 2], oz, nz); cellOf[i] = c; start[c + 1]++; }
     for (c = 0; c < nx * ny * nz; c++) start[c + 1] += start[c];
     var fill = start.slice(0, nx * ny * nz); for (i = 0; i < rn; i++) items[fill[cellOf[i]]++] = i;
-    // Kandidaten um (x,y,z): wächst ringweise, bis die nächste Ecke sicher gefunden ist; cand = [Index, Abstand², ...]
-    var cand = [];
+    // Kandidaten um (x,y,z): wächst ringweise, bis die nächste Rig-Ecke sicher gefunden ist (cj = Index, cd = Abstand², nc = Anzahl)
+    var cj = new Int32Array(rn), cd = new Float32Array(rn), nc = 0;
     function search(x, y, z) {
       var X = cx(x, ox, nx), Y = cx(y, oy, ny), Z = cx(z, oz, nz), best = Infinity;
       for (var r = 1; r < 12; r++) {
-        cand.length = 0; best = Infinity;
-        for (var a = Math.max(0, X - r); a <= Math.min(nx - 1, X + r); a++) for (var b = Math.max(0, Y - r); b <= Math.min(ny - 1, Y + r); b++) for (var e = Math.max(0, Z - r); e <= Math.min(nz - 1, Z + r); e++) {
-          var q = (a * ny + b) * nz + e;
-          for (var s = start[q]; s < start[q + 1]; s++) { var j = items[s], dx = R[j * 3] - x, dy = R[j * 3 + 1] - y, dz = R[j * 3 + 2] - z, d2 = dx * dx + dy * dy + dz * dz; cand.push(j, d2); if (d2 < best) best = d2; }
+        nc = 0; best = Infinity;
+        for (var a = Math.max(0, X - r); a <= Math.min(nx - 1, X + r); a++) for (var b = Math.max(0, Y - r); b <= Math.min(ny - 1, Y + r); b++) {
+          var q0 = (a * ny + b) * nz, s0 = start[q0 + Math.max(0, Z - r)], s1 = start[q0 + Math.min(nz - 1, Z + r) + 1];
+          for (var s = s0; s < s1; s++) { var j = items[s], dx = R[j * 3] - x, dy = R[j * 3 + 1] - y, dz = R[j * 3 + 2] - z, d2 = dx * dx + dy * dy + dz * dz; cj[nc] = j; cd[nc++] = d2; if (d2 < best) best = d2; }
         }
         if (best <= (r * h) * (r * h)) return best;
       }
       return best;
     }
+    function pos(q, M, out) { var e = M.elements, o = q * P.st + P.of, px = P.a[o] * P.sc, py = P.a[o + 1] * P.sc, pz = P.a[o + 2] * P.sc; out[0] = e[0] * px + e[4] * py + e[8] * pz + e[12]; out[1] = e[1] * px + e[5] * py + e[9] * pz + e[13]; out[2] = e[2] * px + e[6] * py + e[10] * pz + e[14]; }
     // Drehung um y finden (Typ 2 wurde fürs Rig um 90° gedreht): Stichprobe, kleinster mittlerer Abstand gewinnt
-    var N = m.matrixWorld, RN = null, bestErr = Infinity, step = Math.max(1, Math.floor(n / 1500)), v = new T.Vector3();
+    var N = m.matrixWorld, RN = null, bestErr = Infinity, step = Math.max(1, Math.floor(n / 1500)), v = [0, 0, 0];
     [0, Math.PI / 2, Math.PI, -Math.PI / 2].forEach(function (th) {
       var M = new T.Matrix4().makeRotationY(th).multiply(N), err = 0;
-      for (var k = 0; k < n; k += step) { v.fromBufferAttribute(pa, k).applyMatrix4(M); err += Math.sqrt(search(v.x, v.y, v.z)); }
+      for (var q = 0; q < n; q += step) { pos(q, M, v); err += Math.sqrt(search(v[0], v[1], v[2])); }
       if (err < bestErr) { bestErr = err; RN = M; }
     });
     // je Detail-Ecke: Gewichte der nahen Rig-Ecken mischen (bis 1,4× des kleinsten Abstands), die 4 stärksten Knochen behalten
-    var nb = A.meta.bones.length, acc = new Float32Array(nb), I = new Uint8Array(n * 4), W = new Uint8Array(n * 4), e = RN.elements, top = [0, 0, 0, 0], tw = [0, 0, 0, 0];
-    for (i = 0; i < n; i++) {
-      var px = pa.getX(i), py = pa.getY(i), pz = pa.getZ(i), x = e[0] * px + e[4] * py + e[8] * pz + e[12], y = e[1] * px + e[5] * py + e[9] * pz + e[13], z = e[2] * px + e[6] * py + e[10] * pz + e[14];
-      var lim = search(x, y, z) * 1.96 + 1e-5;
-      acc.fill(0);
-      for (var k = 0; k < cand.length; k += 2) {
-        if (cand[k + 1] > lim) continue;
-        var j = cand[k], w = 1 / (Math.sqrt(cand[k + 1]) + 0.003); w *= w;
-        acc[si.getX(j)] += w * sw.getX(j); acc[si.getY(j)] += w * sw.getY(j); acc[si.getZ(j)] += w * sw.getZ(j); acc[si.getW(j)] += w * sw.getW(j);
+    var nb = A.meta.bones.length, acc = new Float32Array(nb), I = new Uint8Array(n * 4), W = new Uint8Array(n * 4), top = [0, 0, 0, 0], tw = [0, 0, 0, 0];
+    function part(i0, i1) {
+      for (var q = i0; q < i1; q++) {
+        pos(q, RN, v); var lim = search(v[0], v[1], v[2]) * 1.96 + 1e-5;
+        acc.fill(0);
+        for (var t = 0; t < nc; t++) {
+          if (cd[t] > lim) continue;
+          var j = cj[t] * 4, w = 1 / (Math.sqrt(cd[t]) + 0.003); w *= w;
+          acc[SI[j]] += w * SW[j]; acc[SI[j + 1]] += w * SW[j + 1]; acc[SI[j + 2]] += w * SW[j + 2]; acc[SI[j + 3]] += w * SW[j + 3];
+        }
+        top[0] = top[1] = top[2] = top[3] = 0; tw[0] = tw[1] = tw[2] = tw[3] = 0;
+        for (var b2 = 0; b2 < nb; b2++) { var a2 = acc[b2]; if (a2 <= tw[3]) continue; var p = 3; while (p > 0 && a2 > tw[p - 1]) { tw[p] = tw[p - 1]; top[p] = top[p - 1]; p--; } tw[p] = a2; top[p] = b2; }
+        var sum = tw[0] + tw[1] + tw[2] + tw[3] || 1, rest = 255;
+        for (var t2 = 3; t2 >= 0; t2--) { var q2 = t2 ? Math.round(tw[t2] / sum * 255) : rest; I[q * 4 + t2] = top[t2]; W[q * 4 + t2] = q2; rest -= q2; }
       }
-      top[0] = top[1] = top[2] = top[3] = 0; tw[0] = tw[1] = tw[2] = tw[3] = 0;
-      for (var b2 = 0; b2 < nb; b2++) { var a2 = acc[b2]; if (a2 <= tw[3]) continue; var p = 3; while (p > 0 && a2 > tw[p - 1]) { tw[p] = tw[p - 1]; top[p] = top[p - 1]; p--; } tw[p] = a2; top[p] = b2; }
-      var sum = tw[0] + tw[1] + tw[2] + tw[3] || 1, rest = 255;
-      for (var t2 = 3; t2 >= 0; t2--) { var q2 = t2 ? Math.round(tw[t2] / sum * 255) : rest; I[i * 4 + t2] = top[t2]; W[i * 4 + t2] = q2; rest -= q2; }
     }
-    var geo = new T.BufferGeometry(); geo.setIndex(m.geometry.index);
-    for (var nm in m.geometry.attributes) geo.setAttribute(nm, m.geometry.attributes[nm]);
-    geo.setAttribute('aSkinI', new T.BufferAttribute(I, 4)); geo.setAttribute('aSkinW', new T.BufferAttribute(W, 4, true));
-    geo.computeBoundingBox(); geo.computeBoundingSphere();
-    var mesh = new T.Mesh(geo, m.material); mesh.matrixAutoUpdate = false; mesh.matrix.copy(RN); mesh.castShadow = mesh.receiveShadow = true;
-    var src = new T.Group(); src.add(mesh); src.updateMatrixWorld(true);
-    return { src: src, A: A, node: RN.clone(), nodeI: RN.clone().invert() };
+    var CH = Board3D.MOBILE ? 10000 : 30000, chain = Promise.resolve();
+    for (k = 0; k < n; k += CH) (function (k0) { chain = chain.then(function () { part(k0, Math.min(n, k0 + CH)); return yieldNow(); }); })(k);
+    return chain.then(function () {
+      var geo = new T.BufferGeometry(); geo.setIndex(m.geometry.index);
+      for (var nm in m.geometry.attributes) geo.setAttribute(nm, m.geometry.attributes[nm]);
+      geo.setAttribute('aSkinI', new T.BufferAttribute(I, 4)); geo.setAttribute('aSkinW', new T.BufferAttribute(W, 4, true));
+      geo.computeBoundingBox(); geo.computeBoundingSphere();
+      var mesh = new T.Mesh(geo, m.material); mesh.matrixAutoUpdate = false; mesh.matrix.copy(RN); mesh.castShadow = mesh.receiveShadow = true;
+      var src = new T.Group(); src.add(mesh); src.updateMatrixWorld(true);
+      return { src: src, A: A, node: RN.clone(), nodeI: RN.clone().invert() };
+    });
   }
 
-  // Statue mit Skelett laden (Detail-GLB + Rig); Promise, gecacht je Modell
+  // Statue mit Skelett laden (Detail-GLB + Rig); Promise, gecacht je Modell. Übertragungen laufen nacheinander (weniger Ruckeln)
+  var queue = Promise.resolve();
   Board3D.figSkin = function (url, base) {
-    if (!cache[url]) cache[url] = Promise.all([Models.load(url), SkinAnim.load(base)]).then(function (r) { return (done[url] = transfer(r[0], r[1])); }, function (e) { done[url] = false; throw e; });
+    if (!cache[url]) cache[url] = Promise.all([Models.load(url), SkinAnim.load(base)]).then(function (r) {
+      var job = queue.then(function () { return transfer(r[0], r[1]); }); queue = job.catch(function () { }); return job;
+    }).then(function (S) { return (done[url] = S); }, function (e) { done[url] = false; throw e; });
     return cache[url];
   };
   Board3D.figSkinCached = function (url) { return url in done ? done[url] : null; };
@@ -76,7 +95,7 @@
     if (this.theme.id !== 'feudal' || this.settings.figSet !== 'statue' || this.settings.skel === false || !window.SkinAnim || !url) return null;
     var mm = /detail_(\d+)\.glb$/.exec(url); return mm && Board3D.FIG_SKIN.indexOf(+mm[1]) >= 0 && Board3D.SKIN[+mm[1]] || null;
   };
-  Board3D.FIG_SKIN = [1]; // Modelle, die in der Figuren-Ansicht das Skelett nutzen (Pilot: Bauer)
+  Board3D.FIG_SKIN = [1, 2, 4, 5, 6, 7, 8, 9, 12]; // Modelle, die in der Figuren-Ansicht das Skelett nutzen (alle Menschen mit Rig)
 
   // makePiece-Haken: true = Figur mit Skelett angehängt; sonst normaler Weg (starre Statue), Skelett-Figur ersetzt sie nach dem Laden
   Board3D.prototype.figSkinTry = function (g, url, col) {
@@ -231,7 +250,7 @@
       }).then(function () { self.scene.remove(bolt); if (info.onHit) info.onHit(); sparks(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); if (kd) self.figPlay(D, 'hit1'); return die(); }).then(stepIn);
     }
     // Nahkampf: Anlauf (Laufen bzw. Sprint beim Ansturm), Schlagabtausch, Todesstoß
-    var stand = cell * (style === 'thrust' ? 0.72 : 0.62), stx = to.x - ux * stand, stz = to.z - uz * stand, run = Math.hypot(stx - from.x, stz - from.z);
+    var stand = cell * (style === 'thrust' ? 0.95 : 0.85), stx = to.x - ux * stand, stz = to.z - uz * stand, run = Math.hypot(stx - from.x, stz - from.z);
     var gait = style === 'charge' || run > 2.5 ? 'sprint' : run > 0.9 ? 'run' : 'walk', ms = Math.max(260, Math.min(1200, run / Board3D.FIG_GAIT[gait] * 1000));
     var seq = face.then(function () {
       self.figPlay(A, gait); snd('march', ms, ta); if (gait === 'sprint') snd('roar', 0.5, ta);
