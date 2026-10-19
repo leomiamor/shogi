@@ -1085,15 +1085,16 @@ Board3D.prototype.attachGlb = function (g, src, col) {
 Board3D.ARMY_TIME = { value: 0 };
 // Regimenter: Spalten x Reihen, Abstand, Höhe und Grundfläche je Soldat (vorne = -z)
 Board3D.ARMY = {
-  inf: { cols: 8, rows: 6, sx: 0.112, sz: 0.135, h: 0.22, foot: 0.11 },  // Bauer: 48, dichter Haufen
-  col: { cols: 4, rows: 7, sx: 0.15, sz: 0.112, h: 0.24, foot: 0.12 },   // Lanze: 28 in langer Kolonne
-  line: { cols: 5, rows: 4, sx: 0.16, sz: 0.19, h: 0.26, foot: 0.14 },   // Silber: 20
-  gold: { cols: 4, rows: 4, sx: 0.19, sz: 0.19, h: 0.28, foot: 0.16 },   // Gold: 16
-  cav: { cols: 4, rows: 3, sx: 0.21, sz: 0.25, h: 0.33, foot: 0.21 },    // Springer: 12 Reiter
-  vet: { cols: 4, rows: 3, sx: 0.2, sz: 0.24, h: 0.31, foot: 0.18 },     // befördert 9–12: 12 Veteranen
-  elite: { cols: 3, rows: 3, sx: 0.26, sz: 0.26, h: 0.4, foot: 0.24 },   // Läufer: 9
-  heavy: { cols: 3, rows: 2, sx: 0.3, sz: 0.32, h: 0.48, foot: 0.3 },    // Turm: 6 schwere Krieger
-  hero: { cols: 1, rows: 1, sx: 0, sz: 0, h: 0.72, foot: 0.8 }
+  // h = sichtbare Größe (Menschen gleich groß wie bei Total War, nur Kreaturen und Helden größer), pw = Kampfkraft-Größe
+  inf: { cols: 8, rows: 6, sx: 0.112, sz: 0.135, h: 0.22, pw: 0.22, foot: 0.11 },  // Bauer: 48, dichter Haufen
+  col: { cols: 4, rows: 7, sx: 0.15, sz: 0.112, h: 0.22, pw: 0.24, foot: 0.12 },   // Lanze: 28 in langer Kolonne
+  line: { cols: 5, rows: 4, sx: 0.16, sz: 0.19, h: 0.225, pw: 0.26, foot: 0.14 },  // Silber: 20
+  gold: { cols: 4, rows: 4, sx: 0.19, sz: 0.19, h: 0.23, pw: 0.28, foot: 0.16 },   // Gold: 16
+  cav: { cols: 4, rows: 3, sx: 0.21, sz: 0.25, h: 0.27, pw: 0.33, foot: 0.21 },    // Springer: 12 Reiter/Kreaturen
+  vet: { cols: 4, rows: 3, sx: 0.2, sz: 0.24, h: 0.235, pw: 0.31, foot: 0.18 },    // befördert 9–12: 12 Veteranen
+  elite: { cols: 3, rows: 3, sx: 0.26, sz: 0.26, h: 0.24, pw: 0.4, foot: 0.24 },   // Läufer: 9
+  heavy: { cols: 3, rows: 2, sx: 0.3, sz: 0.32, h: 0.34, pw: 0.48, foot: 0.3 },    // Turm: 6 schwere Krieger/Kreaturen
+  hero: { cols: 1, rows: 1, sx: 0, sz: 0, h: 0.5, pw: 0.72, foot: 0.8 }
 };
 // je stärker die Figur, desto weniger, aber größere Soldaten; König und Drachen als Held allein
 Board3D.ARMY_TYPE = { 1: 'inf', 2: 'col', 3: 'cav', 4: 'line', 5: 'gold', 6: 'elite', 7: 'heavy', 8: 'hero', 9: 'vet', 10: 'vet', 11: 'vet', 12: 'vet', 13: 'hero', 14: 'hero' };
@@ -1221,12 +1222,12 @@ Board3D.prototype.buildSquad = function (g, src, t, col) {
     var x0 = (c - (F.cols - 1) / 2) * F.sx + (rnd() - .5) * 0.05, z0 = (r - (F.rows - 1) / 2) * F.sz + (rnd() - .5) * 0.045;
     var x = x0 * Math.cos(fa) - z0 * Math.sin(fa) + fox, z = x0 * Math.sin(fa) + z0 * Math.cos(fa) + foz;
     var officer = F.cols > 1 && r === 0 && c === (F.cols >> 1), s = (officer ? 1.14 : 1) * (0.92 + 0.14 * rnd()) * (t >= 9 ? 1.06 : 1);
-    var m = Models.fit(src, F.h * s, F.foot * s), tr = new T.Group(), mesh = null;
+    var m = Models.fit(src, F.h * s, F.foot * s * 3), tr = new T.Group(), mesh = null;
     m.traverse(function (o) { if (o.isMesh) { o.visible = false; o.raycast = noop; if (!mesh) mesh = o; } });
     m.userData.ry0 = Math.PI + (rnd() - 0.5) * 0.3; m.rotation.y = m.userData.ry0;
     tr.add(m); tr.position.set(x, 0, z);
     var br = 0.88 + rnd() * 0.2, hue = (rnd() - 0.5) * 0.1;
-    tr.userData = { glb: m, mesh: mesh, pk: pk, geo: mesh0.geometry, col: col, rim: rim, tint: new T.Color(br * (1 + hue), br, br * (1 - hue)), u: { uPhase: { value: Math.random() * 6.283 }, uAct: { value: 0 }, uWalk: { value: 0 } }, home: { x: x, z: z }, hh: F.h * s * 0.8, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 5 };
+    tr.userData = { glb: m, mesh: mesh, pk: pk, geo: mesh0.geometry, col: col, rim: rim, tint: new T.Color(br * (1 + hue), br, br * (1 - hue)), u: { uPhase: { value: Math.random() * 6.283 }, uAct: { value: 0 }, uWalk: { value: 0 } }, home: { x: x, z: z }, hh: F.h * s * 0.8, pw0: (F.pw || F.h) * s, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 5 };
     g.add(tr); troops.push(tr);
   }
   g.userData.troops = troops;
@@ -1735,7 +1736,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   function brawl() {
     var all = [], sA = [], sD = [], T0 = self.vt, maxT = (short ? 3 : 6) * 1000, liveA = at.filter(function (a) { return !a.userData.dead && !a.userData.dying; }).length, capA = Math.max(0, Math.min(Math.ceil(liveA * 0.3), liveA - 1)), lostA = 0 /* Sieger verliert pro Kampf bis zu 30 % der Lebenden, der letzte Mann stirbt nie */, lastSnd = 0, el = 0, routed = false;
     function mk(s, side) {
-      var h = (s.userData.hh || 0.2) / 0.8, pw = Math.pow(h / 0.22, 1.6), o = { s: s, side: side, w: wp(s), h: h, pw: pw, hp: pw, st: 'idle', t: 0, cd: Math.random() * 0.5, tg: null, re: 0, act: (U(s) || { uAct: { value: 0 } }).uAct.value, ang: 0, nx: 0, nz: 1, rout: false, run: 0 };
+      var h = (s.userData.hh || 0.2) / 0.8, pw = Math.pow((s.userData.pw0 || h) / 0.22, 1.6), o = { s: s, side: side, w: wp(s), h: h, pw: pw, hp: pw, st: 'idle', t: 0, cd: Math.random() * 0.5, tg: null, re: 0, act: (U(s) || { uAct: { value: 0 } }).uAct.value, ang: 0, nx: 0, nz: 1, rout: false, run: 0 };
       s.parent.updateWorldMatrix(true, false); o.inv = new T.Matrix4().copy(s.parent.matrixWorld).invert(); all.push(o); (side ? sD : sA).push(o);
     }
     at.forEach(function (a) { if (!a.userData.dead && !a.userData.dying && a.visible) mk(a, 0); });
