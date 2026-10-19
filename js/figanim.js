@@ -151,10 +151,12 @@
     return cache[url];
   };
   Board3D.figSkinCached = function (url) { return url in done ? done[url] : null; };
-  // Rig je Modellnummer (detail_N): nur Feudal-Statuen in der Figuren-Ansicht
+  // Rig je Modellnummer (detail_N) in der Figuren-Ansicht: Feudal aus SKIN (nur FIG_SKIN), andere Editionen aus SKIN_ED[ed][N] (models/style/<ed>/detail_N.glb)
   Board3D.prototype.figSkinBase = function (url) {
-    if (this.theme.id !== 'feudal' || this.settings.figSet !== 'statue' || this.settings.skel === false || !window.SkinAnim || !url) return null;
-    var mm = /detail_(\d+)\.glb$/.exec(url); return mm && Board3D.FIG_SKIN.indexOf(+mm[1]) >= 0 && Board3D.SKIN[+mm[1]] || null;
+    if (this.settings.figSet !== 'statue' || this.settings.skel === false || !window.SkinAnim || !url) return null;
+    var ed = this.theme.id, mm = /detail_(\d+)\.glb$/.exec(url); if (!mm) return null;
+    if (ed === 'feudal') return Board3D.FIG_SKIN.indexOf(+mm[1]) >= 0 && Board3D.SKIN[+mm[1]] || null;
+    return (Board3D.SKIN_ED && Board3D.SKIN_ED[ed] || {})[+mm[1]] || null;
   };
   Board3D.FIG_SKIN = [1, 2, 4, 5, 6, 7, 8, 9, 12]; // Modelle, die in der Figuren-Ansicht das Skelett nutzen (alle Menschen mit Rig)
 
@@ -254,13 +256,26 @@
   // Heldenduell (Vorbild: Duelle in Total War: Three Kingdoms, Lords/Monster in Warhammer): Anlauf, Umkreisen, 3–5 Schläge
   // mit Paraden (einer streift), gepaarter Finisher (fin_a/fin_d, sonst atk4 + Sterbe-Clip), Staub. König, Turm und Läufer
   // schlagen mit mehr Wucht (Zeitlupe, Druckwelle, Kameraschwenk). Alles im Zeitbudget der Notbremse in app.js (8 s).
+  // Kampfregie je Edition: blade = Farbe der Energieklinge (Funken), jet = Düsenstoß beim Anlauf (Abgasfarbe), shot = Laserfarbe,
+  // boom = Explosion statt Zerfall, magic = Zauberfarbe, rune = Runenkreis beim Zaubern, brawl = Raufen statt Töten (Verlierer rollt weg / läuft davon)
+  Board3D.FIG_ED = {
+    feudal: {},
+    mecha: { blade: 0x6fe6ff, jet: 0x7fc8ff, shot: 0x8ff0ff, boom: true, magic: 0x6fe6ff },
+    fantasy: { magic: 0xb98aff, rune: true },
+    hunde: { brawl: true }
+  };
+  Board3D.prototype.figEd = function () { return Board3D.FIG_ED_TEST || this.theme.id; }; // FIG_ED_TEST: Regie einer Edition mit Feudal-Rigs ausprobieren
   Board3D.FIG_DUEL = { budget: 7200, swing: 480, circle: 800, heroes: [6, 7, 8] };
   Board3D.prototype.figFight = function (info, A, from, to, D, style) {
     var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.75 : 1, BT = this.BT, FD = Board3D.FIG_DUEL;
+    var ed = this.figEd(), E = Board3D.FIG_ED[ed] || {}, fe = this.theme.id === 'feudal';
+    if (E.brawl && (style === 'magic' || style === 'shoot' || style === 'breath')) style = 'charge'; // Hunde raufen nur
     var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
     var cell = Math.hypot(this.sqPos(1).x - this.sqPos(0).x, this.sqPos(1).z - this.sqPos(0).z) || 1;
     var colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
     var ka = A.userData.sk, kd = D.userData.sk, ta = typ(A), td = typ(D), hero = !short && FD.heroes.indexOf(ta) >= 0, pm = Board3D.MOBILE ? 0.5 : 1;
+    var sa = fe ? ta : null, sd = fe ? td : null; // Stimmen je Typ gibt es nur in Feudal
+    function tt(g) { return fe ? typ(g) : null; }
     ka.busy = true; if (kd) kd.busy = true;
     function has(g, n) { var k = g.userData.sk; return !!(k && k.A.ids[n] != null); }
     function wait(ms) { return self.tween(ms * sp, function () { }); }
@@ -279,7 +294,12 @@
       while (c1.th - cam0.th > Math.PI) c1.th -= Math.PI * 2; while (c1.th - cam0.th < -Math.PI) c1.th += Math.PI * 2;
       self.tween(800, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; self.viewShift = vs0 * e; });
     }
-    function sparks(x, z, color, n, shake) { self.emit(x, BT + 0.7, z, color, n * pm, 4, 1.1); self.emit(x, BT + 0.7, z, 0xffffff, n / 3 * pm, 2.5, 1.3); self.shakeAmt = Math.max(self.shakeAmt || 0, shake); }
+    // Treffer-Effekt: Funken (Mecha: Energieklinge), Hunde: Raufwolke aus Staub
+    function sparks(x, z, color, n, shake) {
+      if (E.brawl) { self.emit(x, BT + 0.25, z, 0xd8c8a0, n * 0.8 * pm, 1.8, 0.6); self.emit(x, BT + 0.5, z, 0xffffff, n / 5 * pm, 1.2, 0.8); }
+      else { self.emit(x, BT + 0.7, z, E.blade && color === 0xffffff ? E.blade : color, n * pm, 4, 1.1); self.emit(x, BT + 0.7, z, 0xffffff, n / 3 * pm, 2.5, 1.3); }
+      self.shakeAmt = Math.max(self.shakeAmt || 0, E.brawl ? shake * 0.6 : shake);
+    }
     function mid() { return { x: (A.position.x + D.position.x) / 2, z: (A.position.z + D.position.z) / 2 }; }
     function dir() { var x = D.position.x - A.position.x, z = D.position.z - A.position.z, l = Math.hypot(x, z) || 1; return [x / l, z / l]; }
     // Blick sofort auf einen Punkt (wie faceTo, ohne Tween)
@@ -293,9 +313,9 @@
     // Wucht der Helden beim tödlichen Treffer: Zeitlupe, Druckwelle aus Staub und Funken, Kamera ruckt heran und schwenkt
     function wucht(x, z) {
       if (!hero) return;
-      self.slowmo(380, 0.3); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.65); snd('roar', 0.6, ta);
+      self.slowmo(380, 0.3); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.65); snd('roar', 0.6, sa);
       for (var i = 0; i < 18; i++) { var a = i / 18 * Math.PI * 2; self.emitDir(x, BT + 0.06, z, dust, 3 * pm, Math.cos(a) * 3.2, 0.25, Math.sin(a) * 3.2, 0.5); }
-      self.emit(x, BT + 0.5, z, 0xffd76a, 50 * pm, 5, 1.4);
+      self.emit(x, BT + 0.5, z, E.brawl ? 0xd8c8a0 : E.blade || 0xffd76a, 50 * pm, 5, 1.4);
       var r0 = o.radius, t0 = o.thetaGoal, sw = (Math.random() < 0.5 ? -1 : 1) * 0.22;
       self.tween(260, function (k) { var e = 1 - Math.pow(1 - k, 3); o.radius = r0 * (1 - 0.12 * e); o.thetaGoal = o.theta = t0 + sw * e; });
     }
@@ -305,35 +325,37 @@
       if (ka2) self.figPlay(att, ['atk1', 'atk2'], { hitAt: hitAt, then: 'ready' });
       else leanD(-0.3, hitAt * 700);
       if (kd2 && !graze) self.figPlay(def, brk && has(def, 'parry2') ? 'parry2' : 'block', { hitAt: hitAt, then: 'ready' });
-      snd('whoosh', 0.7, typ(att));
+      snd('whoosh', 0.7, tt(att));
       return self.tween(hitAt * 1000, function () { }).then(function () {
         var p = mid();
-        if (graze) { if (kd2) self.figPlay(def, has(def, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); snd('hit', 0.5, typ(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return; }
-        snd('clash', 0.8); sparks(p.x, p.z, 0xffffff, 22, 0.14); if (!kd2 && def === D) return leanD(-0.25, 140).then(function () { return leanD(0, 160); });
+        if (graze) { if (kd2) self.figPlay(def, has(def, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); snd('hit', 0.5, tt(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return; }
+        snd(E.brawl ? 'hit' : 'clash', E.brawl ? 0.4 : 0.8); if (E.blade) snd('zap', 0.4); sparks(p.x, p.z, 0xffffff, 22, 0.14); if (!kd2 && def === D) return leanD(-0.25, 140).then(function () { return leanD(0, 160); });
       });
     }
     // Todesstoß: gepaarter Finisher, wenn beide Clips da sind; sonst atk4 und danach der Sterbe-Clip
     function finisher() {
-      var hitAt = 0.45 * sp, pair = !short && has(A, 'fin_a') && has(D, 'fin_d'), left = 0;
+      var hitAt = 0.45 * sp, pair = !short && !E.brawl && has(A, 'fin_a') && has(D, 'fin_d'), left = 0;
       self.figPlay(A, pair ? 'fin_a' : 'atk4', { hitAt: hitAt, then: 'ready' });
       // fin_d trifft früher (0,33 s) als hitAt: später starten, damit beide Treffer-Frames aufeinanderliegen
       if (pair) { var dA = kd.A, hd = dA.hit.fin_d || 0; left = dA.dur.fin_d - hd + hitAt; if (hd >= hitAt) self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }); else wait((hitAt - hd) * 1000 / sp).then(function () { self.figPlay(D, 'fin_d', { hold: true }); }); }
-      snd('whoosh', 0.9, ta);
+      snd('whoosh', 0.9, sa);
       return self.tween(hitAt * 1000, function () { }).then(function () {
         if (info.onHit) info.onHit();
-        snd('hit', 0.9, ta); sparks(D.position.x, D.position.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(D.position.x, D.position.z);
-        return pair ? crumble(wait(Math.min(1150, Math.max(0, left - hitAt) * 1000 * 0.9))) : die();
+        snd('hit', 0.9, sa); sparks(D.position.x, D.position.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(D.position.x, D.position.z);
+        if (E.brawl) { if (kd) self.figPlay(D, has(D, 'hit2') ? 'hit2' : 'hit1'); return wait(260).then(function () { return self.figFlee(D, A.position.x, A.position.z, sp); }); } // Hunde: umgerannt, dann weg
+        return pair ? crumble(wait(Math.min(E.boom ? 700 : 1150, Math.max(0, left - hitAt) * 1000 * 0.9))) : die();
       });
     }
     // Verteidiger stirbt: Sterbe-Animation (oder Umkippen ohne Rig), dann zerfällt er zu Staub
     function die() {
       var p0 = D.position.clone(), u = dir(), fall;
-      if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, td); fall = wait(Math.min(1150, left * 1000 * 0.8)); }
+      if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, sd); fall = wait(Math.min(E.boom ? 700 : 1150, left * 1000 * 0.8)); }
       else fall = self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, u[0], u[1], e * 1.45); D.position.x = p0.x + u[0] * e * 0.35; D.position.z = p0.z + u[1] * e * 0.35; });
       return crumble(fall);
     }
     function crumble(fall) {
       var u = dir(), p0 = null;
+      if (E.boom) return fall.then(function () { return self.figBoom(D, dust, sp); }); // Mecha: Explosion
       return fall.then(function () {
         p0 = D.position.clone(); snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
         for (var i = 0; i < 4; i++) self.emit(D.position.x + u[0] * (i - 1) * 0.18, BT + 0.15 + i * 0.08, D.position.z + u[1] * (i - 1) * 0.18, dust, 28 * pm, 1.6, 0.9);
@@ -357,7 +379,7 @@
         var g = e[0], v1 = rot(e[1], ph), mvx = v1[0] - e[1][0], mvz = v1[1] - e[1][1], fx = -e[1][0], fz = -e[1][1];
         self.figPlay(g, !strafe ? 'walk' : mvx * -fz + mvz * fx > 0 ? 'strafe_r' : 'strafe_l');
       });
-      snd('march', FD.circle, ta);
+      snd('march', FD.circle, sa);
       // ohne Seitwärts-Clip: in Gehrichtung schauen (Tangente), am Ende zum Gegner drehen
       var cpr = 0; // Kamera dreht mit, damit das Profil bleibt
       return self.tween(FD.circle, function (k) {
@@ -374,32 +396,67 @@
     // beide drehen sich zueinander, nehmen Kampfhaltung ein
     var face = Promise.all([this.faceTo(A, to.x, to.z, 180), this.faceTo(D, from.x, from.z, 180)]).then(function () { if (kd) self.figPlay(D, 'ready'); });
 
-    if (style === 'magic') {
-      // Onmyōji: Ofuda-Zauber aus der Distanz (Zauber-Clip), Kugel fliegt, Gegner fällt; Läufer als Held mit Druckwelle
-      var bolt = null;
-      return face.then(function () { self.figPlay(A, 'ready'); return wait(220); }).then(function () {
-        self.figPlay(A, ['atk1', 'atk2'], { hitAt: 0.25 }); return wait(250);
-      }).then(function () {
-        snd('zap', 0.8, ta);
-        bolt = new T.Mesh(new T.SphereGeometry(hero ? 0.22 : 0.16, 12, 8), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
-        self.scene.add(bolt); var head = BT + 0.95;
-        return self.tween((300 + dist * 40) * sp, function (k) { var x = from.x + dx * k, z = from.z + dz * k, y = head + Math.sin(k * Math.PI) * 0.8; bolt.position.set(x, y, z); bolt.scale.setScalar(1 + Math.sin(k * 30) * 0.2); self.emitDir(x, y, z, colA, 3 * pm, 0, 0, 0, 0.6); });
-      }).then(function () { self.scene.remove(bolt); bolt.geometry.dispose(); bolt.material.dispose(); if (info.onHit) info.onHit(); sparks(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(to.x, to.z); if (kd) self.figPlay(D, 'hit1'); return die(); }).then(stepIn);
+    if (style === 'magic' || style === 'shoot' || style === 'breath') {
+      // Fernkampf: Zauber (Onmyōji, Fantasy-Magier mit Runenkreis), Salven (Mecha-Laser), Feueratem (Drache); Gegner fällt, Läufer als Held mit Druckwelle
+      var head = BT + 0.95, mc = E.magic || colA;
+      function hitAnim(g) { if (g.userData.sk) self.figPlay(g, has(g, 'hit3') ? ['hit1', 'hit3'] : 'hit1', { then: 'ready' }); }
+      function magic() {
+        var ring = null, bolt;
+        if (E.rune) { ring = new T.Mesh(new T.RingGeometry(0.32, 0.46, 40), new T.MeshBasicMaterial({ color: mc, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.set(from.x, BT + 0.04, from.z); self.scene.add(ring); }
+        self.figPlay(A, has(A, 'cast') ? 'cast' : ['atk1', 'atk2'], { hitAt: 0.25 });
+        return self.tween(250 * sp, function (k) { if (ring) { ring.material.opacity = k * 0.9; ring.rotation.z = k * 2; ring.scale.setScalar(0.6 + k * 0.6); } }).then(function () {
+          snd('zap', 0.8, sa);
+          bolt = new T.Mesh(new T.SphereGeometry(hero ? 0.22 : 0.16, 12, 8), new T.MeshBasicMaterial({ color: mc, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
+          self.scene.add(bolt);
+          return self.tween((300 + dist * 40) * sp, function (k) { var x = from.x + dx * k, z = from.z + dz * k, y = head + Math.sin(k * Math.PI) * 0.8; bolt.position.set(x, y, z); bolt.scale.setScalar(1 + Math.sin(k * 30) * 0.2); self.emitDir(x, y, z, mc, 3 * pm, 0, 0, 0, 0.6); if (ring) { ring.material.opacity = 0.9 * (1 - k); ring.rotation.z = 2 + k * 3; } });
+        }).then(function () { self.scene.remove(bolt); bolt.geometry.dispose(); bolt.material.dispose(); if (ring) { self.scene.remove(ring); ring.geometry.dispose(); ring.material.dispose(); } });
+      }
+      // Salve: Mündungsblitz, Leuchtspur, Einschlag; der letzte Schuss trifft tödlich
+      function volley() {
+        var shots = short ? 2 : 3, chain = Promise.resolve(), sc = E.shot || 0xfff0a0;
+        for (var s = 0; s < shots; s++) (function (s) {
+          chain = chain.then(function () {
+            self.figPlay(A, has(A, 'shoot') ? 'shoot' : 'atk1', { hitAt: 0.12 }); return wait(120);
+          }).then(function () {
+            var ax = A.position.x + ux * 0.35, az = A.position.z + uz * 0.35, tx = D.position.x - ux * 0.15, tz = D.position.z - uz * 0.15;
+            snd('zap', 0.7, sa); self.emit(ax, BT + 0.75, az, 0xffffff, 8 * pm, 1.5, 1);
+            for (var j = 0; j < 10; j++) { var q = j / 10; self.emitDir(ax + (tx - ax) * q, BT + 0.75 - q * 0.1, az + (tz - az) * q, sc, 2 * pm, ux * 2, 0, uz * 2, 0.15); }
+            if (s < shots - 1) { sparks(tx, tz, sc, 14, 0.1); hitAnim(D); return wait(260); }
+          });
+        })(s);
+        return chain;
+      }
+      function breath() {
+        self.figPlay(A, 'atk2'); snd('fire', 0.9); hitAnim(D);
+        return self.tween(700 * sp, function (k) { self.emitDir(from.x + ux * 0.4, head, from.z + uz * 0.4, k < .5 ? 0xffb030 : 0xff5a20, 6 * pm, ux * 6.5, -0.8, uz * 6.5, 1.4); });
+      }
+      return face.then(function () { self.figPlay(A, 'ready'); return wait(220); }).then(function () { return style === 'shoot' ? volley() : style === 'breath' ? breath() : magic(); })
+        .then(function () { if (info.onHit) info.onHit(); sparks(to.x, to.z, style === 'shoot' ? E.shot || colA : mc, big ? 90 : 60, big ? 0.5 : 0.35); wucht(to.x, to.z); if (kd) self.figPlay(D, 'hit1'); return die(); }).then(stepIn);
     }
     // Nahkampf: Anlauf (Laufen bzw. Sprint beim Ansturm), Umkreisen, Schlagabtausch, Finisher
     var stand = cell * (style === 'thrust' ? 0.95 : 0.85), stx = to.x - ux * stand, stz = to.z - uz * stand, run = Math.hypot(stx - from.x, stz - from.z);
     var gait = style === 'charge' || run > 2.5 ? 'sprint' : run > 0.9 ? 'run' : 'walk', ms = Math.max(260, Math.min(1200, run / Board3D.FIG_GAIT[gait] * 1000));
+    var jet = !!E.jet && gait !== 'walk', leap = style === 'leap' && run > 0.5; // Mecha gleitet mit Düsen heran, Springer/Tiere springen den Gegner an
+    if (jet) ms = Math.max(260, ms * 0.7);
     // Zeitbudget (Voll, Notbremse in app.js bei 8 s): fester Teil ohne Schläge (Drehen, Anlauf, Finisher, Fall, Zerfall, Schritt aufs Feld,
     // Bild-Takt der Tweens; an Messungen geeicht), daraus 3–5 Schläge (zufällig, so viele das Budget erlaubt); reicht es nicht, entfällt das Umkreisen
-    var circ = !short && !!kd, fixed = ms + 3955 + (hero ? 300 : 0);
+    var circ = !short && !!kd, fixed = ms + 3955 + (hero ? 300 : 0) + (E.brawl ? 150 : 0);
     function fit(c) { return Math.max(2, Math.min(5, Math.floor((FD.budget - fixed - (c ? FD.circle + 180 : 0)) / FD.swing))); }
     var want = 3 + Math.floor(Math.random() * 3); // gewünschte Wechsel; für 5 entfällt notfalls das Umkreisen
     if (circ && (fit(true) < 3 || fit(true) < want && fit(false) >= want)) circ = false;
     var nMax = fit(circ), n = short ? 1 : Math.min(nMax, want), graze = n >= 3 ? 1 + Math.floor(Math.random() * (n - 1)) : -1;
     var seq = face.then(function () {
-      self.figPlay(A, gait); snd('march', ms, ta); if (gait === 'sprint') snd('roar', 0.5, ta);
-      return self.tween(ms, function (k) { var e = k < 0.85 ? k / 0.85 * 0.92 : 0.92 + (k - 0.85) / 0.15 * 0.08; A.position.x = from.x + (stx - from.x) * e; A.position.z = from.z + (stz - from.z) * e; A.position.y = BT; });
-    }).then(function () { self.figPlay(A, 'ready'); return wait(120); });
+      self.figPlay(A, jet ? (has(A, 'jet') ? 'jet' : 'ready') : leap ? 'run' : gait); snd('march', ms, sa); if (gait === 'sprint' && !jet) snd('roar', 0.5, sa);
+      if (jet) snd('fire', 0.5); if (leap) snd('whoosh', 0.8, sa);
+      return self.tween(ms, function (k) {
+        var e = k < 0.85 ? k / 0.85 * 0.92 : 0.92 + (k - 0.85) / 0.15 * 0.08; A.position.x = from.x + (stx - from.x) * e; A.position.z = from.z + (stz - from.z) * e;
+        A.position.y = BT + (leap ? Math.sin(k * Math.PI) * (0.5 + run * 0.12) : jet ? Math.sin(Math.min(1, k * 1.3) * Math.PI) * 0.22 : 0);
+        if (jet) self.emitDir(A.position.x - ux * 0.25, BT + 0.55, A.position.z - uz * 0.25, E.jet, 2 * pm, -ux * 2.5, 0.2, -uz * 2.5, 0.35);
+      });
+    }).then(function () {
+      if (leap || jet) { self.emit(A.position.x, BT + 0.05, A.position.z, 0xd8c8a0, (leap ? 26 : 14) * pm, 2, 0.4); if (leap) { snd('clash', 0.5); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15); } }
+      self.figPlay(A, 'ready'); return wait(120);
+    });
     if (circ) seq = seq.then(circle);
     var brk = (n - 1) % 2 ? n - 2 : n - 1; // letzter Angriff vor dem Finisher: Abwehr des Verteidigers bricht
     for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze, i === brk); }).then(function () { return wait(i === n - 1 ? 200 : 160); }); })(i);
@@ -409,14 +466,41 @@
 
   // Verteidiger mit Rig, Angreifer ohne (Fuchs-Sprung, Hirsch-Ansturm, Feueratem): nur der Tod mit Sterbe-Animation
   Board3D.prototype.figDie = function (D, dust, sp, ux, uz) {
-    var self = this, k = D.userData.sk, p0 = D.position.clone(); k.busy = true;
+    var self = this, k = D.userData.sk, p0 = D.position.clone(), E = Board3D.FIG_ED[this.figEd()] || {}; k.busy = true;
     if (D.userData.q0) D.quaternion.copy(D.userData.q0);
-    var left = this.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, typ(D));
+    if (E.brawl) { this.figPlay(D, 'hit2' in k.A.ids ? 'hit2' : 'hit1'); return this.tween(260 * sp, function () { }).then(function () { return self.figFlee(D, p0.x - ux, p0.z - uz, sp); }); }
+    var left = this.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, this.theme.id === 'feudal' ? typ(D) : null);
+    if (E.boom) return this.tween(Math.min(700, left * 850) * sp, function () { }).then(function () { return self.figBoom(D, dust, sp); });
     return this.tween(Math.min(1500, left * 850) * sp, function () { }).then(function () {
       snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
       for (var i = 0; i < 4; i++) self.emit(D.position.x + ux * (i - 1) * 0.18, self.BT + 0.15 + i * 0.08, D.position.z + uz * (i - 1) * 0.18, dust, 28, 1.6, 0.9);
       return self.tween(320 * sp, function (q) { D.scale.setScalar(1 - q); D.position.y = p0.y - q * 0.3; });
     }).then(function () { self.pieceGroup.remove(D); self.figFree(D); });
+  };
+
+  // Mecha: Explosion statt Zerfall (Lichtblitz, Feuerball, Funken, Trümmer in Statuenfarbe), die Figur verglüht
+  Board3D.prototype.figBoom = function (D, dust, sp) {
+    var self = this, T = THREE, BT = this.BT, x = D.position.x, z = D.position.z, p0 = D.position.clone(), pm = Board3D.MOBILE ? 0.5 : 1;
+    snd('fire', 0.8); snd('clash', 0.7); this.shakeAmt = Math.max(this.shakeAmt || 0, 0.45);
+    this.emit(x, BT + 0.5, z, 0xffffff, 20 * pm, 3, 1.2); this.emit(x, BT + 0.5, z, 0xffb040, 60 * pm, 4.5, 1.3); this.emit(x, BT + 0.35, z, 0xff5a20, 40 * pm, 2.2, 1.8); this.emit(x, BT + 0.6, z, dust, 24 * pm, 5, 1.8);
+    var ball = new T.Mesh(new T.SphereGeometry(0.3, 16, 10), new T.MeshBasicMaterial({ color: 0xffb860, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
+    ball.position.set(x, BT + 0.55, z); this.scene.add(ball);
+    return this.tween(300 * sp, function (k) { D.scale.setScalar(Math.max(0.001, 1 - k * 1.4)); D.position.y = p0.y + k * 0.08; ball.scale.setScalar(0.6 + k * 1.6); ball.material.opacity = 0.9 * (1 - k) * (1 - k); })
+      .then(function () { self.scene.remove(ball); ball.geometry.dispose(); ball.material.dispose(); self.pieceGroup.remove(D); self.figFree(D); });
+  };
+  // Hunde: wer verliert, rollt sich weg (Clip roll, falls da) und läuft davon (flee, sonst run), wird dabei klein und verschwindet in einer Staubwolke
+  Board3D.prototype.figFlee = function (D, ax, az, sp) {
+    var self = this, BT = this.BT, k = D.userData.sk, pm = Board3D.MOBILE ? 0.5 : 1, a = Math.atan2(D.position.x - ax, D.position.z - az) + (Math.random() - 0.5) * 1.2;
+    var ux = Math.sin(a), uz = Math.cos(a), roll = k && k.A.ids.roll != null && Math.random() < 0.5;
+    if (k) k.busy = true; snd('whoosh', 0.5);
+    var first = Promise.resolve();
+    if (roll) { var x0 = D.position.x, z0 = D.position.z, rd = this.figPlay(D, 'roll'); first = this.tween(Math.min(550, rd * 800) * sp, function (q) { D.position.x = x0 + ux * 0.5 * q; D.position.z = z0 + uz * 0.5 * q; }); }
+    return first.then(function () {
+      var xs = D.position.x, zs = D.position.z;
+      if (k) self.figPlay(D, k.A.ids.flee != null ? 'flee' : 'run');
+      self.faceTo(D, xs + ux * 5, zs + uz * 5, 150);
+      return self.tween(800 * sp, function (q) { D.position.x = xs + ux * 1.8 * q; D.position.z = zs + uz * 1.8 * q; D.scale.setScalar(q < 0.55 ? 1 : Math.max(0.001, 1 - (q - 0.55) / 0.45)); if (Math.random() < 0.35) self.emit(D.position.x, BT + 0.05, D.position.z, 0xd8c8a0, 2 * pm, 0.6, 0.3); });
+    }).then(function () { self.emit(D.position.x, BT + 0.15, D.position.z, 0xd8c8a0, 16 * pm, 1.2, 0.5); self.pieceGroup.remove(D); self.figFree(D); });
   };
 
   // ---------- Auftritte ----------
