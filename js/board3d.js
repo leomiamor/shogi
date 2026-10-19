@@ -1281,7 +1281,10 @@ Board3D.prototype.skinShot = function (s, name, hitAt) {
   var off = hitAt != null ? Math.max(0, (A.hit[name] || 0) - hitAt) : 0;
   SkinAnim.play(A, u, name, off + 1e-4); u.shotEnd = SkinAnim.time.value - off + A.dur[name] * 0.9; u.cur = name;
 };
-Board3D.SKIN = { 1: 'models/anim/ashigaru', 2: 'models/anim/naginata', 3: 'models/anim/kitsune', 4: 'models/anim/kenshi', 5: 'models/anim/yari', 6: 'models/anim/onmyoji', 7: 'models/anim/tengu', 8: 'models/anim/samurai', 9: 'models/anim/veteran', 12: 'models/anim/general', 13: 'models/anim/kirin', 14: 'models/anim/ryu' }; // Typen mit Skelett (nur Feudal-Statuen)
+Board3D.SKIN = { 1: 'models/anim/ashigaru', 2: 'models/anim/naginata', 3: 'models/anim/kitsune', 4: 'models/anim/kenshi', 5: 'models/anim/yari', 6: 'models/anim/onmyoji', 7: 'models/anim/tengu', 8: 'models/anim/samurai', 9: 'models/anim/veteran', 10: 'models/anim/hauptmann', 11: 'models/anim/kitsune5', 12: 'models/anim/general', 13: 'models/anim/kirin', 14: 'models/anim/ryu' }; // Typen mit Skelett (nur Feudal-Statuen)
+// andere Editionen: Edition -> Typ -> Clip-Datei; fehlt ein Eintrag, steht die Statue (ohne Skelett)
+Board3D.SKIN_ED = { mecha: {}, fantasy: {}, hunde: {} };
+Board3D.skinOf = function (ed, t) { return ed === 'feudal' ? Board3D.SKIN[t] || null : (Board3D.SKIN_ED[ed] || {})[t] || null; };
 Board3D.ATK = ['atk1', 'atk2', 'atk3', 'atk4'];
 // Instanzen-Topf je Modell + Farbe (wächst bei Bedarf)
 Board3D.prototype.armyPool = function (key, geo, col, rim, sk, map, t) {
@@ -2487,7 +2490,7 @@ Board3D.prototype.makePiece = function (p, cap) {
   if (promoStatue && ps === 'fahne' && !army) { var fl = this.promoFlag(); fl.position.set(0.3, 0.2, -0.28); if (col === 1) fl.rotation.y = Math.PI; g.add(fl); }
   if (this.settings.models !== false && this.quality === 'high') {
     var url = this.figUrl(t, col); if (army) url = url.replace(/\.glb$/, Board3D.armyHero(t) ? '_lo.glb' : '_lo2.glb');
-    var skb = army && this.theme.id === 'feudal' && this.settings.skel !== false && window.SkinAnim && Board3D.SKIN[t], ska = skb ? SkinAnim.cached(skb) : null;
+    var skb = army && this.settings.skel !== false && window.SkinAnim && Board3D.skinOf(this.theme.id, t), ska = skb ? SkinAnim.cached(skb) : null;
     if (ska === false) skb = null;
     var src = url && window.Models && Models.cached ? Models.cached(url) : null, put = army ? this.buildSquad.bind(this) : function (g, s, tt, c) { this.attachGlb(g, s, c); }.bind(this);
     if (!army && this.figSkinTry && this.figSkinTry(g, url, col)) { /* Statue mit Skelett (figanim.js) */ }
