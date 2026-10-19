@@ -1,0 +1,16 @@
+Sounds fuer den Armee-Kampf-Modus. Alle Quellen CC0 (Creative Commons Zero / Public Domain), Namensnennung freiwillig.
+Bearbeitet (Schnitt, Mono, 44.1 kHz, MP3 80 kbps, Lautheit normalisiert, Fades; Klingen-Clashes mit Lowpass 7 kHz und -3 dB High-Shelf ab 3.5 kHz).
+
+bed.mp3     craigsmith - "S30-21 Large crowd fighting outdoors with swords in BG" - https://freesound.org/people/craigsmith/sounds/675094/ - CC0
+cry1.mp3    joelcarrsound - "Middle Ages War Cry 3" - https://freesound.org/people/joelcarrsound/sounds/521831/ - CC0
+cry2.mp3    joelcarrsound - "Middle Ages War Cry" + "Middle Ages War Cry 2" (gemischt) - https://freesound.org/people/joelcarrsound/sounds/521830/ , https://freesound.org/people/joelcarrsound/sounds/521832/ - CC0
+drum.mp3    PearceWilsonKing - "War Drum Loop" - https://freesound.org/people/PearceWilsonKing/sounds/274223/ - CC0
+impact.mp3  Kenney - "Impact Sounds" (impactSoft_heavy_001 + impactPunch_heavy_000 + impactPlate_heavy_001) - https://kenney.nl/assets/impact-sounds - CC0
+clash1.mp3  StarNinjas - "20 Sword Sound Effects (Attacks and Clashes)" (sword_clash.8) - https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes - CC0
+clash2.mp3  StarNinjas - "20 Sword Sound Effects (Attacks and Clashes)" (sword_clash.2) - https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes - CC0
+clash3.mp3  Kenney - "Impact Sounds" (impactMetal_heavy_000) - https://kenney.nl/assets/impact-sounds - CC0
+hit1.mp3    Kenney - "Impact Sounds" (impactPunch_medium_001) - https://kenney.nl/assets/impact-sounds - CC0
+hit2.mp3    Kenney - "Impact Sounds" (impactPunch_heavy_003) - https://kenney.nl/assets/impact-sounds - CC0
+fall.mp3    leonelmail - "BODY FALL - V HVY - DIRT" - https://freesound.org/people/leonelmail/sounds/504626/ - CC0
+whoosh.mp3  Kenney - "RPG Audio" (knifeSlice) - https://kenney.nl/assets/rpg-audio - CC0
+cheer.mp3   craigsmith - "S12-03 Small group men cheering; encouraging" - https://freesound.org/people/craigsmith/sounds/675103/ - CC0
