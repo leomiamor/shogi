@@ -1049,9 +1049,9 @@ Board3D.prototype.figUrl = function (t, col) {
   return 'models/fig/' + t + '_' + col + '.glb';
 };
 // Statuen-Look: alle Figuren eines Spielers in einem Material, Normal-Map des Modells bleibt für die Details
-Board3D.STATUE_READY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14]; // Typen, deren Statuen-Modell die Prüfung bestanden hat
+Board3D.STATUE_READY = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]; // Typen, deren Statuen-Modell die Prüfung bestanden hat
 Board3D.promoOnBase = function (ed, t) { return t >= 9 && t <= 12 && ((ed === 'feudal' ? Board3D.STATUE_READY : Board3D.STATUE_READY_ED[ed]) || []).indexOf(t) < 0; };
-Board3D.STATUE_READY_ED = { mecha: [1, 3, 4, 5, 8], fantasy: [1, 8], hunde: [] }; // dito für die anderen Editionen
+Board3D.STATUE_READY_ED = { mecha: [1, 3, 4, 5, 8, 9, 10, 11, 12], fantasy: [1, 8, 9], hunde: [9] }; // dito für die anderen Editionen
 Board3D.STATUE = { gold: [0xd9a93a, 0.28, 1], silber: [0xc9ced6, 0.25, 1], bronze: [0x7a4a26, 0.35, 0.85] };
 Board3D.prototype.statueMat = function (col, normalMap, rim) {
   var name = (this.settings.statueMats || ['gold', 'silber'])[col], M = Board3D.STATUE[name] || Board3D.STATUE.gold;
@@ -1487,6 +1487,8 @@ Board3D.acesInv = function (srgb, exposure) {
 };
 // Höhennebel mit Sonnenschein im Dunst: ersetzt den FogExp2-Teil der Shader-Bausteine. Werte als Konstanten,
 // Shader-Programme hängen am Renderer (jedes Brett hat einen eigenen), deshalb vor dem ersten Bild setzen und beim nächsten Brett zurück.
+// FogExp2, das zusätzlich near (= Stärke Sonnenschein, 0–1) und far (= Dichte) an die Shader gibt: three lädt near/far nur bei isFog hoch
+Board3D.glowFog = function (fg) { fg.isFog = true; fg.near = 1; Object.defineProperty(fg, 'far', { get: function () { return this.density; } }); return fg; };
 Board3D.setHeightFog = function (o) {
   var C = THREE.ShaderChunk, F = Board3D._fog0 || (Board3D._fog0 = { pv: C.fog_pars_vertex, v: C.fog_vertex, pf: C.fog_pars_fragment, f: C.fog_fragment });
   if (!o) { C.fog_pars_vertex = F.pv; C.fog_vertex = F.v; C.fog_pars_fragment = F.pf; C.fog_fragment = F.f; return; }
@@ -1494,11 +1496,12 @@ Board3D.setHeightFog = function (o) {
   var sc = new THREE.Color(o.glow[0]), sd = new THREE.Vector3().fromArray(o.dir).normalize();
   C.fog_pars_vertex = F.pv + '\n#ifdef USE_FOG\nvarying vec3 vFogWP;\n#endif\n';
   C.fog_vertex = F.v + '\n#ifdef USE_FOG\nvFogWP = (mvPosition.xyz - viewMatrix[3].xyz) * mat3(viewMatrix);\n#endif\n';
-  C.fog_pars_fragment = F.pf + '\n#ifdef USE_FOG\nvarying vec3 vFogWP;\n#endif\n';
+  // Dichte kommt über fogFar, Stärke des Sonnenscheins über fogNear (beide setzt three für jedes Material, siehe glowFog)
+  C.fog_pars_fragment = F.pf + '\n#ifdef USE_FOG\nvarying vec3 vFogWP;\n#ifdef FOG_EXP2\nuniform float fogNear; uniform float fogFar;\n#endif\n#endif\n';
   C.fog_fragment = ['#ifdef USE_FOG',
     ' vec3 fRay = vFogWP - cameraPosition; float fLen = length(fRay); vec3 fDir = fRay / max(fLen, 1e-4);',
     ' #ifdef FOG_EXP2',
-    '  float fogFactor = 1.0 - exp(-fogDensity * fogDensity * fLen * fLen);',
+    '  float fogFactor = 1.0 - exp(-fogFar * fogFar * fLen * fLen);',
     ' #else',
     '  float fogFactor = smoothstep(fogNear, fogFar, vFogDepth);',
     ' #endif',
@@ -1506,7 +1509,7 @@ Board3D.setHeightFog = function (o) {
     ' float fInt = ' + n(o.h[1]) + ' * exp(-(cameraPosition.y - ' + n(o.h[0]) + ') * ' + n(o.h[2]) + ') * fLen * (abs(fHy) > 1e-3 ? (1.0 - exp(-fHy)) / fHy : 1.0);',
     ' fogFactor = min(1.0 - (1.0 - fogFactor) * exp(-max(fInt, 0.0)), 0.985);',
     ' float fSun = pow(max(dot(fDir, vec3(' + n(sd.x) + ',' + n(sd.y) + ',' + n(sd.z) + ')), 0.0), ' + n(o.glow[2]) + ');',
-    ' gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor + vec3(' + n(sc.r) + ',' + n(sc.g) + ',' + n(sc.b) + ') * fSun * ' + n(o.glow[1]) + ', fogFactor);',
+    ' gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor + vec3(' + n(sc.r) + ',' + n(sc.g) + ',' + n(sc.b) + ') * fSun * ' + n(o.glow[1]) + ' * fogNear, fogFactor);',
     '#endif'].join('\n');
 };
 // ---- Bäume aus Blatt-Karten (wie in Strategiespielen): Krone aus vielen Alpha-Karten mit Kugel-Normalen (weich beleuchtet),
@@ -1609,7 +1612,7 @@ Board3D.prototype.buildField = function (hi) {
   this.hemi.color.set(MD.hemi[0]); this.hemi.groundColor.set(MD.hemi[1]); this.hemi.intensity = MD.hemi[2];
   var sd = new T.Vector3().fromArray(MD.sun[2]); if (sd.length() < 2) sd.normalize().multiplyScalar(22);
   this.sun.color.set(MD.sun[0]); this.sun.intensity = MD.sun[1]; this.sun.position.copy(sd); this.renderer.toneMappingExposure = MD.exp;
-  if (MD.hfog) Board3D.setHeightFog({ h: [Y + MD.hfog[0], MD.hfog[1], MD.hfog[2]], glow: MD.glow, dir: MD.sun[2] });
+  if (MD.hfog) { Board3D.setHeightFog({ h: [Y + MD.hfog[0], MD.hfog[1], MD.hfog[2]], glow: MD.glow, dir: MD.sun[2] }); Board3D.glowFog(scene.fog); }
   var sc = this.sun.shadow.camera; sc.left = -11; sc.right = 11; sc.top = 11; sc.bottom = -11; sc.far = 60; sc.updateProjectionMatrix(); this.sun.shadow.mapSize.set(2048, 2048);
   this.useHdr('studio_kontrast_01.hdr'); this.addCamLight(0.35);
   this.skyBackground(MD.sky, MD.skyI, function (t) {
@@ -1638,7 +1641,7 @@ Board3D.prototype.buildField = function (hi) {
   }
   ng.putImageData(id, 0, 0); var noiseT = new T.CanvasTexture(nc); noiseT.wrapS = noiseT.wrapT = T.RepeatWrapping;
   var tG = Board3D.tex('leafy_grass', 1).map, tD = Board3D.tex('forest_ground_04', 1).map, tR = Board3D.tex('rock_face_03', 1).map;
-  var U = this.fieldU = { uTime: { value: 0 } };
+  var U = this.fieldU = { uTime: { value: 0 }, uWet: { value: 0 } };
 
   // ---- Gelände: Raster wird zur Mitte hin dichter ----
   var S = hi ? 200 : 120, geo = new T.PlaneGeometry(2, 2, S, S); geo.rotateX(-Math.PI / 2);
@@ -1663,9 +1666,9 @@ Board3D.prototype.buildField = function (hi) {
   this.fieldGeo = geo;
   var gm = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 });
   gm.onBeforeCompile = function (sh) {
-    sh.uniforms.tG = { value: tG }; sh.uniforms.tD = { value: tD }; sh.uniforms.tR = { value: tR }; sh.uniforms.tN = { value: noiseT }; sh.uniforms.uTime = U.uTime; sh.uniforms.uTint = { value: new T.Vector3().fromArray(MD.tint || [1, 1, 1]) }; sh.uniforms.uSnow = { value: MD.snow || 999 };
+    sh.uniforms.tG = { value: tG }; sh.uniforms.tD = { value: tD }; sh.uniforms.tR = { value: tR }; sh.uniforms.tN = { value: noiseT }; sh.uniforms.uTime = U.uTime; sh.uniforms.uTint = { value: new T.Vector3().fromArray(MD.tint || [1, 1, 1]) }; sh.uniforms.uSnow = { value: MD.snow || 999 }; sh.uniforms.uWet = U.uWet;
     sh.vertexShader = 'attribute vec3 aMix; varying vec3 vMix; varying vec3 vWp;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vMix = aMix; vWp = (modelMatrix * vec4(position, 1.0)).xyz;');
-    sh.fragmentShader = 'uniform sampler2D tG, tD, tR, tN; uniform float uTime; uniform vec3 uTint; uniform float uSnow; varying vec3 vMix; varying vec3 vWp;\n' + sh.fragmentShader.replace('#include <map_fragment>', [
+    sh.fragmentShader = 'uniform sampler2D tG, tD, tR, tN; uniform float uTime; uniform vec3 uTint; uniform float uSnow; uniform float uWet; varying vec3 vMix; varying vec3 vWp;\n' + sh.fragmentShader.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n roughnessFactor = mix(roughnessFactor, mix(0.45, 0.12, wd), uWet * (1.0 - wr));').replace('#include <map_fragment>', [
       'vec2 wp = vWp.xz; vec4 nz = texture2D(tN, wp * 0.013); float n2 = texture2D(tN, wp * 0.09 + 0.31).r;',
       'vec3 g = mix(texture2D(tG, wp * 0.31).rgb, texture2D(tG, wp * 0.067 + 0.4).rgb, 0.5);',
       'g *= mix(vec3(0.56, 0.74, 0.4), vec3(0.98, 0.92, 0.6), smoothstep(0.35, 0.85, nz.r));', // frisch / trocken
@@ -1676,7 +1679,7 @@ Board3D.prototype.buildField = function (hi) {
       'float sn = smoothstep(uSnow, uSnow + 5.0, vWp.y + (nz.r - 0.5) * 8.0) * (1.0 - smoothstep(0.55, 0.95, vMix.z + (n2 - 0.5) * 0.3)); col = mix(col, vec3(0.92, 0.94, 1.0), sn);',
       'float cl = smoothstep(0.42, 0.66, texture2D(tN, wp * 0.0065 + uTime * vec2(0.0045, 0.0022)).r);', // Wolkenschatten ziehen übers Land
       'col *= mix(1.0, 0.7, cl);',
-      'diffuseColor.rgb *= col * uTint;'].join('\n'));
+      'diffuseColor.rgb *= col * uTint * (1.0 - uWet * 0.3);'].join('\n')); // nass = dunkler, Erde glänzt wie Pfützen (fieldfx.js)
   };
   var ground = new T.Mesh(geo, gm); ground.position.y = Y - 0.004; ground.receiveShadow = true; scene.add(ground);
 
@@ -1761,6 +1764,7 @@ Board3D.prototype.buildField = function (hi) {
   this.buildMood(hi);
   var skip = new Set(); this.campFires.forEach(function (f) { skip.add(f.fl); }); (this.nobori || []).forEach(function (n) { skip.add(n.m); });
   this.mergeStatic(scene.children.slice(c0), skip);
+  if (this.initWeather) this.initWeather(hi); // Wetter, Brände (fieldfx.js)
 };
 // Starre Einzelteile von Lager, Felsen und Bauwerken (~650 Meshes) je Material und Schattenart zu einem Mesh zusammenfassen: spart Draw Calls.
 // Ausgenommen: Animiertes (skip), Durchsichtiges, Instanzen, Sprites; später geladene GLB-Modelle bleiben einzeln.
@@ -2041,6 +2045,7 @@ Board3D.prototype.fieldTick = function (now, dt) {
   });
   (this.mists || []).forEach(function (m) { m.s.position.x = m.x + Math.sin(now / 9000 + m.ph) * 2; });
   (this.nobori || []).forEach(function (n) { var p = n.m.geometry.attributes.position; for (var j = 0; j < p.count; j++) { var xx = p.getX(j) + 0.085; p.setZ(j, Math.sin(now / 380 + n.ph + p.getY(j) * 6) * 0.035 * (xx / 0.17)); } p.needsUpdate = true; });
+  if (this.weatherTick) this.weatherTick(now, dt);
   if (this.fieldGrid) { var want = this.hl && (this.hl.selected != null || this.hoverSq != null) ? 0.75 : 0.28, mt = this.fieldGrid.material; mt.opacity += (want - mt.opacity) * Math.min(1, dt / 160); }
 };
 

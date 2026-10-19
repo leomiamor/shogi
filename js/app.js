@@ -436,7 +436,7 @@
     v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
     grp.appendChild(v3);
     seg('fights', 'Kämpfe', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
-    if (S.army) { S.fieldMood = S.fieldMood || 'pass'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); }
+    if (S.army) { S.fieldMood = S.fieldMood || 'pass'; seg('fieldMood', 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', [['pass', 'Gebirgspass'], ['tal', 'Flusstal'], ['belagerung', 'Belagerung'], ['mittag', 'Sommertag']]); seg('fieldWeather', 'Wetter', 'Wechselnd: zieht im Lauf der Partie auf und wieder ab', [['wechsel', 'Wechselnd'], ['klar', 'Klar'], ['regen', 'Regen'], ['gewitter', 'Gewitter'], ['nebel', 'Nebel']]); }
     sec('Ton');
     var vs = h('div', 'set set-vol'); vs.innerHTML = '<div class="l"><b>Lautstärke</b><small>Am PC: Taste M = stumm</small></div>'; vs.appendChild(volControls()); grp.appendChild(vs);
     sec('Spiel');

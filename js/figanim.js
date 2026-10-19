@@ -251,80 +251,153 @@
   };
 
   // ---------- Kampf mit Skelett (Angreifer hat ein Rig) ----------
-  // Zweikampf: Anlauf, Hieb gegen Parade, Gegenschlag, Todesstoß, Sterbe-Animation, dann zerfällt der Verlierer zu Staub
+  // Heldenduell (Vorbild: Duelle in Total War: Three Kingdoms, Lords/Monster in Warhammer): Anlauf, Umkreisen, 3–5 Schläge
+  // mit Paraden (einer streift), gepaarter Finisher (fin_a/fin_d, sonst atk4 + Sterbe-Clip), Staub. König, Turm und Läufer
+  // schlagen mit mehr Wucht (Zeitlupe, Druckwelle, Kameraschwenk). Alles im Zeitbudget der Notbremse in app.js (8 s).
+  Board3D.FIG_DUEL = { budget: 6600, swing: 620, circle: 900, heroes: [6, 7, 8] };
   Board3D.prototype.figFight = function (info, A, from, to, D, style) {
-    var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.75 : 1, BT = this.BT;
+    var self = this, T = THREE, short = this.settings.fights === 'kurz', sp = short ? 0.75 : 1, BT = this.BT, FD = Board3D.FIG_DUEL;
     var dx = to.x - from.x, dz = to.z - from.z, dist = Math.hypot(dx, dz) || 1, ux = dx / dist, uz = dz / dist;
     var cell = Math.hypot(this.sqPos(1).x - this.sqPos(0).x, this.sqPos(1).z - this.sqPos(0).z) || 1;
     var colA = new T.Color(this.theme.factions[info.col].color).getHex(), dust = this.dustColor(1 - info.col), big = Math.abs(info.cap) >= 6;
-    var ka = A.userData.sk, kd = D.userData.sk, ta = typ(A), td = typ(D); ka.busy = true; if (kd) kd.busy = true;
+    var ka = A.userData.sk, kd = D.userData.sk, ta = typ(A), td = typ(D), hero = !short && FD.heroes.indexOf(ta) >= 0, pm = Board3D.MOBILE ? 0.5 : 1;
+    ka.busy = true; if (kd) kd.busy = true;
+    function has(g, n) { var k = g.userData.sk; return !!(k && k.A.ids[n] != null); }
     function wait(ms) { return self.tween(ms * sp, function () { }); }
     function ease(k) { return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
-    var o = this.orbit, cam0 = { x: o.target.x, z: o.target.z, r: o.radius }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
-    if (!short) this.tween(420, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e * 0.85; o.target.z = cam0.z + (mz - cam0.z) * e * 0.85; o.radius = cam0.r * (1 - 0.3 * e); });
-    function camBack() { if (short) return; var c1 = { x: o.target.x, z: o.target.z, r: o.radius }; self.tween(600, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; }); }
-    function sparks(x, z, color, n, shake) { self.emit(x, BT + 0.7, z, color, n, 4, 1.1); self.emit(x, BT + 0.7, z, 0xffffff, n / 3, 2.5, 1.3); self.shakeAmt = Math.max(self.shakeAmt || 0, shake); }
+    // Duell-Nahsicht wie beim Armee-Kampf: Ausschnitt passend zu beiden Feldern, Blick von der Seite (Profil), flach, ohne Bildverschiebung
+    var o = this.orbit, cam0 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi }, mx = (from.x + to.x) / 2, mz = (from.z + to.z) / 2;
+    var ext = (style === 'magic' ? dist / 2 : Math.min(dist / 2, cell * 1.2)) + cell * 0.9, vfh = this.camera.fov * Math.PI / 360, hfh = Math.atan(Math.tan(vfh) * this.camera.aspect);
+    if (style !== 'magic' && dist > cell * 2.4) { mx = to.x - ux * cell * 1.2; mz = to.z - uz * cell * 1.2; } // weiter Anlauf: Kamera beim Ziel
+    var cr = Math.max(2.4, Math.min(9, ext / Math.tan(Math.min(vfh, hfh)) * 1.05)), cdx = Math.sin(o.theta), cdz = Math.cos(o.theta), px = -uz, pz = ux;
+    if (px * cdx + pz * cdz < 0) { px = -px; pz = -pz; }
+    var th1 = Math.atan2(px * 0.85 + cdx * 0.55 - ux * 0.25, pz * 0.85 + cdz * 0.55 - uz * 0.25), vs0 = this.viewShift == null ? 0.17 : this.viewShift;
+    while (th1 - o.theta > Math.PI) th1 -= Math.PI * 2; while (th1 - o.theta < -Math.PI) th1 += Math.PI * 2;
+    if (!short) this.tween(600, function (k) { var e = ease(k); o.target.x = cam0.x + (mx - cam0.x) * e; o.target.z = cam0.z + (mz - cam0.z) * e; o.target.y = cam0.y + (BT + 0.3 - cam0.y) * e; o.radius = cam0.r + (cr - cam0.r) * e; o.phi = cam0.ph + (1.2 - cam0.ph) * e; o.thetaGoal = o.theta = cam0.th + (th1 - cam0.th) * e; self.viewShift = vs0 * (1 - e); });
+    function camBack() {
+      if (short) return; var c1 = { x: o.target.x, y: o.target.y, z: o.target.z, r: o.radius, th: o.thetaGoal, ph: o.phi };
+      while (c1.th - cam0.th > Math.PI) c1.th -= Math.PI * 2; while (c1.th - cam0.th < -Math.PI) c1.th += Math.PI * 2;
+      self.tween(800, function (k) { var e = ease(k); o.target.x = c1.x + (cam0.x - c1.x) * e; o.target.y = c1.y + (cam0.y - c1.y) * e; o.target.z = c1.z + (cam0.z - c1.z) * e; o.radius = c1.r + (cam0.r - c1.r) * e; o.phi = c1.ph + (cam0.ph - c1.ph) * e; o.thetaGoal = o.theta = c1.th + (cam0.th - c1.th) * e; self.viewShift = vs0 * e; });
+    }
+    function sparks(x, z, color, n, shake) { self.emit(x, BT + 0.7, z, color, n * pm, 4, 1.1); self.emit(x, BT + 0.7, z, 0xffffff, n / 3 * pm, 2.5, 1.3); self.shakeAmt = Math.max(self.shakeAmt || 0, shake); }
     function mid() { return { x: (A.position.x + D.position.x) / 2, z: (A.position.z + D.position.z) / 2 }; }
+    function dir() { var x = D.position.x - A.position.x, z = D.position.z - A.position.z, l = Math.hypot(x, z) || 1; return [x / l, z / l]; }
+    // Blick sofort auf einen Punkt (wie faceTo, ohne Tween)
+    function look(g, x, z) {
+      var m = g.userData.glb; if (!m) return;
+      var r = g.rotation.y, wx = x - g.position.x, wz = z - g.position.z, lx = wx * Math.cos(r) - wz * Math.sin(r), lz = wx * Math.sin(r) + wz * Math.cos(r), goal = Math.atan2(-lx, -lz), a0 = m.userData.face || 0;
+      while (goal - a0 > Math.PI) goal -= Math.PI * 2; while (goal - a0 < -Math.PI) goal += Math.PI * 2; m.userData.face = goal;
+    }
     // Verteidiger ohne Rig reagiert mit dem ganzen Körper (wie bisher)
-    function leanD(ang, ms) { if (kd) return Promise.resolve(); var a0 = D.userData.ang || 0; return self.tween(ms * sp, function (k) { D.userData.ang = a0 + (ang - a0) * ease(k); self.lean(D, ux, uz, D.userData.ang); }); }
-    // ein Schlag: Angreifer holt aus, beim Treffer-Frame pariert der Gegner (oder wird getroffen)
-    function strike(att, def, kill) {
+    function leanD(ang, ms) { if (kd) return Promise.resolve(); var a0 = D.userData.ang || 0, u = dir(); return self.tween(ms * sp, function (k) { D.userData.ang = a0 + (ang - a0) * ease(k); self.lean(D, u[0], u[1], D.userData.ang); }); }
+    // Wucht der Helden beim tödlichen Treffer: Zeitlupe, Druckwelle aus Staub und Funken, Kamera ruckt heran und schwenkt
+    function wucht(x, z) {
+      if (!hero) return;
+      self.slowmo(380, 0.3); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.65); snd('roar', 0.6, ta);
+      for (var i = 0; i < 18; i++) { var a = i / 18 * Math.PI * 2; self.emitDir(x, BT + 0.06, z, dust, 3 * pm, Math.cos(a) * 3.2, 0.25, Math.sin(a) * 3.2, 0.5); }
+      self.emit(x, BT + 0.5, z, 0xffd76a, 50 * pm, 5, 1.4);
+      var r0 = o.radius, t0 = o.thetaGoal, sw = (Math.random() < 0.5 ? -1 : 1) * 0.22;
+      self.tween(260, function (k) { var e = 1 - Math.pow(1 - k, 3); o.radius = r0 * (1 - 0.12 * e); o.thetaGoal = o.theta = t0 + sw * e; });
+    }
+    // ein Schlag: beim Treffer-Frame pariert der Gegner; graze = Treffer streift (Taumeln, kein Tod)
+    function strike(att, def, graze) {
       var hitAt = 0.32 * sp, ka2 = att.userData.sk, kd2 = def.userData.sk;
-      if (ka2) self.figPlay(att, kill ? 'atk4' : ['atk1', 'atk2'], { hitAt: hitAt, then: 'ready' });
+      if (ka2) self.figPlay(att, ['atk1', 'atk2'], { hitAt: hitAt, then: 'ready' });
       else leanD(-0.3, hitAt * 700);
-      if (kd2 && !kill) self.figPlay(def, 'block', { hitAt: hitAt, then: 'ready' });
+      if (kd2 && !graze) self.figPlay(def, 'block', { hitAt: hitAt, then: 'ready' });
       snd('whoosh', 0.7, typ(att));
       return self.tween(hitAt * 1000, function () { }).then(function () {
         var p = mid();
-        if (!kill) { snd('clash', 0.8); sparks(p.x, p.z, 0xffffff, 22, 0.14); if (!kd2 && def === D) return leanD(-0.25, 140).then(function () { return leanD(0, 160); }); return; }
+        if (graze) { if (kd2) self.figPlay(def, 'hit1', { then: 'ready' }); snd('hit', 0.5, typ(att)); sparks(def.position.x, def.position.z, att === A ? colA : 0xffffff, 18, 0.2); return; }
+        snd('clash', 0.8); sparks(p.x, p.z, 0xffffff, 22, 0.14); if (!kd2 && def === D) return leanD(-0.25, 140).then(function () { return leanD(0, 160); });
+      });
+    }
+    // Todesstoß: gepaarter Finisher, wenn beide Clips da sind; sonst atk4 und danach der Sterbe-Clip
+    function finisher() {
+      var hitAt = 0.45 * sp, pair = !short && has(A, 'fin_a') && has(D, 'fin_d');
+      self.figPlay(A, pair ? 'fin_a' : 'atk4', { hitAt: hitAt, then: 'ready' });
+      var left = pair ? self.figPlay(D, 'fin_d', { hitAt: hitAt, hold: true }) : 0;
+      snd('whoosh', 0.9, ta);
+      return self.tween(hitAt * 1000, function () { }).then(function () {
         if (info.onHit) info.onHit();
-        snd('hit', 0.9, typ(att)); sparks(def.position.x, def.position.z, colA, big ? 90 : 60, big ? 0.5 : 0.35);
+        snd('hit', 0.9, ta); sparks(D.position.x, D.position.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(D.position.x, D.position.z);
+        return pair ? crumble(wait(Math.min(1300, Math.max(0, left - hitAt) * 1000 * 0.9))) : die();
       });
     }
     // Verteidiger stirbt: Sterbe-Animation (oder Umkippen ohne Rig), dann zerfällt er zu Staub
     function die() {
-      var p0 = D.position.clone(), fall;
-      if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, td); fall = wait(Math.min(1500, left * 1000 * 0.85)); }
-      else fall = self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, ux, uz, e * 1.45); D.position.x = p0.x + ux * e * 0.35; D.position.z = p0.z + uz * e * 0.35; });
+      var p0 = D.position.clone(), u = dir(), fall;
+      if (kd) { var left = self.figPlay(D, Math.random() < 0.5 ? 'die1' : 'die2', { hold: true }); snd('fall', 0.8, td); fall = wait(Math.min(1300, left * 1000 * 0.8)); }
+      else fall = self.tween(420 * sp, function (k) { var e = k * k; self.lean(D, u[0], u[1], e * 1.45); D.position.x = p0.x + u[0] * e * 0.35; D.position.z = p0.z + u[1] * e * 0.35; });
+      return crumble(fall);
+    }
+    function crumble(fall) {
+      var u = dir(), p0 = null;
       return fall.then(function () {
-        snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
-        for (var i = 0; i < 4; i++) self.emit(D.position.x + ux * (i - 1) * 0.18, BT + 0.15 + i * 0.08, D.position.z + uz * (i - 1) * 0.18, dust, 28, 1.6, 0.9);
+        p0 = D.position.clone(); snd('crumble'); self.shakeAmt = Math.max(self.shakeAmt || 0, 0.15);
+        for (var i = 0; i < 4; i++) self.emit(D.position.x + u[0] * (i - 1) * 0.18, BT + 0.15 + i * 0.08, D.position.z + u[1] * (i - 1) * 0.18, dust, 28 * pm, 1.6, 0.9);
         return self.tween(320 * sp, function (k) { D.scale.setScalar(1 - k); D.position.y = p0.y - k * 0.3; });
       }).then(function () { self.pieceGroup.remove(D); self.figFree(D); });
     }
-    // Sieger geht aufs Feld und steht wieder still
+    // Sieger geht (kurz: läuft) aufs Feld und steht wieder still
     function stepIn() {
-      var x0 = A.position.x, z0 = A.position.z, d2 = Math.hypot(to.x - x0, to.z - z0), g2 = d2 <= 1.5 ? 'walk' : d2 <= 3.2 ? 'run' : 'sprint';
+      var x0 = A.position.x, z0 = A.position.z, d2 = Math.hypot(to.x - x0, to.z - z0), g2 = d2 <= 0.5 ? 'walk' : d2 <= 3.2 ? 'run' : 'sprint';
       var ms = Math.max(250, Math.min(1700, d2 / Board3D.FIG_GAIT[g2] * 1000)); // nach dem Zauber ggf. weiter Weg: laufen statt schleichen
       self.figPlay(A, g2);
       return self.faceTo(A, to.x, to.z, 160).then(function () { return self.tween(ms, function (k) { A.position.x = x0 + (to.x - x0) * k; A.position.z = z0 + (to.z - z0) * k; A.position.y = BT; }); })
         .then(function () { ka.busy = false; self.figRest(A); camBack(); self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); var m = A.userData.glb, a0 = m.userData.face || 0; return self.tween(260, function (k) { m.userData.face = a0 * (1 - k); }); });
     }
+    // Umkreisen: beide drehen sich um ihre Mitte (seitlich gehend, Blick auf den Gegner), danach Kampfhaltung
+    function circle() {
+      var m0 = mid(), a0 = [A.position.x - m0.x, A.position.z - m0.z], d0 = [D.position.x - m0.x, D.position.z - m0.z], ph = (Math.random() < 0.5 ? -1 : 1) * 0.6;
+      function rot(v, a) { return [v[0] * Math.cos(a) + v[1] * Math.sin(a), -v[0] * Math.sin(a) + v[1] * Math.cos(a)]; }
+      var strafe = has(A, 'strafe_l') && has(A, 'strafe_r') && has(D, 'strafe_l') && has(D, 'strafe_r');
+      [[A, a0], [D, d0]].forEach(function (e) {
+        var g = e[0], v1 = rot(e[1], ph), mvx = v1[0] - e[1][0], mvz = v1[1] - e[1][1], fx = -e[1][0], fz = -e[1][1];
+        self.figPlay(g, !strafe ? 'walk' : mvx * -fz + mvz * fx > 0 ? 'strafe_r' : 'strafe_l');
+      });
+      snd('march', FD.circle, ta);
+      // ohne Seitwärts-Clip: in Gehrichtung schauen (Tangente), am Ende zum Gegner drehen
+      return self.tween(FD.circle, function (k) {
+        var e = ease(k), va = rot(a0, ph * e), vd = rot(d0, ph * e), vb = rot(a0, ph * e + ph * 0.05), wb = rot(d0, ph * e + ph * 0.05);
+        A.position.x = m0.x + va[0]; A.position.z = m0.z + va[1]; D.position.x = m0.x + vd[0]; D.position.z = m0.z + vd[1];
+        if (strafe) { look(A, D.position.x, D.position.z); look(D, A.position.x, A.position.z); }
+        else { look(A, m0.x + vb[0] + (vb[0] - va[0]) * 20, m0.z + vb[1] + (vb[1] - va[1]) * 20); look(D, m0.x + wb[0] + (wb[0] - vd[0]) * 20, m0.z + wb[1] + (wb[1] - vd[1]) * 20); }
+      }).then(function () {
+        self.figPlay(A, 'ready'); self.figPlay(D, 'ready');
+        return Promise.all([self.faceTo(A, D.position.x, D.position.z, 180), self.faceTo(D, A.position.x, A.position.z, 180)]);
+      });
+    }
     // beide drehen sich zueinander, nehmen Kampfhaltung ein
     var face = Promise.all([this.faceTo(A, to.x, to.z, 180), this.faceTo(D, from.x, from.z, 180)]).then(function () { if (kd) self.figPlay(D, 'ready'); });
 
     if (style === 'magic') {
-      // Onmyōji: Ofuda-Zauber aus der Distanz (Zauber-Clip), Kugel fliegt, Gegner fällt
+      // Onmyōji: Ofuda-Zauber aus der Distanz (Zauber-Clip), Kugel fliegt, Gegner fällt; Läufer als Held mit Druckwelle
       var bolt = null;
       return face.then(function () { self.figPlay(A, 'ready'); return wait(220); }).then(function () {
         self.figPlay(A, ['atk1', 'atk2'], { hitAt: 0.25 }); return wait(250);
       }).then(function () {
         snd('zap', 0.8, ta);
-        bolt = new T.Mesh(new T.SphereGeometry(0.16, 12, 8), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
+        bolt = new T.Mesh(new T.SphereGeometry(hero ? 0.22 : 0.16, 12, 8), new T.MeshBasicMaterial({ color: colA, transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false }));
         self.scene.add(bolt); var head = BT + 0.95;
-        return self.tween((300 + dist * 40) * sp, function (k) { var x = from.x + dx * k, z = from.z + dz * k, y = head + Math.sin(k * Math.PI) * 0.8; bolt.position.set(x, y, z); bolt.scale.setScalar(1 + Math.sin(k * 30) * 0.2); self.emitDir(x, y, z, colA, 3, 0, 0, 0, 0.6); });
-      }).then(function () { self.scene.remove(bolt); if (info.onHit) info.onHit(); sparks(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); if (kd) self.figPlay(D, 'hit1'); return die(); }).then(stepIn);
+        return self.tween((300 + dist * 40) * sp, function (k) { var x = from.x + dx * k, z = from.z + dz * k, y = head + Math.sin(k * Math.PI) * 0.8; bolt.position.set(x, y, z); bolt.scale.setScalar(1 + Math.sin(k * 30) * 0.2); self.emitDir(x, y, z, colA, 3 * pm, 0, 0, 0, 0.6); });
+      }).then(function () { self.scene.remove(bolt); bolt.geometry.dispose(); bolt.material.dispose(); if (info.onHit) info.onHit(); sparks(to.x, to.z, colA, big ? 90 : 60, big ? 0.5 : 0.35); wucht(to.x, to.z); if (kd) self.figPlay(D, 'hit1'); return die(); }).then(stepIn);
     }
-    // Nahkampf: Anlauf (Laufen bzw. Sprint beim Ansturm), Schlagabtausch, Todesstoß
+    // Nahkampf: Anlauf (Laufen bzw. Sprint beim Ansturm), Umkreisen, Schlagabtausch, Finisher
     var stand = cell * (style === 'thrust' ? 0.95 : 0.85), stx = to.x - ux * stand, stz = to.z - uz * stand, run = Math.hypot(stx - from.x, stz - from.z);
     var gait = style === 'charge' || run > 2.5 ? 'sprint' : run > 0.9 ? 'run' : 'walk', ms = Math.max(260, Math.min(1200, run / Board3D.FIG_GAIT[gait] * 1000));
+    // Zeitbudget (Voll): fester Teil ohne Schläge, daraus 3–5 Schläge; reicht es nicht, entfällt das Umkreisen
+    var circ = !short && !!kd, fixed = 180 + ms + 120 + 450 + 1300 + 320 + 650 + (hero ? 300 : 0) + 300;
+    if (circ && fixed + FD.circle + 180 + 3 * FD.swing > FD.budget) circ = false;
+    var n = short ? 1 : Math.max(2, Math.min(5, Math.floor((FD.budget - fixed - (circ ? FD.circle + 180 : 0)) / FD.swing))), graze = n >= 3 ? 1 + Math.floor(Math.random() * (n - 1)) : -1;
     var seq = face.then(function () {
       self.figPlay(A, gait); snd('march', ms, ta); if (gait === 'sprint') snd('roar', 0.5, ta);
       return self.tween(ms, function (k) { var e = k < 0.85 ? k / 0.85 * 0.92 : 0.92 + (k - 0.85) / 0.15 * 0.08; A.position.x = from.x + (stx - from.x) * e; A.position.z = from.z + (stz - from.z) * e; A.position.y = BT; });
-    }).then(function () { self.figPlay(A, 'ready'); return wait(120); })
-      .then(function () { return strike(A, D, false); }).then(function () { return wait(380); });
-    if (!short) seq = seq.then(function () { return strike(D, A, false); }).then(function () { return wait(380); });
-    return seq.then(function () { return strike(A, D, true); }).then(die).then(stepIn);
+    }).then(function () { self.figPlay(A, 'ready'); return wait(120); });
+    if (circ) seq = seq.then(circle);
+    for (var i = 0; i < n; i++) (function (i) { seq = seq.then(function () { return i % 2 ? strike(D, A, i === graze) : strike(A, D, i === graze); }).then(function () { return wait(i === n - 1 ? 220 : 300); }); })(i);
+    this._duel = { n: n, circ: circ, hero: hero }; // für Tests
+    return seq.then(finisher).then(stepIn);
   };
 
   // Verteidiger mit Rig, Angreifer ohne (Fuchs-Sprung, Hirsch-Ansturm, Feueratem): nur der Tod mit Sterbe-Animation
