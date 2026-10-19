@@ -1643,6 +1643,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   function flash(s, v) { if (s.userData.u) s.userData.flash = (v || 1) * (0.35 + 0.65 * pf); }
   // Schwert-/Speerspur: heller Bogen vor dem Soldaten, verblasst schnell
   function trail(s, nx, nz, col) {
+    return; // Bögen sahen aus wie Ladesymbole
     if (many && Math.random() < 0.5) return;
     var w = wp(s), h = s.userData.hh || 0.25, ring = new T.Mesh(self._trailGeo || (self._trailGeo = new T.RingGeometry(0.7, 1, 18, 1, -0.8, 2.5)), new T.MeshBasicMaterial({ color: col || 0xfff2d0, transparent: true, opacity: 0.45, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
     ring.rotation.set(0, Math.atan2(-nz, nx), 0); ring.position.set(w.x + nx * h * 0.25, w.y + h * 0.62, w.z + nz * h * 0.25); ring.scale.setScalar(h * 0.55); self.scene.add(ring);
@@ -1788,7 +1789,10 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
       var dx = tg.w.x - o.w.x, dz = tg.w.z - o.w.z, d = Math.hypot(dx, dz) || 1e-4, nx = dx / d, nz = dz / d, reach = 0.05 + (o.h + tg.h) * 0.3;
       o.nx = nx; o.nz = nz; turnTo(o, nx, nz, dts);
       if (o.st === 'idle') {
-        if (d > reach) { var spd2 = (tg.rout ? 0.75 : 0.5) * (0.85 + 0.15 * o.h / 0.22) * dts; o.w.x += nx * Math.min(spd2, d - reach * 0.9); o.w.z += nz * Math.min(spd2, d - reach * 0.9); if (u) u.uWalk.value = 1; o.act += (-0.45 - o.act) * Math.min(1, dts * 6); o.ang += (0.08 - o.ang) * Math.min(1, dts * 6); }
+        if (d > reach) {
+          var spd2 = (tg.rout ? 0.75 : 0.5) * (0.85 + 0.15 * o.h / 0.22) * dts, st2 = Math.min(spd2, d - reach * 0.9), moved = Math.hypot(o.w.x - (o.px || o.w.x), o.w.z - (o.pz || o.w.z));
+          o.stuck = moved < spd2 * 0.25 ? (o.stuck || 0) + dts : 0; o.px = o.w.x; o.pz = o.w.z; if (o.lat == null) o.lat = Math.random() < 0.5 ? -1 : 1;
+          var side2 = o.stuck > 0.25 ? 0.9 : 0.25; o.w.x += (nx - nz * o.lat * side2) * st2; o.w.z += (nz + nx * o.lat * side2) * st2; if (o.stuck > 1.2) { o.lat = -o.lat; o.stuck = 0; } if (u) u.uWalk.value = 1; o.act += (-0.45 - o.act) * Math.min(1, dts * 6); o.ang += (0.08 - o.ang) * Math.min(1, dts * 6); }
         else { if (u) u.uWalk.value = 0; o.cd -= dts; o.act += (-0.25 + Math.sin(self.vt / 160 + o.h * 50) * 0.15 - o.act) * Math.min(1, dts * 5); o.ang *= 0.9; if (o.cd <= 0) { o.st = 'wind'; o.t = 0; o.a0 = o.act; } }
       } else if (o.st === 'wind') { // ausholen
         o.t += dts; var k = Math.min(1, o.t / 0.2); o.act = o.a0 + (-1.25 - o.a0) * ease(k); o.ang = -0.16 * k;
@@ -1885,14 +1889,23 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   // neu formieren und aufs Feld ziehen
   function reform() {
     camBack();
+    var x0 = A.position.x, z0 = A.position.z, mdur = 260 + Math.hypot(to.x - x0, to.z - z0) * 200;
     var tw = at.map(function (a) {
       if (a === A || !a.userData.home || a.userData.dead || a.userData.dying) return Promise.resolve();
-      var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0;
-      a.userData.ox = a.userData.oz = 0; walk(a, 0.7);
-      return self.tween(480 * sp, function (k) { var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y * (1 - e); if (m) m.userData.face = f0 * (1 - e); }).then(function () { walk(a, 0); });
+      var p0 = a.position.clone(), h = a.userData.home, m = a.userData.glb, f0 = m ? m.userData.face || 0 : 0, q0 = a.userData.q0 ? a.quaternion.clone() : null, u = U(a), a0 = u ? u.uAct.value : 0;
+      var dd = Math.hypot(h.x - p0.x, h.z - p0.z), dur = Math.max(mdur, 350 + dd * 1400) * sp;
+      // Blick in Laufrichtung, am Ende wieder nach vorn
+      var wx = p0.x - h.x, wz = p0.z - h.z, lf = dd > 0.05 ? Math.atan2(wx, wz) - ((m && m.userData.ry0 || 0) - Math.PI) : 0;
+      while (lf - f0 > Math.PI) lf -= Math.PI * 2; while (lf - f0 < -Math.PI) lf += Math.PI * 2;
+      a.userData.ox = a.userData.oz = 0; walk(a, dd > 0.05 ? 0.8 : 0);
+      return self.tween(dur, function (k) {
+        var e = ease(k); a.position.x = p0.x + (h.x - p0.x) * e; a.position.z = p0.z + (h.z - p0.z) * e; a.position.y = p0.y * (1 - e);
+        if (m) m.userData.face = k < 0.2 ? f0 + (lf - f0) * k / 0.2 : k < 0.8 ? lf : lf * (1 - (k - 0.8) / 0.2);
+        if (q0) a.quaternion.copy(q0).slerp(a.userData.q0, Math.min(1, k * 4)); if (u) u.uAct.value = a0 * Math.max(0, 1 - k * 3);
+        if (k > 0.85 && u) u.uWalk.value = 0;
+      }).then(function () { walk(a, 0); if (m) m.userData.face = 0; a.userData.ang = 0; });
     });
-    var x0 = A.position.x, z0 = A.position.z;
-    tw.push(march(x0, z0, to.x, to.z, 260 + Math.hypot(to.x - x0, to.z - z0) * 200));
+    tw.push(march(x0, z0, to.x, to.z, mdur));
     return Promise.all(tw).then(function () { A.userData.fighting = false; self.emit(to.x, BT + 0.05, to.z, 0xd8c8a0, 10, 1.2, 0.3); });
   }
   // Truppen drehen sich zueinander, dann je nach Kampfstil
@@ -1917,7 +1930,7 @@ Board3D.prototype.armyFight = function (info, A, from, to, D, style) {
   }
   // Aufprall der Linien: Staubwall, Wackeln, kurze Zeitlupe, vordere Reihe wird gestaucht
   function impact() {
-    snd('clash', 0.9); if (!short) self.slowmo(300, 0.25); self.shakeAmt = Math.max(self.shakeAmt || 0, big ? 0.3 : 0.2);
+    snd('taiko', big ? 1 : 0.8); snd('clash', 0.9); if (!short) { self.slowmo(300, 0.25); snd('melee', many ? 4 : 2.5); } self.shakeAmt = Math.max(self.shakeAmt || 0, big ? 0.3 : 0.2);
     var c = centroid(dt), pxx = -uz, pzz = ux;
     for (var q = -3; q <= 3; q++) self.emit(c.x - ux * 0.25 + pxx * q * 0.13, BT + 0.05, c.z - uz * 0.25 + pzz * q * 0.13, dust, many ? 5 : 9, 1.4, 0.5);
     var front = 0; dt.forEach(function (d) { var w = wp(d), dd2 = (w.x - c.x) * ux + (w.z - c.z) * uz; if (dd2 < 0.05) { flash(d, 0.4); if (heavyA && style === 'charge' && front++ < Math.ceil(dt.length * 0.25) && dt.length > 1) dieT(d, ux, uz, false, true); else push(d, ux, uz, 0.05, 160); } });
@@ -2005,9 +2018,23 @@ Board3D.prototype.makePiece = function (p) {
 Board3D.prototype.placePiece = function (g, sq) { var p = this.sqPos(sq); g.position.set(p.x, this.BT, p.z); };
 Board3D.prototype.sync = function (state) {
   this.state = state;
-  var grp = this.pieceGroup; while (grp.children.length) grp.remove(grp.children[0]);
-  this.pieces = {};
-  for (var q = 0; q < 81; q++) { var p = state.board[q]; if (!p) continue; var g = this.makePiece(p); this.placePiece(g, q); grp.add(g); this.pieces[q] = g; }
+  var grp = this.pieceGroup, mv = this._lastMove; this._lastMove = null;
+  if (this.look !== 'feld') {
+    while (grp.children.length) grp.remove(grp.children[0]);
+    this.pieces = {};
+    for (var q = 0; q < 81; q++) { var p = state.board[q]; if (!p) continue; var g = this.makePiece(p); this.placePiece(g, q); grp.add(g); this.pieces[q] = g; }
+    return;
+  }
+  // Armee-Modus: bestehende Regimenter bleiben (Formation, Verluste), nur Neues wird aufgestellt
+  var cand = {}, k; for (k in this.pieces) cand[k] = this.pieces[k]; if (mv && mv.g) cand[mv.to] = mv.g;
+  var keep = [], np = {};
+  for (var q2 = 0; q2 < 81; q2++) {
+    var p2 = state.board[q2]; if (!p2) continue; var g2 = cand[q2];
+    if (!(g2 && g2.userData.p === p2 && g2.parent === grp && keep.indexOf(g2) < 0)) { g2 = this.makePiece(p2); grp.add(g2); }
+    this.placePiece(g2, q2); keep.push(g2); np[q2] = g2;
+  }
+  grp.children.slice().forEach(function (c) { if (keep.indexOf(c) < 0) grp.remove(c); });
+  this.pieces = np;
 };
 Board3D.prototype.setHighlights = function (h) {
   this.hl = h || {}; h = this.hl;
@@ -2136,7 +2163,9 @@ Board3D.prototype.update = function (now, dt) {
   if (this.slowUntil && now > this.slowUntil) { this.timeScale = 1; this.slowUntil = 0; }
   var ts = this.timeScale || 1, vt = this.vt = (this.vt == null ? now : this.vt + dt * ts);
   if (this.cineDrift) o.thetaGoal += dt * this.cineDrift;
-  this.tweens = this.tweens.filter(function (tw) {
+  // Tweens, die während des Durchlaufs entstehen (z. B. Tod im Gemenge), landen im neuen Array und gehen nicht verloren
+  var list = this.tweens; this.tweens = [];
+  var keep = list.filter(function (tw) {
     if (tw.forever) { tw.f(now); return true; }
     if (tw.start == null) tw.start = vt;
     var k = Math.min(1, (vt - tw.start) / tw.dur);
@@ -2144,6 +2173,7 @@ Board3D.prototype.update = function (now, dt) {
     if (k >= 1) { tw.done && tw.done(); return false; }
     return true;
   });
+  this.tweens = keep.concat(this.tweens);
   this.updateParticles(dt * ts);
   if (this.armyPools) this.armyDraw();
   if (this.petals) this.updatePetals(dt, now);
@@ -2218,13 +2248,14 @@ Board3D.prototype.animate = function (info) {
     beam.position.set(to.x, this.BT + 7, to.z); this.scene.add(beam);
     this.tween(700, function (k) { beam.material.opacity = Math.sin(k * Math.PI) * 0.45; beam.scale.x = beam.scale.z = 1 - k * 0.6; }).then(function () { self.scene.remove(beam); });
   } else { mover = this.pieces[info.from]; var fp = this.sqPos(info.from); from = { x: fp.x, z: fp.z, y: this.BT }; }
-  delete this.pieces[info.from];
+  delete this.pieces[info.from]; this._lastMove = { g: mover, to: info.to };
   function promoFx() {
     if (!info.promo) return;
     // Beförderung: Stein hebt ab, dreht sich um (wie echter Koma), Lichtsäule
     var pillar = new T.Mesh(new T.CylinderGeometry(0.5, 0.5, 10, 16, 1, true), new T.MeshBasicMaterial({ color: 0xffd76a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
     pillar.position.set(to.x, self.BT + 5, to.z); self.scene.add(pillar);
     self.tween(900, function (k) { pillar.material.opacity = Math.sin(k * Math.PI) * 0.55; }).then(function () { self.scene.remove(pillar); });
+    if (mover.userData.troops || self.look === 'feld') return self.tween(450, function () { }).then(function () { self.emit(to.x, self.BT + 0.3, to.z, 0xffd76a, 50, 2.5, 1.2); });
     return self.tween(220, function (k) { mover.position.y = self.BT + k * 0.9; mover.rotation.z = k * Math.PI / 2; }).then(function () {
       var np = self.makePiece(after.board[info.to]); np.position.copy(mover.position); np.rotation.z = -Math.PI / 2; self.pieceGroup.remove(mover); self.pieceGroup.add(np); mover = np;
       self.emit(to.x, self.BT + 0.9, to.z, 0xffd76a, 80, 4, 1.4);

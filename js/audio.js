@@ -49,16 +49,44 @@ var Sfx = (function () {
     hover: function () { var t = t0(); osc('sine', 1400, t, 0.03, 0.04); },
     ui: function () { var t = t0(); osc('triangle', 660, t, 0.05, 0.12); osc('triangle', 990, t + 0.03, 0.05, 0.08); },
     error: function () { var t = t0(); osc('square', 140, t, 0.12, 0.08); osc('square', 110, t + 0.08, 0.14, 0.08); },
+    // Schlagen: dumpfer Einschlag mit Knirschen, ohne Glocken-Obertöne (klang wie „Ding“)
     capture: function (big) {
-      var t = t0(); noise(t, 0.18, 0.7, 'bandpass', 600, 1.2, 4000);
-      osc('sawtooth', 220, t + 0.05, 0.25, 0.18, null, 80, true);
-      [1, 2.76, 5.4].forEach(function (h) { osc('sine', 700 * h, t + 0.06, 0.4, 0.12 / h, null, null, true); });
-      osc('sine', 70, t + 0.05, 0.35, big ? 0.9 : 0.6, null, 40);
+      var t = t0(); noise(t, 0.16, 0.6, 'bandpass', 900, 1.1, 300);
+      noise(t + 0.02, 0.3, 0.35, 'lowpass', 700, 0.8, 120, null, true);
+      osc('sine', 85, t, 0.4, big ? 0.95 : 0.65, null, 38);
     },
     drop: function () { var t = t0(); noise(t, 0.35, 0.35, 'bandpass', 400, 4, 5000, null, true); for (var i = 0; i < 4; i++) osc('sine', note(i * 2 + 5), t + i * 0.05, 0.3, 0.1, null, null, true); setTimeout(S.tok, 300); },
     promote: function () { var t = t0(); for (var i = 0; i < 7; i++) { osc('sine', note(i + 5), t + i * 0.07, 0.8, 0.14, null, null, true); osc('sine', note(i + 5) * 3.01, t + i * 0.07, 0.3, 0.03, null, null, true); } noise(t, 0.6, 0.2, 'highpass', 3000, 1, 9000, null, true); },
     // Kampf: Klingen-Klirren, Luftzug, Magie/Schuss, Feuer, Zerbröseln der Statue
-    clash: function () { var t = t0(); noise(t, 0.12, 0.8, 'highpass', 3000, 1, 6000); [1, 2.41, 3.93, 5.6].forEach(function (h) { osc('sine', 880 * h, t, 0.5 / Math.sqrt(h), 0.16 / h, null, null, true); }); osc('triangle', 160, t, 0.1, 0.3, null, 90); },
+    // Hieb: kurzes Krachen von Stahl auf Rüstung/Holz, jedes Mal leicht anders, kein Nachklingen
+    clash: function (v) {
+      var t = t0(), k = v || 0.8, r = 0.75 + Math.random() * 0.5;
+      noise(t, 0.05, 0.9 * k, 'bandpass', 1900 * r, 1.6); noise(t, 0.025, 0.4 * k, 'highpass', 5200 * r, 0.7);
+      noise(t + 0.01, 0.09, 0.45 * k, 'bandpass', 520 * r, 1.2, 260); osc('sine', 120 * r, t, 0.08, 0.35 * k, null, 60);
+    },
+    // Schlachtruf der Armee: viele Stimmen „Uooo!“ (Sägezahn durch Vokal-Formanten), dazu Atemrauschen
+    roar: function (v) {
+      var t = t0(), k = v || 1;
+      for (var i = 0; i < 9; i++) {
+        var f = 95 + Math.random() * 110, d = 0.9 + Math.random() * 0.5, st = t + Math.random() * 0.18;
+        var o = ctx.createOscillator(), f1 = ctx.createBiquadFilter(), f2 = ctx.createBiquadFilter(), g = ctx.createGain(), g2 = ctx.createGain();
+        o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 0.92, st); o.frequency.linearRampToValueAtTime(f * 1.06, st + 0.25); o.frequency.exponentialRampToValueAtTime(f * 0.8, st + d);
+        f1.type = 'bandpass'; f1.frequency.value = 520 + Math.random() * 160; f1.Q.value = 4; f2.type = 'bandpass'; f2.frequency.value = 900 + Math.random() * 250; f2.Q.value = 5;
+        g.gain.setValueAtTime(0.0001, st); g.gain.exponentialRampToValueAtTime(0.09 * k, st + 0.12); g.gain.setValueAtTime(0.09 * k, st + d * 0.6); g.gain.exponentialRampToValueAtTime(0.0001, st + d);
+        g2.gain.value = 0.6; o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g2); g2.connect(g); g.connect(sfxGain); g.connect(reverb);
+        o.start(st); o.stop(st + d + 0.05);
+      }
+      noise(t, 1.1, 0.25 * k, 'bandpass', 800, 0.7, 500, null, true);
+    },
+    // Taiko-Schlag beim Aufprall der Linien
+    taiko: function (v) { var t = t0(), k = v || 1; osc('sine', 78, t, 0.55, 1 * k, null, 42, true); noise(t, 0.12, 0.5 * k, 'lowpass', 380, 0.8, 120); noise(t, 0.02, 0.25 * k, 'bandpass', 2500, 1); },
+    // Gemenge im Hintergrund: Klappern, Stampfen, Rufe, ein paar Sekunden
+    melee: function (sec) {
+      var t = t0(), n = Math.round((sec || 3) * 14);
+      for (var i = 0; i < n; i++) { var u = t + Math.random() * (sec || 3), r = 0.7 + Math.random() * 0.6; noise(u, 0.04, 0.25 + Math.random() * 0.25, 'bandpass', 1600 * r, 1.4); if (Math.random() < 0.3) noise(u, 0.08, 0.3, 'lowpass', 300 * r, 0.8); }
+      for (var j = 0; j < (sec || 3) * 1.5; j++) { var w = t + Math.random() * (sec || 3), f = 120 + Math.random() * 120; osc('sawtooth', f * 1.1, w, 0.25, 0.025, null, f * 0.75, true); }
+      noise(t, sec || 3, 0.12, 'bandpass', 700, 0.5, 400, null, true);
+    },
     whoosh: function () { var t = t0(); noise(t, 0.22, 0.35, 'bandpass', 500, 2, 2600); },
     zap: function () { var t = t0(); osc('sawtooth', 1400, t, 0.18, 0.12, null, 180, true); noise(t, 0.08, 0.3, 'highpass', 5000, 1); },
     fire: function () { var t = t0(); noise(t, 0.8, 0.5, 'lowpass', 900, 0.8, 300, null, true); osc('sine', 60, t, 0.7, 0.4, null, 40); },
