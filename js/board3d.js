@@ -1089,7 +1089,7 @@ Board3D.coreZ = function (m) {
 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
-  var m = Models.fit(src, 1.15, this.settings.figSet === 'statue' ? 2.2 : 0.95), self = this; // Statuen: alle gleich hoch (Grundfläche nur gegen Ausreißer) m.position.set(0, 0.2, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0);
+  var m = Models.fit(src, 1.15, this.settings.figSet === 'statue' ? 2.2 : 0.95), self = this; m.position.set(0, 0.223, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0); // Statuen: alle gleich hoch (Grundfläche nur gegen Ausreißer); y = Oberkante Sockel (0,22, Rand 0,222)
   var rim = this.settings.figSet === 'statue' && Math.abs(g.userData.p || 0) >= 9 && this.settings.promoStyle === 'glanz';
   if (this.settings.figSet === 'statue') m.traverse(function (o) { if (o.isMesh) o.material = self.statueMat(col, o.material.normalMap, rim); });
   if (this.settings.figSet === 'statue' && Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0))) m.scale.multiplyScalar(1.1);
