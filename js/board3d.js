@@ -1218,10 +1218,15 @@ Board3D.prototype.buildSquad = function (g, src, t, col) {
   var rim = t >= 9 && this.settings.promoStyle === 'glanz', pk = mesh0.geometry.uuid + ':' + col + (rim ? 'r' : ''), troops = [], rnd = Board3D.rnd(bt * 31 + col * 101 + (this._squadN = (this._squadN || 0) + 1) * 7919), fa = (rnd() - .5) * 0.12, fox = (rnd() - .5) * 0.07, foz = (rnd() - .5) * 0.06;
   this.armyPool(pk, mesh0.geometry, col, rim);
   function noop() { }
+  var slots = [];
   for (var r = 0; r < F.rows; r++) for (var c = 0; c < F.cols; c++) {
     var x0 = (c - (F.cols - 1) / 2) * F.sx + (rnd() - .5) * 0.05, z0 = (r - (F.rows - 1) / 2) * F.sz + (rnd() - .5) * 0.045;
-    var x = x0 * Math.cos(fa) - z0 * Math.sin(fa) + fox, z = x0 * Math.sin(fa) + z0 * Math.cos(fa) + foz;
-    var officer = F.cols > 1 && r === 0 && c === (F.cols >> 1), s = (officer ? 1.14 : 1) * (0.92 + 0.14 * rnd()) * (t >= 9 ? 1.06 : 1);
+    slots.push({ x: x0 * Math.cos(fa) - z0 * Math.sin(fa) + fox, z: x0 * Math.sin(fa) + z0 * Math.cos(fa) + foz, d: Math.hypot(x0, z0), officer: F.cols > 1 && r === 0 && c === (F.cols >> 1), s: 0.92 + 0.14 * rnd() });
+  }
+  // Beförderung nach Verlusten: nur die Überlebenden werden Veteranen (nie mehr als vorher), eng um die Mitte geschart
+  var cap = g.userData.cap; if (cap && cap < slots.length) { slots.sort(function (a, b) { return a.d - b.d; }); slots.length = cap; }
+  slots.forEach(function (sl) {
+    var x = sl.x, z = sl.z, officer = sl.officer, s = (officer ? 1.14 : 1) * sl.s * (t >= 9 ? 1.06 : 1);
     var m = Models.fit(src, F.h * s, F.foot * s * 3), tr = new T.Group(), mesh = null;
     m.traverse(function (o) { if (o.isMesh) { o.visible = false; o.raycast = noop; if (!mesh) mesh = o; } });
     m.userData.ry0 = Math.PI + (rnd() - 0.5) * 0.3; m.rotation.y = m.userData.ry0;
@@ -1229,7 +1234,7 @@ Board3D.prototype.buildSquad = function (g, src, t, col) {
     var br = 0.88 + rnd() * 0.2, hue = (rnd() - 0.5) * 0.1;
     tr.userData = { glb: m, mesh: mesh, pk: pk, geo: mesh0.geometry, col: col, rim: rim, tint: new T.Color(br * (1 + hue), br, br * (1 - hue)), u: { uPhase: { value: Math.random() * 6.283 }, uAct: { value: 0 }, uWalk: { value: 0 } }, home: { x: x, z: z }, hh: F.h * s * 0.8, pw0: (F.pw || F.h) * s, ox: 0, oz: 0, tx: 0, tz: 0, lk: 0, look: 0, next: 1 + Math.random() * 5 };
     g.add(tr); troops.push(tr);
-  }
+  });
   g.userData.troops = troops;
 };
 // Leerlauf: kleine Schritte in der Formation, umschauen, Fahne weht
@@ -1987,9 +1992,9 @@ Board3D.prototype.faceTexture = function (t, col) {
   return tex;
 };
 
-Board3D.prototype.makePiece = function (p) {
+Board3D.prototype.makePiece = function (p, cap) {
   var T = THREE, t = Math.abs(p), col = p > 0 ? 0 : 1, f = this.theme.factions[col], kanjiStyle = this.settings.pieceStyle === 'kanji';
-  var g = new T.Group(); g.userData.p = p;
+  var g = new T.Group(); g.userData.p = p; if (cap) g.userData.cap = cap;
   // Statuen-Modus: Beförderung = Rot wie die roten Kanji echter Steine (Sockel in Zinnoberlack), Spielerfarbe bleibt Gold/Silber
   var statue = this.settings.figSet === 'statue', promoStatue = statue && t >= 9, ps = this.settings.promoStyle || 'lack';
   var ks = this.settings.komaStyle || 'stein';
@@ -2042,7 +2047,11 @@ Board3D.prototype.sync = function (state) {
   var keep = [], np = {};
   for (var q2 = 0; q2 < 81; q2++) {
     var p2 = state.board[q2]; if (!p2) continue; var g2 = cand[q2];
-    if (!(g2 && g2.userData.p === p2 && g2.parent === grp && keep.indexOf(g2) < 0)) { g2 = this.makePiece(p2); grp.add(g2); }
+    if (!(g2 && g2.userData.p === p2 && g2.parent === grp && keep.indexOf(g2) < 0)) {
+      // befördertes Regiment: so viele Veteranen wie Überlebende, höchstens volle Stärke (kein Nachschub)
+      var live = g2 && g2.parent === grp && g2.userData.troops && (g2.userData.p > 0) === (p2 > 0) ? g2.userData.troops.filter(function (tr) { return !tr.userData.dead && !tr.userData.dying; }).length : 0;
+      g2 = this.makePiece(p2, live ? Math.max(1, live) : 0); grp.add(g2);
+    }
     this.placePiece(g2, q2); keep.push(g2); np[q2] = g2;
   }
   grp.children.slice().forEach(function (c) { if (keep.indexOf(c) < 0) grp.remove(c); });
