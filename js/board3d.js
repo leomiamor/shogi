@@ -1075,7 +1075,18 @@ Board3D.prototype.promoFlag = function () {
   var flag = new T.Mesh(new T.PlaneGeometry(0.2, 0.45), new T.MeshStandardMaterial({ map: this._flagTex, roughness: 0.7, side: T.DoubleSide, emissive: 0x330000 })); flag.position.set(0.105, 0.7, 0); g.add(flag);
   return g;
 };
-Board3D.FIG_KANJI = { fz: -0.08, lim: 0.0, front: -0.7, maxD: 0.8 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
+Board3D.FIG_KANJI = { fz: -0.08, lim: 0.0, shift: 0.18, maxD: 0.6 };
+// Tiefe des Körpers einer Figur (ohne dünne Ausreißer wie Speere): 5. und 95. Perzentil der z-Werte, im Raum des Elternteils
+Board3D.coreZ = function (m) {
+  var v = new THREE.Vector3(), zs = []; m.updateMatrixWorld(true);
+  var inv = m.parent ? m.parent.matrixWorld.clone().invert() : null;
+  m.traverse(function (o) {
+    if (!o.isMesh) return; var pa = o.geometry.attributes.position, st = Math.max(1, Math.floor(pa.count / 3000));
+    for (var i = 0; i < pa.count; i += st) { v.fromBufferAttribute(pa, i).applyMatrix4(o.matrixWorld); if (inv) v.applyMatrix4(inv); zs.push(v.z); }
+  });
+  zs.sort(function (a, b) { return a - b; });
+  return zs.length ? [zs[Math.floor(zs.length * 0.05)], zs[Math.floor(zs.length * 0.95)]] : [0, 0];
+}; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
   var m = Models.fit(src, 1.15, this.settings.figSet === 'statue' ? 2.2 : 0.95), self = this; // Statuen: alle gleich hoch (Grundfläche nur gegen Ausreißer) m.position.set(0, 0.2, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0);
@@ -1086,10 +1097,11 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   m.userData.ry0 = this.settings.figSet === 'statue' ? Math.PI : 0; m.rotation.y = m.userData.ry0;
   // Schwänze/Umhänge, die nach hinten ragen, nicht übers Kanji: Figur so weit nach vorn, bis die Rückseite vor dem Zeichen endet
   if (this.settings.figSet === 'statue') {
-    // alle gleich hoch; nur was tiefer als ein Feld ist (Kitsune mit Schwänzen), wird kleiner, sonst deckt es Nachbarn und Kanji zu
-    var K = Board3D.FIG_KANJI; m.updateMatrixWorld(true); var bb = new THREE.Box3().setFromObject(m), d = bb.max.z - bb.min.z;
-    if (d > K.maxD) { m.scale.multiplyScalar(K.maxD / d); m.updateMatrixWorld(true); bb.setFromObject(m); }
-    m.position.z += Math.max(K.front - bb.min.z, Math.min(0, K.lim - bb.max.z));
+    // alle gleich hoch; gemessen wird der Körper (5.–95. Perzentil der Tiefe), dünne Stäbe/Speere zählen nicht.
+    // Nur was als Körper tiefer als ein Feld ist (Kitsune mit Schwänzen), wird kleiner; verschoben wird höchstens so weit, dass die Füße auf dem Sockel bleiben
+    var K = Board3D.FIG_KANJI, cz = Board3D.coreZ(m), d = cz[1] - cz[0];
+    if (d > K.maxD) { m.scale.multiplyScalar(K.maxD / d); cz = Board3D.coreZ(m); }
+    m.position.z += Math.max(-K.shift, Math.min(0, K.lim - cz[1]));
   }
   g.add(m); g.userData.glb = m;
 };
