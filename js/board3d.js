@@ -3,7 +3,7 @@ Board3D.MOBILE = (window.matchMedia && matchMedia('(pointer: coarse)').matches) 
 // 3D-Brett mit Three.js: schwebende Insel, Laternen, Kirschblüten, Figuren-Modelle, Partikel.
 function Board3D(root, theme, settings) {
   var self = this;
-  this.root = root; this.theme = theme; this.settings = settings; this.flip = false; this.hl = {}; this.alive = true;
+  this.root = root; this.theme = theme; Board3D.edLists(theme && theme.id); this.settings = settings; this.flip = false; this.hl = {}; this.alive = true;
   this.tweens = []; this.onSquare = null; this.pieces = {}; this.quality = settings.quality || 'high';
   root.innerHTML = ''; root.classList.add('b3');
   var T = THREE, hi = this.quality === 'high';
@@ -1176,6 +1176,10 @@ Board3D.RIM = [[1.0, 0.62, 0.16], [0.75, 0.85, 1.0]];
 Board3D.NO_SASHI = [1, 3, 13, 14]; // Bauern (Fähnchen sah wie eine zweite Waffe aus, Speer soll lesbar sein) und Kreaturen (Fuchs, Hirsch, Drache) ohne Rückenfähnchen
 Board3D.SASHI = [[[0.85, 0.55, 0.12], [0.02, 0.018, 0.015]], [[0.8, 0.82, 0.85], [0.6, 0.04, 0.03]]]; // Tuch, Mon: Sente Gold/schwarz, Gote Silberweiß/rot
 Board3D.WHITE_FUR = [3]; // Kitsune (Springer): weißes Fell wie die Inari-Füchse statt Orange
+// je Edition: Kitsune-Fell nur bei Feudal (sonst würde der Sprung-Mech/Greif/Jack Russell umgefärbt); Rückenfähnchen nur bei Menschen/Mechs, nie bei Kreaturen, Fliegern und Hunden
+Board3D.WHITE_FUR_ED = { feudal: [3] };
+Board3D.NO_SASHI_ED = { feudal: [1, 3, 13, 14], mecha: [1, 3, 7, 13, 14], fantasy: [1, 3, 7, 13, 14], hunde: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14] };
+Board3D.edLists = function (ed) { Board3D.WHITE_FUR = Board3D.WHITE_FUR_ED[ed] || []; Board3D.NO_SASHI = Board3D.NO_SASHI_ED[ed] || Board3D.NO_SASHI_ED.feudal; };
 Board3D.KUMADORI = [[0.85, 0.52, 0.1], [0.62, 0.05, 0.03]]; // Zeichnung im Fell (dunkle Partien des Originals): Sente Gold, Gote Zinnober
 Board3D.paintPatch = function (sh, col, t) {
   var fur = Board3D.WHITE_FUR.indexOf(t >= 9 && t <= 12 ? t - 8 : t) >= 0;
