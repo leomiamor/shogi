@@ -1075,12 +1075,13 @@ Board3D.prototype.promoFlag = function () {
   var flag = new T.Mesh(new T.PlaneGeometry(0.2, 0.45), new T.MeshStandardMaterial({ map: this._flagTex, roughness: 0.7, side: T.DoubleSide, emissive: 0x330000 })); flag.position.set(0.105, 0.7, 0); g.add(flag);
   return g;
 };
+Board3D.FIG_YAW = { feudal: { 2: -Math.PI / 4 } }; // Blickkorrektur je Edition/Modellnummer (Feudal 2 Naginata schaute 45° zur Seite, Wunsch 19.10.)
 Board3D.FIG_KANJI = { fz: -0.08 }; // Figuren-Ansicht: Startversatz der Figur (Kanji sitzt an der eigenen Sockelkante)
 // Platz auf dem Stein (Figuren-Ansicht): Größe = Editionsgröße (FIG_ED_SCALE). Gesucht wird die Verschiebung (vor/zurück, etwas seitlich), bei der
 // (a) alles, was den Stein berührt (bis 0,12 hoch: Füße, Pfoten, Schwanzspitzen, Saum), innerhalb der Innenkante des Goldrands bleibt (2 cm Abstand, höchstens 2 Punkte im Streifen, nie darüber),
 // (b) bis 0,4 hoch (Umhang, Schwänze, Flügelspitzen) nichts über den Goldrand ragt (≤ 1 % der Punkte, dünne Speere) und (c) das Kanji frei ist
 // (≤ 15 % der Zeichenfläche von oben, ≤ 3 % aus Sicht des Besitzers). Nur wenn keine Verschiebung reicht, wird die Figur einzeln in 5-%-Schritten kleiner.
-Board3D.FIG_FIT = { low: 0.12, margin: 0.02, out: 2, top: 0.15, own: 0.03, minS: 0.4, maxD: 0.6, high: 0.4, over: 0.01, overN: 0.01, v: 10 }; // maxD: Grundgröße langer Tiere (Körper höchstens 0,6 tief statt 1,15 hoch)
+Board3D.FIG_FIT = { low: 0.12, margin: 0.02, out: 2, top: 0.15, own: 0.03, minS: 0.4, maxD: 0.6, high: 0.4, over: 0.01, overN: 0.01, v: 11 }; // maxD: Grundgröße langer Tiere (Körper höchstens 0,6 tief statt 1,15 hoch)
 // Kanji auf dem Stein (Figuren-Ansicht): Schriftgröße/Mitte im 256er-Canvas und daraus die Fläche im Stein-Raum (Ebene 0,66 breit bei z 0,04)
 Board3D.KANJI_PX = 96; Board3D.KANJI_CY = 198;
 Board3D.kanjiRect = function () { var k = 0.66 / 256; return { x: Board3D.KANJI_PX / 2 * k, z0: 0.04 - 0.33 + (Board3D.KANJI_CY - Board3D.KANJI_PX / 2) * k, z1: 0.04 - 0.33 + (Board3D.KANJI_CY + Board3D.KANJI_PX / 2) * k }; };
@@ -1137,7 +1138,9 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   if (this.settings.figSet === 'statue') m.traverse(function (o) { if (o.isMesh) o.material = self.statueMat(col, o.material.normalMap, rim); });
   if (this.settings.figSet === 'statue' && Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0))) m.scale.multiplyScalar(1.1);
   // TRELLIS-Modelle schauen nach +z (zur eigenen Seite), also umdrehen, damit sie zum Gegner blicken
-  m.userData.ry0 = this.settings.figSet === 'statue' ? Math.PI : 0; m.rotation.y = m.userData.ry0;
+  // einzelne Modelle sind von TRELLIS seitlich ausgegeben worden (Blick 90° daneben): Korrektur je Edition und Modellnummer (Rig: fit_args.json rz)
+  var tN = Math.abs(g.userData.p || 0), mN = Board3D.promoOnBase(this.theme.id, tN) ? { 9: 1, 10: 2, 11: 3, 12: 4 }[tN] : tN, yaw = (Board3D.FIG_YAW[this.theme.id] || {})[mN] || 0;
+  m.userData.ry0 = (this.settings.figSet === 'statue' ? Math.PI : 0) + yaw; m.rotation.y = m.userData.ry0;
   // Platz auf dem Stein suchen (innerhalb des Goldrands, Kanji frei, Größe nur wenn nötig); Ergebnis je Modell gemerkt
   if (this.settings.figSet === 'statue') {
     var fp = src.userData.figPlace || (src.userData.figPlace = {}), fk = (Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0)) ? 'p' : 'n') + Board3D.FIG_FIT.v + ':' + this.theme.id + ':' + JSON.stringify(Board3D.FIG_ED_SCALE[this.theme.id] || 1) + ':' + Board3D.KANJI_PX;
