@@ -1074,14 +1074,22 @@ Board3D.prototype.promoFlag = function () {
   var flag = new T.Mesh(new T.PlaneGeometry(0.2, 0.45), new T.MeshStandardMaterial({ map: this._flagTex, roughness: 0.7, side: T.DoubleSide, emissive: 0x330000 })); flag.position.set(0.105, 0.7, 0); g.add(flag);
   return g;
 };
+Board3D.FIG_KANJI = { fz: -0.08, lim: 0.07, front: -0.5 }; // Figuren-Ansicht: Figur leicht nach vorn, Rückseite endet vor dem Kanji (das an der eigenen Kante sitzt)
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
-  var m = Models.fit(src, 1.15, 0.95), self = this; m.position.set(0, 0.2, 0);
+  var m = Models.fit(src, 1.15, 0.95), self = this; m.position.set(0, 0.2, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0);
   var rim = this.settings.figSet === 'statue' && Math.abs(g.userData.p || 0) >= 9 && this.settings.promoStyle === 'glanz';
   if (this.settings.figSet === 'statue') m.traverse(function (o) { if (o.isMesh) o.material = self.statueMat(col, o.material.normalMap, rim); });
   if (this.settings.figSet === 'statue' && Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0))) m.scale.multiplyScalar(1.1);
   // TRELLIS-Modelle schauen nach +z (zur eigenen Seite), also umdrehen, damit sie zum Gegner blicken
   m.userData.ry0 = this.settings.figSet === 'statue' ? Math.PI : 0; m.rotation.y = m.userData.ry0;
+  // Schwänze/Umhänge, die nach hinten ragen, nicht übers Kanji: Figur so weit nach vorn, bis die Rückseite vor dem Zeichen endet
+  if (this.settings.figSet === 'statue') {
+    // zu tiefe Figuren (Fuchs mit Schwänzen) etwas kleiner, damit sie weder übers Kanji noch aufs Nachbarfeld ragen
+    var K = Board3D.FIG_KANJI; m.updateMatrixWorld(true); var bb = new THREE.Box3().setFromObject(m), d = bb.max.z - bb.min.z, room = K.lim - K.front;
+    if (d > room) { m.scale.multiplyScalar(room / d); m.updateMatrixWorld(true); bb.setFromObject(m); }
+    m.position.z += Math.max(K.front - bb.min.z, Math.min(0, K.lim - bb.max.z));
+  }
   g.add(m); g.userData.glb = m;
 };
 
@@ -2119,7 +2127,7 @@ Board3D.prototype.faceTexture = function (t, col) {
     if (style.indexOf('statue') === 0) {
       // eingraviert: Holz schwarzer Lack, Stein Goldeinlage, Metall dunkel; befördert immer rot
       var KC = { 'statue-holz': ['#1a0e08', '#b0140c'], 'statue-stein': ['#e3b65a', '#ff4a30'], 'statue-metall': ['#2a1c10', '#a01008'] }[style] || ['#1a0e08', '#b0140c'];
-      g.fillStyle = KC[t >= 9 ? 1 : 0]; g.font = 'bold 84px "Noto Serif JP", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(kan, 128, 196);
+      g.fillStyle = KC[t >= 9 ? 1 : 0]; g.font = 'bold 112px "Noto Serif JP", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(kan, 128, 190);
     } else if (style === 'kanji') {
       g.fillStyle = t >= 9 ? '#c41e1e' : '#1a1008'; g.font = 'bold 150px "Noto Serif JP", serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(kan, 128, 140);
     } else {
