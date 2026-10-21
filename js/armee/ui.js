@@ -7,9 +7,36 @@
   var SHORT = { fu: 'Bau', ky: 'Lan', ke: 'Spr', gi: 'Sil', ki: 'Gol', ka: 'Läu', hi: 'Tur', ou: 'Herr', to: 'Bau+', ny: 'Lan+', nk: 'Spr+', ng: 'Sil+', um: 'Pfd', ry: 'Dra' };
   var SAVE = 'armee.v1';
   var $ = function (s) { return document.querySelector(s); };
-  var opt = { big: false, lab: 'kanji', react: true, hc: 0, danger: true, lvl: 1 }; // hc: Gold pro Runde für die KI bzw. Spieler 2 (−2 … +2)
-  try { var o0 = JSON.parse(localStorage.getItem('armee.opt') || '{}'); if (o0.big) opt.big = true; if (o0.lab) opt.lab = o0.lab; if (o0.react === false) opt.react = false; if (o0.hc) opt.hc = o0.hc; if (o0.danger === false) opt.danger = false; if (o0.lvl != null) opt.lvl = o0.lvl; } catch (e) { }
+  var opt = { big: false, lab: 'kanji', react: true, hc: 0, danger: true, lvl: 1, snd: true, clock: 0 }; // hc: Gold pro Runde für die KI bzw. Spieler 2 (−2 … +2)
+  try { var o0 = JSON.parse(localStorage.getItem('armee.opt') || '{}'); if (o0.big) opt.big = true; if (o0.lab) opt.lab = o0.lab; if (o0.react === false) opt.react = false; if (o0.hc) opt.hc = o0.hc; if (o0.danger === false) opt.danger = false; if (o0.lvl != null) opt.lvl = o0.lvl; if (o0.snd === false) opt.snd = false; if (o0.clock) opt.clock = o0.clock; } catch (e) { }
   function saveOpt() { try { localStorage.setItem('armee.opt', JSON.stringify(opt)); } catch (e) { } }
+
+  // ---------- Ton: wenige kurze Samples (CC0, snd/credits.txt), laden erst bei der ersten Schlacht ----------
+  var SND = (function () {
+    var ctx = null, out = null, buf = {}, last = {}, voices = 0, loading = false;
+    var FILES = { clash: ['clash1', 'clash2', 'clash3'], hit: ['body1', 'body2', 'hit1', 'hit2'], die: ['die1', 'die2', 'die3'], drum: ['drum1', 'drum2'], cheer: ['cheer'], horn: ['horn'], promo: ['cut1'] };
+    var VOL = { clash: .35, hit: .45, die: .4, drum: .6, cheer: .5, horn: .45, promo: .4 }, GAP = { clash: 60, hit: 60, die: 250, drum: 200, cheer: 2000, horn: 2000, promo: 300 };
+    function init() {
+      if (ctx || !opt.snd) return; var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+      ctx = new AC(); out = ctx.createGain(); out.gain.value = window.AK_MUTE ? 0 : 1; out.connect(ctx.destination);
+    }
+    function load() {
+      if (!ctx || loading) return; loading = true;
+      Object.keys(FILES).forEach(function (k) { FILES[k].forEach(function (f) { fetch('snd/' + f + '.mp3').then(function (r) { return r.arrayBuffer(); }).then(function (a) { return new Promise(function (ok, no) { ctx.decodeAudioData(a, ok, no); }); }).then(function (b) { (buf[k] = buf[k] || []).push(b); }).catch(function () { }); }); });
+    }
+    function play(k, delay) {
+      if (!opt.snd || !ctx || document.hidden || !buf[k] || voices >= 6) return;
+      var now = performance.now(); if (last[k] && now - last[k] < GAP[k]) return; last[k] = now;
+      if (ctx.state === 'suspended') ctx.resume();
+      var src = ctx.createBufferSource(), g = ctx.createGain(); src.buffer = buf[k][Math.floor(Math.random() * buf[k].length)];
+      src.playbackRate.value = 0.92 + Math.random() * 0.16; g.gain.value = VOL[k]; src.connect(g); g.connect(out);
+      voices++; src.onended = function () { voices--; }; src.start(ctx.currentTime + (delay || 0));
+      if (window.AK_SNDLOG) window.AK_SNDLOG.push(k);
+    }
+    // erstes Tippen: Audio darf erst nach einer Geste starten (Handy)
+    document.addEventListener('pointerdown', function () { init(); if (ctx && ctx.state === 'suspended') ctx.resume(); }, { capture: true });
+    return { init: init, load: load, play: play, mute: function (m) { if (out) out.gain.value = m ? 0 : 1; } };
+  })();
 
   // S: ganzer Spielzustand der Seite
   var S = null;
@@ -42,12 +69,16 @@
     return w;
   }
   function myActs() { return S.stage === 'react' ? S.reacts[S.viewer] : S.acts[S.viewer]; }
+  // Entwurf der laufenden Planung sichern (Handy-Browser werfen Tabs im Hintergrund weg)
+  function draftKey() { return (S.mode === 'net' ? S.net.code : S.mode + S.g.seed) + '/' + S.g.round + '/' + S.stage + '/' + S.viewer; }
+  function saveDraft() { if (!S || S.mode === 'hot' || (S.stage !== 'plan' && S.stage !== 'react')) return; try { localStorage.setItem('armee.draft', JSON.stringify({ k: draftKey(), a: myActs() })); } catch (e) { } }
+  function loadDraft() { try { var d = JSON.parse(localStorage.getItem('armee.draft') || 'null'); if (d && d.k === draftKey() && d.a.length) { var w = AK.clone(S.g); w.drops = [0, 0]; var ok = d.a.filter(function (a) { return !AK.apply(w, S.viewer, a, S.stage); }); myActs().length = 0; Array.prototype.push.apply(myActs(), ok); if (ok.length) S.log.push({ t: 'Runde ' + S.g.round, s: 'Deine angefangene Planung ist wieder da.' }); } } catch (e) { } }
 
   function beginPlan(p) {
-    if (S.mode === 'net') { S.viewer = S.me; S.sel = null; S.acts = [[], []]; S.nph = 'plan'; if (ent(S.net.st, S.g.round, 'plan', S.me)) { S.stage = 'wait'; return netTry(); } S.stage = 'plan'; return render(); }
+    if (S.mode === 'net') { S.viewer = S.me; S.sel = null; S.acts = [[], []]; S.nph = 'plan'; if (ent(S.net.st, S.g.round, 'plan', S.me)) { S.stage = 'wait'; return netTry(); } S.stage = 'plan'; loadDraft(); return render(); }
     S.viewer = p; S.sel = null;
     if (S.mode === 'hot') { S.stage = 'handover'; cover(names(p) + ' plant', 'Gerät an ' + names(p) + ' geben. Der andere schaut bitte weg.', 'Ich bin ' + names(p) + ' – los', function () { S.stage = 'plan'; render(); }); }
-    else S.stage = 'plan';
+    else { S.stage = 'plan'; loadDraft(); }
     save(); render();
   }
   // Reaktion nur, wenn man einen Überläufer einsetzen kann (sonst spart das im Zu-zweit-Modus zwei Gerätewechsel)
@@ -160,10 +191,11 @@
     if (planning && opt.danger) w.units.forEach(function (e) { if (e.p !== p && e.hp > 0) patCells(e, e.x, e.y).forEach(function (c) { var k = c[1] * N + c[0]; if (!marks[k]) marks[k] = 'danger'; }); });
     $('#b-danger').classList.toggle('on', opt.danger); $('#b-danger').classList.toggle('hidden', !planning);
     // Lage: beide Seiten auf einen Blick
-    var kh = function (q) { var k = w.units.filter(function (u) { return u.p === q && u.t === 'ou'; })[0]; return k ? k.hp : 0; };
+    var kh = function (q) { var k = w.units.filter(function (u) { return u.p === q && u.t === 'ou'; })[0]; return k ? Math.max(0, k.hp) : 0; };
     var tr = function (q) { return w.units.filter(function (u) { return u.p === q && u.t !== 'ou' && u.hp > 0; }).length; };
     $('#g-net').classList.toggle('hidden', S.mode !== 'net');
-    if (S.mode === 'net') $('#g-net').innerHTML = (S.net.status === 'online' ? '<span style="color:var(--good)">● online</span>' : '<span style="color:var(--bad)">● ' + (S.net.status || 'verbinde') + ' …</span>') + ' · Partie ' + S.net.code + (S.net.st && !S.net.st.seats[1] ? ' · <button class="btn small" id="g-share">Link an Gegner schicken</button>' : '');
+    if (S.mode === 'net') $('#g-net').innerHTML = (S.net.status === 'online' ? '<span style="color:var(--good)">● online</span>' : '<span style="color:var(--bad)">● ' + (S.net.status || 'verbinde') + ' …</span>') + ' · ' + peerText() + (S.net.st && !S.net.st.seats[1] ? ' · <button class="btn small" id="g-share">Link an Gegner schicken</button>' : '');
+    document.title = (S.stage === 'plan' || S.stage === 'react') && S.mode === 'net' && ent(S.net.st, S.g.round, S.nph, 1 - S.me) ? '⚔ Du bist dran – Armee' : 'Armee';
     $('#g-sides').innerHTML = [p, 1 - p].map(function (q) { return '<span class="p' + q + 'c">' + names(q) + '</span> 王 ' + kh(q) + '/' + T.ou.hp + ' · ' + tr(q) + ' Truppen · ' + (q === p ? '' : '<span class="gold">' + g.gold[q] + '</span> Gold · ') + w.hand[q].length + ' Überl.'; }).join('<br>');
     if (S.stage !== 'battle') drawBoard(w, marks);
     // Laden
@@ -185,7 +217,7 @@
     if (S.sel && S.sel.id) { var iu = AK.unit(w, S.sel.id); if (iu) ih = infoCard(iu, w, p); }
     else if (S.sel && S.sel.shop != null) ih = typeCard(w.offers[p][S.sel.shop].t, p);
     else if (S.sel && S.sel.hand != null) ih = typeCard(w.hand[p][S.sel.hand], p);
-    inf.innerHTML = ih; inf.classList.toggle('hidden', !ih);
+    inf.innerHTML = ih ? ih + '<button class="x" data-close="1" aria-label="Schließen">✕</button>' : ''; inf.classList.toggle('hidden', !ih);
     renderLog();
   }
   function renderLog() {
@@ -197,7 +229,7 @@
   function act(a) {
     var w = view(), err = AK.canDo(w, S.viewer, a, S.stage === 'react' ? 'react' : 'plan');
     if (err) { toast(err); return false; }
-    myActs().push(a); return true;
+    myActs().push(a); saveDraft(); return true;
   }
   function clickCell(x, y) {
     if (S.stage !== 'plan' && S.stage !== 'react') return;
@@ -210,12 +242,13 @@
     S.sel = u ? { id: u.id } : null; render();
   }
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-shop],[data-hand],[data-ord],[data-up]');
+    var t = e.target.closest('[data-shop],[data-hand],[data-ord],[data-up],[data-close]');
     if (t && S) {
       if (t.dataset.shop != null) { var i = +t.dataset.shop, o = view().offers[S.viewer][i]; if (o.sold) return; S.sel = S.sel && S.sel.shop === i ? null : { shop: i }; }
       else if (t.dataset.hand != null) { var j = +t.dataset.hand; S.sel = S.sel && S.sel.hand === j ? null : { hand: j }; }
       else if (t.dataset.ord) { var cu = AK.unit(view(), S.sel.id); if (cu && cu.ord !== t.dataset.ord) act({ k: 'ord', id: S.sel.id, ord: t.dataset.ord }); }
       else if (t.dataset.up) act({ k: 'up', id: S.sel.id });
+      else if (t.dataset.close) S.sel = null;
       render(); return;
     }
   });
@@ -226,7 +259,7 @@
     clickCell(cx, cy);
   });
   $('#b-danger').onclick = function () { opt.danger = !opt.danger; saveOpt(); render(); };
-  $('#b-undo').onclick = function () { myActs().pop(); S.sel = null; S.newIds = null; render(); };
+  $('#b-undo').onclick = function () { myActs().pop(); saveDraft(); S.sel = null; S.newIds = null; render(); };
   $('#b-reroll').onclick = function () { act({ k: 'reroll' }); S.sel = null; render(); };
   $('#b-done').onclick = function () {
     if (S.stage === 'react') return submitReact();
@@ -282,7 +315,7 @@
     var storm = ev.filter(function (e) { return e.e === 'storm'; });
     storm.forEach(function (e) { S.log.push({ t: 'Runde ' + r, s: '<b>Sturm aufs Lager:</b> ' + names(e.p) + ' hat keine Truppen mehr, ' + e.n + ' Gegner treffen den Feldherrn (−' + e.dmg + ')' }); });
     if (g.over != null) return gameOver();
-    var king = [0, 1].map(function (p) { var k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0]; return k ? k.hp : 0; });
+    var king = [0, 1].map(function (p) { var k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0]; return k ? Math.max(0, k.hp) : 0; });
     var h = '<h2>Runde ' + r + ' vorbei</h2><div class="sum">';
     [0, 1].forEach(function (p) {
       var n = g.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).length;
@@ -304,15 +337,20 @@
     else if (S.resigned != null) h = '<h2>' + (S.mode === 'ki' ? 'Aufgegeben' : names(w) + ' gewinnt!') + '</h2><p>' + ((S.mode === 'ki' && S.resigned === 0) || (S.mode === 'net' && S.resigned === S.me) ? 'Du hast' : names(S.resigned) + ' hat') + ' in Runde ' + S.g.round + ' aufgegeben.</p>';
     else if (S.mode === 'net') h = '<h2>' + (w === S.me ? 'Sieg!' : 'Niederlage') + '</h2><p>' + (w === S.me ? 'Der gegnerische Feldherr' : 'Dein Feldherr') + ' ist in Runde ' + S.g.round + ' gefallen.</p>';
     else h = '<h2>' + (S.mode === 'ki' ? (w === 0 ? 'Sieg!' : 'Niederlage') : names(w) + ' gewinnt!') + '</h2><p>' + (S.mode === 'ki' ? (w === 0 ? 'Der KI-Feldherr' : 'Dein Feldherr') : 'Der Feldherr von ' + names(1 - w)) + ' ist in Runde ' + S.g.round + ' gefallen.</p>';
-    S.stage = 'over'; try { localStorage.removeItem(SAVE); } catch (e) { }
+    S.stage = 'over'; try { localStorage.removeItem(SAVE); if (S.mode === 'net') localStorage.setItem('armee.net', JSON.stringify(netList().filter(function (x) { return x.code !== S.net.code; }))); } catch (e) { } // beendete Online-Partie nicht mehr im Menü anbieten
+    var meW = S.mode === 'net' ? S.me : 0; SND.play(w === meW || S.mode === 'hot' ? 'cheer' : 'horn');
     S.log.push({ t: 'Ende', s: w === 'remis' ? 'Remis.' : (S.mode === 'net' ? (w === S.me ? 'Du gewinnst' : 'Der Gegner gewinnt') : names(w) + ' gewinnt') + ' in Runde ' + S.g.round + '.' });
-    render(); modal(h, 'Zum Menü', toMenu, 'Brett ansehen');
+    render();
+    if (S.mode === 'net') { modal(h + '<div class="row" style="margin-top:8px"><button class="btn small" id="o-menu">Zum Menü</button></div>', 'Revanche', rematch, 'Brett ansehen'); $('#o-menu').onclick = function () { $('#modal').classList.add('hidden'); toMenu(); }; }
+    else modal(h, 'Zum Menü', toMenu, 'Brett ansehen');
   }
 
   // ---------- Wiedergabe ----------
   var PL = { timer: null, paused: false, speed: 1, step: null, fin: null };
   function playPhase(snap, ticks, ph, done) {
     S.stage = 'battle'; S.phase = ph; S.disp = AK.clone(snap); S.sel = null;
+    SND.init(); SND.load(); if (!S.probe) SND.play('drum');
+    if (navigator.vibrate && opt.snd && ph === 0 && !S.probe && S.mode === 'net') try { navigator.vibrate(60); } catch (e) { }
     render(); drawBoard(S.disp, {});
     var i = 0; S.roundLoss = S.roundLoss || [0, 0];
     var lbl = (S.probe ? 'Probe ' : '') + 'Teil ' + (ph + 1);
@@ -370,7 +408,9 @@
       var au = U.querySelector('[data-id="' + e.id + '"]'); if (au) { var dx = Math.sign(b2(e).x), dy = Math.sign(b2(e).y); au.style.setProperty('--bx', dx * 22 + '%'); au.style.setProperty('--by', dy * 22 + '%'); au.classList.add('bump'); }
     });
     applyEv(d, ev, lbl);
-    // Lebensbalken, Tote, Bewegungen
+    var na = 0; ev.forEach(function (e) { if (e.e === 'atk' && na < 3) { SND.play(na % 2 ? 'hit' : 'clash', na * 0.07); na++; } });
+    if (ev.some(function (e) { return e.e === 'die'; })) SND.play('die', 0.25);
+    if (ev.some(function (e) { return e.e === 'promo'; })) SND.play('promo', 0.3);
     setTimeout(function () {
       U.querySelectorAll('.u').forEach(function (el) {
         el.classList.remove('bump', 'flash'); var u = AK.unit(d, +el.dataset.id); if (!u) return;
@@ -422,7 +462,7 @@
       '<li><b>Generalangriff:</b> Ab Runde ' + R.pattRound + ' rücken alle Truppen vor, Halten gilt nicht mehr.</li>' +
       '<li><b>Aufgeben:</b> im Menü ☰, wie beim Shogi.</li>' +
       '<li><b>⚠ Gefahr:</b> färbt beim Planen die Felder, die der Gegner treffen kann.</li>' +
-      '<li><b>Online:</b> Im Menü „Online gegen ein zweites Handy“ und den Link schicken. Jeder plant auf seinem Gerät, die Partie wird gespeichert.</li>' +
+      '<li><b>Online:</b> Im Menü „Online gegen ein zweites Handy“ und den Link schicken. Jeder plant auf seinem Gerät, die Partie wird gespeichert. Mit Rundenuhr wird bei 0:00 automatisch abgeschickt.</li>' +
       '<li><b>Probelauf:</b> Zeigt, wie deine Aufstellung gegen den jetzigen Stand des Gegners laufen würde.</li></ul>', 'Verstanden');
   }
 
@@ -430,7 +470,7 @@
   // Netz-Stand: { game, seed, bonus, seats, moves: [{ r, ph: 'plan'|'react'|'resign', p, acts }], t }.
   // Beide Geräte vereinigen die Einträge und rechnen die Schlacht selbst (Regeln sind deterministisch).
   var ORD = { plan: 0, react: 1, resign: 2 }, myId = null;
-  function cid() { if (!myId) { var m = location.search.match(/[?&]cid=(\w+)/); myId = m ? m[1] : Net.me(); } return myId; } // ?cid= nur zum Testen mit zwei Tabs
+  function cid() { return Net.me(); } // net.js nimmt ?cid= zum Testen mit zwei Tabs
   function ent(st, r, ph, p) { if (!st) return null; for (var i = 0; i < st.moves.length; i++) { var m = st.moves[i]; if (m.r === r && m.ph === ph && m.p === p) return m; } return null; }
   function merge(a, b) {
     if (!a) return b; if (!b) return a;
@@ -439,7 +479,8 @@
     b.moves.forEach(function (x) { if (!ent({ moves: m }, x.r, x.ph, x.p)) m.push(x); });
     m.sort(function (x, y) { return x.r - y.r || ORD[x.ph] - ORD[y.ph] || x.p - y.p; });
     var s1 = a.seats[1] && b.seats[1] ? (a.seats[1] < b.seats[1] ? a.seats[1] : b.seats[1]) : a.seats[1] || b.seats[1] || null;
-    return { game: 'armee', seed: a.seed, bonus: a.bonus, seats: { 0: a.seats[0] || b.seats[0], 1: s1 }, moves: m, t: Math.max(a.t || 0, b.t || 0) };
+    var nx = a.next && b.next ? (a.next < b.next ? a.next : b.next) : a.next || b.next;
+    var o = { game: 'armee', seed: a.seed, bonus: a.bonus, clock: a.clock || b.clock || 0, seats: { 0: a.seats[0] || b.seats[0], 1: s1 }, moves: m, t: Math.max(a.t || 0, b.t || 0) }; if (nx) o.next = nx; return o;
   }
   function netRebuild(st) {
     var g = AK.newGame(st.seed, st.bonus), nph = 'plan';
@@ -466,18 +507,19 @@
     }, 'Später');
   }
   function netCreate() {
-    var code = Net.code(), st = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: [0, opt.hc], seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
+    var code = Net.code(), st = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: [0, opt.hc], clock: opt.clock, seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
     netStart(code, st); shareNet();
   }
   function netStart(code, st) {
     clearTimeout(PL.timer);
+    document.getElementById('modal').classList.add('hidden');
     S = { mode: 'net', me: st ? 0 : -1, net: { code: code, st: st, status: 'verbinde' }, g: null, acts: [[], []], reacts: [[], []], viewer: 0, stage: 'wait', sel: null, log: [] };
     try { history.replaceState(null, '', '#armee=' + code); } catch (e) { }
     netRemember(code); show('game');
     if (st) { S.g = AK.newGame(st.seed, st.bonus); S.viewer = 0; S.log.push({ t: 'Runde 1', s: 'Neue Online-Partie. Du spielst Orange (unten).' }); beginPlan(0); } else render();
     netLoad(function () {
       if (typeof mqtt === 'undefined') { S.net.status = 'offline'; render(); toast('Keine Verbindung zum Netz'); return; }
-      Net.connect('armee-' + code, onNet, function () { }, function (x) { if (S && S.mode === 'net') { S.net.status = x; if (S.stage !== 'battle') render(); } });
+      Net.connect('armee-' + code, onNet, function () { if (S && S.mode === 'net') { S.net.peer = Date.now(); if (S.stage !== 'battle') render(); } }, function (x) { if (S && S.mode === 'net') { S.net.status = x; if (S.stage !== 'battle') render(); } });
       if (st) Net.publishState(st);
     });
   }
@@ -487,13 +529,14 @@
     if (st.seats[0] !== cid() && st.seats[1] !== cid() && !st.seats[1]) st = merge(st, { game: 'armee', seed: st.seed, bonus: st.bonus, seats: { 0: st.seats[0], 1: cid() }, moves: [], t: st.t });
     S.net.st = st;
     if (JSON.stringify(st) !== JSON.stringify(d)) Net.publishState(st);
+    if (st.next && S.stage === 'over' && !S.askedNext) { S.askedNext = true; modal('<h2>Revanche?</h2><p>Dein Gegner will noch eine Partie.</p>', 'Annehmen', function () { netStart(st.next, null); }, 'Nein danke'); }
     if (!S.g) {
       var me = st.seats[0] === cid() ? 0 : st.seats[1] === cid() ? 1 : -1;
       if (me < 0) { modal('<h2>Partie ist voll</h2><p>Hier spielen schon zwei. Starte im Menü eine neue Online-Partie.</p>', 'Zum Menü', toMenu); return; }
       S.me = me; S.viewer = me;
       var rb = netRebuild(st); S.g = rb.g; S.nph = rb.nph;
       S.log.push({ t: 'Runde ' + S.g.round, s: st.moves.length ? 'Partie geladen.' : 'Du spielst ' + (me === 0 ? 'Orange (unten)' : 'Blau, dein Lager ist unten') + '.' });
-      if (S.g.over != null) return gameOver();
+      if (S.g.over != null) { gameOver(); if (st.next) { S.askedNext = true; modal('<h2>Revanche?</h2><p>Dein Gegner will noch eine Partie.</p>', 'Annehmen', function () { netStart(st.next, null); }, 'Später'); } return; }
       if (netResign()) return;
       if (S.nph === 'plan') beginPlan(me); else beginReactNet();
       return;
@@ -528,9 +571,37 @@
     S.viewer = S.me; S.sel = null; S.reacts = [[], []]; S.nph = 'react';
     if (ent(S.net.st, S.g.round, 'react', S.me)) { S.stage = 'wait'; return netTry(); }
     if (!needReact(S.me)) return netSubmit('react', []);
-    S.stage = 'react'; render();
+    S.stage = 'react'; loadDraft(); render();
   }
   function waitView() { var w = AK.clone(S.g), e = ent(S.net && S.net.st, S.g.round, S.nph, S.me); w.drops = [0, 0]; if (e) e.acts.forEach(function (a) { AK.apply(w, S.me, a, S.nph); }); return w; }
+  function peerText() {
+    if (!S.net.st || !S.net.st.seats[1]) return 'Partie ' + S.net.code;
+    var t = S.net.peer; if (!t) return 'Gegner noch nicht gesehen';
+    var m = Math.round((Date.now() - t) / 60000); return Date.now() - t < 70000 ? '<span style="color:var(--good)">Gegner ist da</span>' : 'Gegner zuletzt vor ' + (m < 60 ? m + ' Min.' : Math.round(m / 60) + ' Std.');
+  }
+  setInterval(function () { if (S && S.mode === 'net' && !document.hidden) { try { Net.ping(); } catch (e) { } if (S.stage !== 'battle') render(); } }, 25000);
+  // Revanche: wer zuerst drückt, legt die neue Partie an und hinterlegt ihren Code in der alten
+  function rematch() {
+    var st = S.net.st, code = st.next || Net.code();
+    if (st.next) return netStart(st.next, null);
+    var nst = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: st.bonus, clock: st.clock || 0, seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
+    st = merge(st, { game: 'armee', seed: st.seed, bonus: st.bonus, seats: st.seats, moves: [], t: st.t, next: code }); S.net.st = st; Net.publishState(st);
+    if (st.next !== code) return netStart(st.next, null);
+    toast('Revanche wird angelegt …');
+    setTimeout(function () { netStart(code, nst); }, 1500); // kurz warten, damit der Hinweis in der alten Partie ankommt
+  }
+  function clockLeft() {
+    if (!S || S.mode !== 'net' || !S.net.st || !S.net.st.clock || (S.stage !== 'plan' && S.stage !== 'react') || !S.net.st.seats[1]) return null;
+    var k = 'armee.clock/' + S.net.code + '/' + S.g.round + '/' + S.nph + '/' + S.me, d;
+    try { d = +localStorage.getItem(k); if (!d) { d = Date.now() + (S.nph === 'react' ? Math.max(30, Math.round(S.net.st.clock / 3)) : S.net.st.clock) * 1000; localStorage.setItem(k, d); } } catch (e) { d = Date.now() + 60000; }
+    return Math.max(0, Math.round((d - Date.now()) / 1000));
+  }
+  function clockText(t) { return Math.floor(t / 60) + ':' + ('0' + t % 60).slice(-2); }
+  setInterval(function () {
+    var t = clockLeft(); if (t == null) return;
+    var st = $('#g-stage'); st.textContent = st.textContent.replace(/ · ⏱.*$/, '') + ' · ⏱ ' + clockText(t); st.style.color = t <= 15 ? '#ff8a70' : '';
+    if (t === 0) { $('#modal').classList.add('hidden'); toast('Zeit um – deine Planung wird abgeschickt'); if (S.stage === 'react') submitReact(); else submitPlan(); }
+  }, 1000);
   function waitText() { if (S.mode !== 'net') return ''; if (!S.net.st || !S.net.st.seats[1]) return 'Warte, bis dein Gegner den Link öffnet …'; return S.nph === 'react' ? 'Warte auf die Reaktion des Gegners …' : 'Warte auf den Gegner, er plant noch …'; }
   function toMenu() { if (S && S.mode === 'net') { try { Net.leave(); } catch (e) { } try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } } S = null; show('menu'); }
   document.addEventListener('click', function (e) { if (e.target.id === 'g-share' && S && S.net) shareNet(); });
@@ -565,7 +636,11 @@
   // ---------- Menü ----------
   function applyOpt() { document.documentElement.classList.toggle('big', opt.big); $('#m-big').textContent = 'Große Schrift: ' + (opt.big ? 'an' : 'aus'); $('#m-lab').textContent = 'Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch'); $('#m-react').textContent = 'Reaktionspause: ' + (opt.react ? 'an' : 'aus (einfacher)');
     $('#m-hc').textContent = 'Vorgabe zu zweit: ' + ({ '-2': 'Spieler 2 −2 Gold/Runde', '-1': 'Spieler 2 −1 Gold/Runde', '0': 'keine', '1': 'Spieler 2 +1 Gold/Runde', '2': 'Spieler 2 +2 Gold/Runde' })[opt.hc];
+    $('#m-snd').textContent = 'Ton: ' + (opt.snd ? 'an' : 'aus');
+    $('#m-clock').textContent = 'Rundenuhr online: ' + (opt.clock ? opt.clock / 60 + ' Min. pro Planung' : 'aus (ohne Zeitdruck)');
     $('#m-lvl').textContent = 'KI-Stärke: ' + ['leicht', 'mittel', 'schwer'][opt.lvl]; }
+  $('#m-clock').onclick = function () { opt.clock = opt.clock === 0 ? 120 : opt.clock === 120 ? 300 : 0; saveOpt(); applyOpt(); };
+  $('#m-snd').onclick = function () { opt.snd = !opt.snd; saveOpt(); applyOpt(); if (opt.snd) SND.init(); };
   $('#m-lvl').onclick = function () { opt.lvl = (opt.lvl + 1) % 3; saveOpt(); applyOpt(); };
   $('#m-ki').onclick = function () { newMatch('ki'); };
   $('#m-net').onclick = netCreate;
@@ -579,11 +654,13 @@
   $('#m-react').onclick = function () { opt.react = !opt.react; saveOpt(); applyOpt(); };
   $('#m-lab').onclick = function () { opt.lab = opt.lab === 'kanji' ? 'de' : 'kanji'; saveOpt(); applyOpt(); };
   $('#g-menu').onclick = function () {
-    modal('<h2>Menü</h2><p>Die Partie wird zu Beginn jeder Runde gespeichert.</p><div class="row"><button class="btn small" id="o-big">Große Schrift: ' + (opt.big ? 'an' : 'aus') + '</button><button class="btn small" id="o-lab">Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch') + '</button></div>' + (S && S.g && S.g.over == null && (S.stage === 'plan' || S.stage === 'react' || S.stage === 'wait') ? '<div class="row" style="margin-top:10px"><button class="btn small" id="o-resign">🏳 Aufgeben (' + names(S.viewer) + ')</button></div>' : ''), 'Zurück zum Spiel', null, 'Zum Hauptmenü');
+    modal('<h2>Menü</h2><p>Die Partie wird zu Beginn jeder Runde gespeichert.</p><div class="row"><button class="btn small" id="o-big">Große Schrift: ' + (opt.big ? 'an' : 'aus') + '</button><button class="btn small" id="o-lab">Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch') + '</button><button class="btn small" id="o-snd">Ton: ' + (opt.snd ? 'an' : 'aus') + '</button></div>' + (S && S.g && S.g.over == null && (S.stage === 'plan' || S.stage === 'react' || S.stage === 'wait') ? '<div class="row" style="margin-top:10px"><button class="btn small" id="o-resign">🏳 Aufgeben (' + names(S.viewer) + ')</button></div>' : ''), 'Zurück zum Spiel', null, 'Zum Hauptmenü');
     var rs = $('#o-resign'); if (rs) rs.onclick = function () { confirmBox('Wirklich aufgeben?', (S.mode === 'net' ? 'Du gibst' : names(S.viewer) + ' gibt') + ' die Partie verloren.', 'Aufgeben', function () { if (S.mode === 'net') return netSubmit('resign', []); S.g.over = 1 - S.viewer; S.resigned = S.viewer; gameOver(); }); };
+    $('#o-snd').onclick = function () { opt.snd = !opt.snd; saveOpt(); applyOpt(); if (opt.snd) SND.init(); this.textContent = 'Ton: ' + (opt.snd ? 'an' : 'aus'); };
     $('#o-big').onclick = function () { opt.big = !opt.big; saveOpt(); applyOpt(); this.textContent = 'Große Schrift: ' + (opt.big ? 'an' : 'aus'); render(); };
     $('#o-lab').onclick = function () { opt.lab = opt.lab === 'kanji' ? 'de' : 'kanji'; saveOpt(); applyOpt(); this.textContent = 'Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch'); render(); };
     $('#mAlt').onclick = function () { $('#modal').classList.add('hidden'); clearTimeout(PL.timer); toMenu(); };
+    if (S && S.mode === 'net' && S.stage === 'over') { $('#modalBox').insertAdjacentHTML('afterbegin', '<button class="btn go" id="o-re" style="float:right">Revanche</button>'); $('#o-re').onclick = function () { $('#modal').classList.add('hidden'); rematch(); }; }
   };
   window.addEventListener('resize', function () { if (S && S.stage !== 'battle') render(); });
   Object.keys(MASK).forEach(function (k) { new Image().src = 'img/koma/' + MASK[k] + '.svg'; }); // Kanji vorladen, sonst fehlen sie beim ersten Bild kurz

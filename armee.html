@@ -83,7 +83,9 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 .hand .card { flex: 0 0 auto; padding: 4px 8px; min-width: 64px; }
 .lbl { font-size: .85em; color: var(--dim); margin: 6px 0 2px; font-weight: 700; }
 /* Info-Karte */
-.info { background: var(--panel); border: 1px solid var(--au-lo); border-radius: 12px; padding: 10px; margin: 8px 0; display: flex; gap: 12px; align-items: flex-start; }
+.info { background: var(--panel); border: 1px solid var(--au); border-radius: 12px; padding: 10px 34px 10px 10px; margin: 8px 0; display: flex; gap: 12px; align-items: flex-start; position: sticky; bottom: 64px; z-index: 6; box-shadow: 0 -6px 18px rgba(0, 0, 0, .6); }
+.info .x { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border: 0; background: none; color: var(--dim); font-size: 20px; }
+#ctrl-plan { flex-wrap: nowrap; } #ctrl-plan .btn.small { padding: .3em .45em; font-size: .82em; white-space: nowrap; } #ctrl-plan .btn.go { flex: 1; min-height: 44px; }
 .info .stats { flex: 1; } .info .nm { font-weight: 800; font-size: 1.1em; }
 .pat { display: grid; grid-template-columns: repeat(5, 18px); grid-template-rows: repeat(5, 18px); gap: 2px; flex: none; }
 .pat b { background: #2a241c; border-radius: 3px; } .pat b.c { background: var(--ivory); } .pat b.s { background: #ff6a4e; } .pat b.l { background: #ff6a4e; opacity: .6; } .pat b.j { background: #ffb347; }
@@ -116,9 +118,10 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
       <div class="row" id="m-netlist"></div>
       <button class="btn" id="m-hot">Zu zweit an einem Gerät</button>
       <div class="row"><button class="btn small grow" id="m-intro">Einführung</button><button class="btn small grow" id="m-rules">Regeln</button></div>
-      <div class="row"><button class="btn small grow" id="m-big">Große Schrift: aus</button><button class="btn small grow" id="m-lab">Beschriftung: Kanji</button></div>
+      <div class="row"><button class="btn small grow" id="m-big">Große Schrift: aus</button><button class="btn small grow" id="m-lab">Beschriftung: Kanji</button><button class="btn small grow" id="m-snd">Ton: an</button></div>
       <button class="btn small" id="m-lvl">KI-Stärke: mittel</button>
       <button class="btn small" id="m-hc">Vorgabe zu zweit: keine</button>
+      <button class="btn small" id="m-clock">Rundenuhr online: aus</button>
       <button class="btn small" id="m-react">Reaktionspause: an</button>
       <a class="btn small" href="index.html" style="text-align:center;text-decoration:none">Zurück zum Shogi-Menü</a>
     </div>
@@ -164,9 +167,9 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 <div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
 <div id="cover" class="cover hidden"></div>
 <div id="intro" class="modal hidden" style="z-index:30"></div>
-<script src="js/net.js?v=202610211957"></script>
-<script src="js/armee/engine.js?v=202610211957"></script>
-<script src="js/armee/bot.js?v=202610211957"></script>
-<script src="js/armee/ui.js?v=202610211957"></script>
+<script src="js/net.js?v=202610212015"></script>
+<script src="js/armee/engine.js?v=202610212015"></script>
+<script src="js/armee/bot.js?v=202610212015"></script>
+<script src="js/armee/ui.js?v=202610212015"></script>
 </body>
 </html>

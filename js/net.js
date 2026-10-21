@@ -4,7 +4,7 @@
 var Net = (function () {
   var BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
   var clients = [], room = null, onState = null, onPeer = null, myId = null, lastState = null, statusCb = null;
-  function id() { try { var v = localStorage.getItem('shogiPfad.cid'); if (!v) { v = Math.random().toString(36).slice(2, 10); localStorage.setItem('shogiPfad.cid', v); } return v; } catch (e) { return Math.random().toString(36).slice(2, 10); } }
+  function id() { var q = location.search.match(/[?&]cid=(\w+)/); if (q) return q[1]; /* ?cid= nur zum Testen mit zwei Tabs */ try { var v = localStorage.getItem('shogiPfad.cid'); if (!v) { v = Math.random().toString(36).slice(2, 10); localStorage.setItem('shogiPfad.cid', v); } return v; } catch (e) { return Math.random().toString(36).slice(2, 10); } }
   myId = id();
   function topic(t) { return 'shogipfad/v1/' + room + '/' + t; }
   function code() { var a = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = ''; for (var i = 0; i < 6; i++) s += a[Math.floor(Math.random() * a.length)]; return s; }
@@ -55,5 +55,5 @@ var Net = (function () {
   addEventListener('online', function () { if (room) resync(); });
   function leave() { clients.forEach(function (c) { try { c.end(true); } catch (e) { } }); clients = []; room = null; lastState = null; }
   function ping() { clients.forEach(function (c) { if (c.connected) c.publish(topic('ping'), JSON.stringify({ id: myId, t: Date.now() })); }); }
-  return { connect: connect, publishState: publishState, leave: leave, code: code, ping: ping, resync: resync, me: function () { return myId; }, last: function () { return lastState; }, setLast: function (s) { lastState = s; } };
+  return { connect: connect, publishState: publishState, leave: leave, code: code, ping: ping, resync: resync, me: function () { return myId; }, last: function () { return lastState; }, setLast: function (s) { lastState = s; }, _clients: function () { return clients; } }; // _clients nur für Tests (Netzabbruch simulieren)
 })();
