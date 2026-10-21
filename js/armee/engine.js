@@ -14,11 +14,11 @@
     fu: { n: 'Bauer', k: '歩', cost: 1, hp: 3, atk: 1, mv: 1, w: 5, pat: steps(['f']), pr: 'to' },
     ky: { n: 'Lanze', k: '香', cost: 3, hp: 5, atk: 2, mv: 1, w: 3, pat: lines(['f'], 2), pr: 'ny' },
     ke: { n: 'Springer', k: '桂', cost: 3, hp: 4, atk: 3, mv: 2, w: 3, pat: [{ d: [-1, -2], r: 1, leap: 1 }, { d: [1, -2], r: 1, leap: 1 }], pr: 'nk' },
-    gi: { n: 'Silber', k: '銀', cost: 4, hp: 7, atk: 2, mv: 1, w: 3, pat: steps(['f', 'fl', 'fr', 'bl', 'br']), pr: 'ng' },
+    gi: { n: 'Silber', k: '銀', cost: 4, hp: 8, atk: 2, mv: 1, w: 3, pat: steps(['f', 'fl', 'fr', 'bl', 'br']), pr: 'ng' },
     ki: { n: 'Gold', k: '金', cost: 4, hp: 8, atk: 2, mv: 1, w: 3, pat: GOLD },
     ka: { n: 'Läufer', k: '角', cost: 5, hp: 6, atk: 3, mv: 1, w: 2, pat: lines(['fl', 'fr', 'bl', 'br'], 3, 1), pr: 'um' },
     hi: { n: 'Turm', k: '飛', cost: 6, hp: 8, atk: 3, mv: 1, w: 2, pat: lines(['f', 'b', 'l', 'r'], 3, 1), pr: 'ry' },
-    ou: { n: 'Feldherr', k: '王', cost: 0, hp: 36, atk: 2, mv: 1, w: 0, pat: steps(['f', 'b', 'l', 'r', 'fl', 'fr', 'bl', 'br']) },
+    ou: { n: 'Feldherr', k: '王', cost: 0, hp: 30, atk: 2, mv: 1, w: 0, pat: steps(['f', 'b', 'l', 'r', 'fl', 'fr', 'bl', 'br']) },
     // befördert (betritt die gegnerische Zone): Bonus auf Lebenspunkte/Schaden, neues Muster
     to: { n: 'Bauer+', k: 'と', base: 'fu', hp: 6, atk: 2, mv: 1, pat: GOLD },
     ny: { n: 'Lanze+', k: '杏', base: 'ky', hp: 7, atk: 2, mv: 1, pat: GOLD },
@@ -30,11 +30,12 @@
   var SHOP = ['fu', 'ky', 'ke', 'gi', 'ki', 'ka', 'hi'];
   // Regeln (eine Stelle zum Feintunen)
   var R = {
-    start: 8,            // Gold in Runde 1
-    income: function (round) { return Math.min(12, 5 + round); },
+    start: 10,           // Gold in Runde 1
+    income: function (round) { return Math.min(R.incMax, R.inc0 + Math.floor(round * R.incStep)); },
+    inc0: 5, incStep: 1, incMax: 12,
     offers: 5, reroll: 1,
     up: { max: 2, hp: 2, atk: 1, base: 2, mul: 1, cost: function (t) { return R.up.base + Math.ceil(TYPES[t].cost * R.up.mul); } },
-    ticks: [3, 3],       // Takte je Phase (wenige, damit sich die Schlacht über mehrere Runden zieht)
+    ticks: [2, 3],       // Takte je Phase: kurz, damit Armeen die Runde überleben (Ø 7 statt 4,7 Truppen, Aufholjagden 29 → 40 %)
     heal: 1,             // Lebenspunkte zurück am Rundenende
     pattRound: 12,       // Generalangriff: ab hier rücken alle Truppen vor, Halten gilt nicht mehr (gegen Patt)
     reactDrops: 1,       // Überläufer in der Reaktion
@@ -45,8 +46,12 @@
     reactFree: 1,        // Überläufer in der Reaktion kostenlos (sonst war die Pause in 79 % der Fälle leer, weil das Gold verplant war)
     lossGold: 1,         // Nachschub: Gold je eigener verlorener Truppe in der Runde (Aufholjagden 15 → 25 %)
     lossGoldMax: 6,
+    terrGold: 1,         // Gebiet: +1 Gold je Truppe außerhalb der eigenen 3 Reihen am Rundenende (belohnt Vorrücken, Dauer-Halten kostet Einkommen)
+    terrMax: 3,
     holdArmor: 0,        // Halten: so viel weniger Schaden pro Treffer (mind. 1)
     holdAtk: 1,          // Halten: +1 Schaden pro Schlag (vorher war Halten eine Falle: immer halten gewann 7 %, jetzt 73 % gegen blindes Anstürmen)
+    defectMin: 3,        // nur Truppen ab diesem Preis werden Überläufer (Bauern nicht; vorher ~95 pro Partie, Hand dauernd voll)
+    wall: 0,             // aus: erzeugte Seitenvorteil 55/45 und Bauern-Schwärme;             // Schildwall: Bauer mit eigener Truppe links/rechts nimmt von Fernangriffen so viel weniger Schaden (mind. 1)
     storm: 3,            // Sturm aufs Lager (gegen das zähe Ausspielen: Ø 2,7 → 1,3 Runden, ×4 wäre zu hart). Rundenende: Feldherr ohne eigene Truppen bekommt Schaden = storm × Schaden aller überlebenden Gegner
     startArmy: [['ou', 4, 8], ['fu', 3, 6], ['fu', 5, 6], ['ky', 4, 7]]
   };
@@ -179,13 +184,14 @@
       tg.sort(function (a, b) { return (a.hp - b.hp) || ((a.t === 'ou') ? -1 : (b.t === 'ou') ? 1 : 0) || (a.id - b.id); });
       var t = tg[0], d = u.atk + (holds(g, u) && u.t !== 'ou' ? R.holdAtk : 0);
       if (holds(g, t) && t.t !== 'ou') d = Math.max(1, d - R.holdArmor);
+      if (R.wall && (t.t === 'fu' || t.t === 'to') && Math.max(Math.abs(t.x - u.x), Math.abs(t.y - u.y)) > 1 && [-1, 1].some(function (dx) { var n = at(g, t.x + dx, t.y); return n && n.p === t.p; })) d = Math.max(1, d - R.wall);
       dmg[t.id] = (dmg[t.id] || 0) + d; attacked[u.id] = 1; ev.push({ e: 'atk', id: u.id, to: t.id, x: u.x, y: u.y, tx: t.x, ty: t.y, dmg: d });
     });
     var died = [];
     alive.forEach(function (u) { if (dmg[u.id]) { u.hp -= dmg[u.id]; if (u.hp <= 0) died.push(u); } });
     died.forEach(function (u) {
       ev.push({ e: 'die', id: u.id, x: u.x, y: u.y, t: u.t, p: u.p }); (g.lost = g.lost || [0, 0])[u.p]++; // alte Spielstände haben kein lost
-      if (u.t !== 'ou') { var b = TYPES[u.t].base || u.t; var h = g.hand[1 - u.p]; h.push(b); if (h.length > R.handMax) { var lo = 0; h.forEach(function (x, k) { if (TYPES[x].cost < TYPES[h[lo]].cost) lo = k; }); ev.push({ e: 'flee', t: h.splice(lo, 1)[0], p: 1 - u.p }); } ev.push({ e: 'defect', t: b, p: 1 - u.p }); }
+      if (u.t !== 'ou' && TYPES[TYPES[u.t].base || u.t].cost >= R.defectMin) { var b = TYPES[u.t].base || u.t; var h = g.hand[1 - u.p]; h.push(b); if (h.length > R.handMax) { var lo = 0; h.forEach(function (x, k) { if (TYPES[x].cost < TYPES[h[lo]].cost) lo = k; }); ev.push({ e: 'flee', t: h.splice(lo, 1)[0], p: 1 - u.p }); } ev.push({ e: 'defect', t: b, p: 1 - u.p }); }
     });
     var kings = [0, 1].map(function (p) { return g.units.some(function (u) { return u.p === p && u.t === 'ou' && u.hp > 0; }); });
     if (!g.noKing && (!kings[0] || !kings[1])) { g.over = !kings[0] && !kings[1] ? 'remis' : kings[0] ? 0 : 1; ev.push({ e: 'end', w: g.over }); return; }
@@ -193,7 +199,7 @@
     var movers = alive.filter(function (u) { return u.hp > 0 && !attacked[u.id] && !holds(g, u); });
     var occ = {}; g.units.forEach(function (u) { if (u.hp > 0) occ[u.y * N + u.x] = u.id; });
     var plans = movers.map(function (u) { var p = plan(g, u, occ); return { u: u, path: p }; }).filter(function (m) { return m.path && m.path.length; });
-    var first = (g.tk = (g.tk || 0) + 1) % 2; // wer bei Gleichstand zuerst zieht, wechselt jeden Takt
+    var first = hash(g.seed || 1, g.round, (g.tk = (g.tk || 0) + 1), 77) & 1; // wer bei Gleichstand zuerst zieht: Münzwurf je Takt (strikter Wechsel gab einer Seite 54 %)
     plans.sort(function (a, b) { return (a.path.length - b.path.length) || ((a.u.p === first ? 0 : 1) - (b.u.p === first ? 0 : 1)) || (a.u.id - b.u.id); });
     plans.forEach(function (m) {
       var u = m.u, n = Math.min(TYPES[u.t].mv, m.path.length), fx = u.x, fy = u.y;
@@ -223,8 +229,10 @@
     var kings = [0, 1].map(function (p) { return g.units.some(function (u) { return u.p === p && u.t === 'ou' && u.hp > 0; }); });
     if (!kings[0] || !kings[1]) { g.over = !kings[0] && !kings[1] ? 'remis' : kings[0] ? 0 : 1; ev.push({ e: 'end', w: g.over }); return ev; }
     g.units.forEach(function (u) { if (u.hp < u.mhp) u.hp = Math.min(u.mhp, u.hp + (u.t === 'ou' ? R.kingHeal : R.heal)); });
-    g.round++; g.gold = g.gold.map(function (v, p) { return Math.max(0, v + R.income(g.round) + (g.bonus ? g.bonus[p] : 0) + Math.min(R.lossGoldMax, R.lossGold * (g.lost ? g.lost[p] : 0))); });
-    g.lost = [0, 0]; // bonus: Vorgabe bzw. KI-Stärke g.rerolls = [0, 0];
+    var terr = [0, 1].map(function (p) { return Math.min(R.terrMax, R.terrGold * g.units.filter(function (u) { return u.p === p && u.t !== 'ou' && !ownRows(p, u.y, 3); }).length); });
+    g.terr = terr;
+    g.round++; g.gold = g.gold.map(function (v, p) { return Math.max(0, v + terr[p] + R.income(g.round) + (g.bonus ? g.bonus[p] : 0) + Math.min(R.lossGoldMax, R.lossGold * (g.lost ? g.lost[p] : 0))); });
+    g.lost = [0, 0]; g.rerolls = [0, 0]; // bonus: Vorgabe bzw. KI-Stärke
     g.offers = [makeOffers(g, 0), makeOffers(g, 1)];
     return ev;
   }

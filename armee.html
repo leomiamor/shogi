@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
 <meta name="theme-color" content="#0b0a09">
-<title>Armee (Prototyp)</title>
+<title>Armee</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@600;900&family=Cinzel:wght@600;700&display=swap">
 <style>
@@ -38,6 +38,7 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 .cell.zone0 { background: #d1a865; } .cell.zone1 { background: #bf9150; }
 .cell.ok { background: #8fd18b; box-shadow: inset 0 0 0 2px #2f8a3a; }
 .cell.hit { box-shadow: inset 0 0 0 3px rgba(255, 70, 50, .85); }
+.cell.danger { background-image: linear-gradient(rgba(255, 60, 40, .22), rgba(255, 60, 40, .22)); }
 .cell.reach { background-image: radial-gradient(circle, rgba(255, 70, 50, .45) 20%, transparent 24%); }
 #units, #fx { position: absolute; inset: 3px; pointer-events: none; }
 .u { position: absolute; width: calc(100% / 9); height: calc(100% / 9); transition: transform var(--mv, 300ms) ease, opacity .35s; display: flex; align-items: center; justify-content: center; }
@@ -57,8 +58,17 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 .u.sel .k { outline: none; filter: drop-shadow(0 0 0 #fff) brightness(1.15); }
 .u.sel::after { content: ''; position: absolute; inset: 1px; border: 3px solid #fff; border-radius: 7px; box-shadow: 0 0 8px #fff; z-index: 3; }
 .u.new::before { content: 'neu'; position: absolute; top: -2%; left: 50%; transform: translateX(-50%); z-index: 2; font-size: calc(var(--cell) * .2); font-weight: 800; background: var(--good); color: #062; border-radius: 4px; padding: 0 3px; line-height: 1.2; }
-.u.dead { opacity: 0; }
-.u.flash .k { filter: brightness(2.2) saturate(.3); }
+.u.dead { opacity: 0; transform-origin: center; }
+.u.dead .k { scale: .5; rotate: 25deg; transition: scale .4s, rotate .4s; }
+.u .k { transition: translate var(--mv, 300ms) cubic-bezier(.3, 1.6, .5, 1); }
+.u.bump .k { translate: var(--bx, 0) var(--by, 0); }
+@keyframes shake { 0%, 100% { margin-left: 0; } 25% { margin-left: -7%; } 75% { margin-left: 7%; } }
+.u.promo .k { animation: glow 1.2s; }
+@keyframes glow { 0% { filter: brightness(2.5) drop-shadow(0 0 10px #ffd76a); } 100% { filter: none; } }
+.puff { position: absolute; width: calc(var(--cell) * .9); height: calc(var(--cell) * .9); transform: translate(-50%, -50%) scale(.3); border-radius: 50%; background: radial-gradient(circle, rgba(230, 210, 170, .85), rgba(120, 100, 70, .35) 55%, transparent 70%); animation: puff .8s ease-out forwards; pointer-events: none; }
+.puff.gold { background: radial-gradient(circle, rgba(255, 225, 120, .95), rgba(255, 180, 40, .4) 55%, transparent 70%); }
+@keyframes puff { to { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } }
+.u.flash .k { filter: brightness(2.2) saturate(.3); animation: shake .32s; }
 .dmg { position: absolute; font-weight: 900; color: #ff4b3e; text-shadow: 0 0 3px #000, 0 0 3px #000; font-size: calc(var(--cell) * .38); animation: up .9s forwards; pointer-events: none; transform: translate(-50%, -50%); }
 @keyframes up { to { margin-top: calc(var(--cell) * -.6); opacity: 0; } }
 #fx svg { width: 100%; height: 100%; position: absolute; inset: 0; overflow: visible; }
@@ -85,6 +95,12 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 .box ul { padding-left: 1.2em; margin: .4em 0; } .box li { margin: .25em 0; }
 .cover { position: fixed; inset: 0; background: var(--ink); z-index: 15; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 20px; }
 .sum div { margin: 3px 0; }
+#intro .box { background: var(--panel); border: 1px solid var(--au); border-radius: 14px; padding: 18px; max-width: 460px; width: 100%; max-height: 92vh; overflow: auto; }
+.big-k { font: 900 64px/1 'Noto Serif JP', serif; color: var(--au); text-align: center; margin: 4px 0 -4px; }
+.dots { display: flex; gap: 6px; justify-content: center; margin-top: 12px; } .dots i { width: 8px; height: 8px; border-radius: 50%; background: #4a3f30; } .dots i.on { background: var(--au); }
+.mini { display: grid; grid-template-columns: repeat(5, 26px); gap: 2px; margin: 8px auto; width: max-content; background: #6b4f2a; padding: 3px; border-radius: 4px; }
+.mini b { background: #c79c5a; } .mini b.o { background: var(--p0); } .mini b.x { background: var(--p1); } .mini b.z { background: #8fd18b; } .mini b.k { background: #fff; box-shadow: inset 0 0 0 4px var(--p0); } .mini b:first-child ~ b.k:nth-child(-n+5) { box-shadow: inset 0 0 0 4px var(--p1); }
+.sides { margin: -4px 0 6px; line-height: 1.35; font-size: .85em; }
 .p0c { color: var(--p0); font-weight: 800; } .p1c { color: var(--p1); font-weight: 800; }
 </style>
 </head>
@@ -92,14 +108,17 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 <div id="app">
   <section id="scr-menu">
     <h1>Armee</h1>
-    <p class="note" style="text-align:center">Prototyp · Grundregeln · Kaufen, aufstellen, die Schlacht läuft von selbst</p>
+    <p class="note" style="text-align:center">Kaufen, aufstellen, Befehle geben – die Schlacht läuft von selbst</p>
     <div class="menu">
       <button class="btn go hidden" id="m-resume">Weiterspielen</button>
       <button class="btn" id="m-ki">Übungspartie gegen KI</button>
+      <button class="btn" id="m-net">Online gegen ein zweites Handy</button>
+      <div class="row" id="m-netlist"></div>
       <button class="btn" id="m-hot">Zu zweit an einem Gerät</button>
-      <button class="btn" id="m-rules">Regeln</button>
+      <div class="row"><button class="btn small grow" id="m-intro">Einführung</button><button class="btn small grow" id="m-rules">Regeln</button></div>
       <div class="row"><button class="btn small grow" id="m-big">Große Schrift: aus</button><button class="btn small grow" id="m-lab">Beschriftung: Kanji</button></div>
-      <button class="btn small" id="m-hc">KI / Spieler 2: gleich</button>
+      <button class="btn small" id="m-lvl">KI-Stärke: mittel</button>
+      <button class="btn small" id="m-hc">Vorgabe zu zweit: keine</button>
       <button class="btn small" id="m-react">Reaktionspause: an</button>
       <a class="btn small" href="index.html" style="text-align:center;text-decoration:none">Zurück zum Shogi-Menü</a>
     </div>
@@ -113,6 +132,8 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
       <button class="btn small" id="g-help">?</button>
     </div>
     <div class="stage" id="g-stage">Planung</div>
+    <div class="sides note hidden" id="g-net"></div>
+    <div class="sides note" id="g-sides"></div>
     <div id="boardWrap"><div id="board"></div><div id="units"></div><div id="fx"></div></div>
 
     <div id="pane-plan">
@@ -125,6 +146,7 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
     <div id="info" class="info hidden"></div>
     <div class="ctrl" id="ctrl-plan" style="position:sticky;bottom:0;background:var(--ink);padding:6px 0;z-index:5">
       <button class="btn small" id="b-undo">↶ Zurück</button>
+      <button class="btn small" id="b-danger" title="Felder, die der Gegner angreifen kann">⚠ Gefahr</button>
       <button class="btn small" id="b-probe">Probelauf</button>
       <button class="btn go" id="b-done">Fertig</button>
     </div>
@@ -141,8 +163,10 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 </div>
 <div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
 <div id="cover" class="cover hidden"></div>
-<script src="js/armee/engine.js?v=202610211835"></script>
-<script src="js/armee/bot.js?v=202610211835"></script>
-<script src="js/armee/ui.js?v=202610211835"></script>
+<div id="intro" class="modal hidden" style="z-index:30"></div>
+<script src="js/net.js?v=202610211957"></script>
+<script src="js/armee/engine.js?v=202610211957"></script>
+<script src="js/armee/bot.js?v=202610211957"></script>
+<script src="js/armee/ui.js?v=202610211957"></script>
 </body>
 </html>
