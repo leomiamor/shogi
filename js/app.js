@@ -17,6 +17,7 @@
     if (!d.settings.moodV) { if (!d.settings.fieldMood || d.settings.fieldMood === 'feldzug') d.settings.fieldMood = 'kontinent'; d.settings.moodV = 1; } // Kontinent ist neuer Standard (einmalig, 19.10.)
     if (d.settings.moodV < 2) { if (!d.settings.fieldMood || d.settings.fieldMood === 'kontinent') d.settings.fieldMood = 'pass'; d.settings.moodV = 2; } // wieder Gebirgspass wie anfangs (Wunsch 19.10.)
     if (d.settings.moodV < 3) { if (d.settings.fieldMood === 'feldzug' || d.settings.fieldMood === 'kontinent') d.settings.fieldMood = 'pass'; d.settings.moodV = 3; } // Grenzland und Kontinent nicht mehr wählbar (Wunsch 19.10.)
+    d.settings.army = false; // Armee-Ansicht nicht mehr wählbar (21.10.): gespeichertes „Armee“ fällt auf Figuren zurück; der künftige Armee-Spielmodus setzt es nur für seine Partie
     d.xp = d.xp || 0; d.lessons = d.lessons || {}; d.puzzles = d.puzzles || {}; d.stats = d.stats || { w: 0, l: 0 }; d.duels = d.duels || [];
     d.rating = d.rating || { r: Rating.START.never, rd: 350, n: 0, hist: [] }; d.prating = d.prating || { r: 800, rd: 350, n: 0 };
     d.titles = d.titles || []; d.skins = d.skins || ['classic']; d.cards = d.cards || {}; d.charges = d.charges || 0; d.losses = d.losses || {}; d.easy = d.easy || {};
@@ -379,7 +380,7 @@
   }
 
   // ---------- 3D-Ansicht: Steine / Steine mit Figur / Armee ----------
-  var VIEW3D = [['steine', 'Steine'], ['figuren', 'Figuren'], ['armee', 'Armee']];
+  var VIEW3D = [['steine', 'Steine'], ['figuren', 'Figuren']]; // Armee ist keine Grafik-Ansicht mehr, sondern wird ein eigener Spielmodus (Wunsch 21.10.)
   function view3d() { return S.army ? 'armee' : S.models === false ? 'steine' : 'figuren'; }
   function setView3d(v) { S.models = v !== 'steine'; S.army = v === 'armee'; if (v === 'armee') S.quality = 'high'; }
   function view3dSeg() {
