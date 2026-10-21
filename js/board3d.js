@@ -130,6 +130,7 @@ function Board3D(root, theme, settings) {
   var last = performance.now(), calm = 0;
   function loop(now) {
     if (!self.alive) return;
+    if (self.paused) { self._loopOff = true; return; } // pausiert (z. B. Armee-Modus beim Planen): keine Bilder, kein Akku
     requestAnimationFrame(loop);
     // Handy: 30 fps bei Bewegung (Züge, Kampf, Kamera), 20 fps in Ruhe; PC ungedeckelt
     if (mob) { if (self.tweens.length || now - (self.lastInput || 0) < 400 || Math.abs(self.orbit.theta - self.orbit.thetaGoal) > 1e-3) calm = now; if (now - last < (now - calm > 1500 ? 50 : 33.3) - 2) return; }
@@ -137,6 +138,7 @@ function Board3D(root, theme, settings) {
     self.update(now, dt);
     r.render(scene, cam);
   }
+  this._loop = loop;
   requestAnimationFrame(loop);
 
   // ---------- Helfer (Szene) ----------
@@ -3185,6 +3187,7 @@ Board3D.prototype.fx = function (name, sq) {
   if (name === 'mate') { this.shakeAmt = 0.6; var self = this; [0xffd76a, 0xff5a4e, 0x46d7ff, 0xffffff].forEach(function (c, i) { setTimeout(function () { self.emit(p.x, self.BT + 0.5, p.z, c, 120, 6, 1.6); }, i * 150); }); }
   if (name === 'sparkle') this.emit(p.x, this.BT + 0.4, p.z, 0xffd76a, 30, 2, 1.2);
 };
+Board3D.prototype.setPaused = function (p) { this.paused = !!p; if (!p && this._loopOff && this.alive) { this._loopOff = false; requestAnimationFrame(this._loop); } };
 Board3D.prototype.destroy = function () {
   this.alive = false; this._ro && this._ro.disconnect();
   this.renderer.dispose(); this.renderer.forceContextLoss && this.renderer.forceContextLoss();

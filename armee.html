@@ -41,6 +41,19 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 .cell.danger { background-image: linear-gradient(rgba(255, 60, 40, .22), rgba(255, 60, 40, .22)); }
 .cell.reach { background-image: radial-gradient(circle, rgba(255, 70, 50, .45) 20%, transparent 24%); }
 #units, #fx { position: absolute; inset: 3px; pointer-events: none; }
+/* 3D-Schlachtfeld (js/armee/view3d.js): liegt in der Schlacht über dem Brett, etwas höher als breit */
+#boardWrap.d3 { aspect-ratio: 4 / 5; }
+#v3d { position: absolute; inset: 0; z-index: 4; border-radius: 6px; overflow: hidden; background: #2a2418; }
+#v3d .v3-gl, #v3d .v3-ov, #v3d .v3-still { position: absolute; inset: 0; }
+#v3d .v3-still { width: 100%; height: 100%; }
+#v3d .v3-ov { pointer-events: none; }
+.v3-hp { position: absolute; left: 0; top: 0; width: 24px; height: 4px; background: rgba(0,0,0,.55); border-radius: 2px; will-change: transform; }
+.v3-hp.king { width: 38px; height: 5px; }
+.v3-hp i { display: block; height: 100%; border-radius: 2px; transition: width .4s; }
+.v3-hp.p0 i { background: #ff9a3c; } .v3-hp.p1 i { background: #5cb8ff; }
+.v3-dmg { position: absolute; transform: translate(-50%, -50%); font: 700 15px sans-serif; color: #ffe0a0; text-shadow: 0 1px 3px #000, 0 0 2px #000; animation: v3up 1.1s ease-out forwards; }
+.v3-dmg.promo { color: #ffd36a; font-size: 14px; }
+@keyframes v3up { to { transform: translate(-50%, -190%); opacity: 0; } }
 .u { position: absolute; width: calc(100% / 9); height: calc(100% / 9); transition: transform var(--mv, 300ms) ease, opacity .35s; display: flex; align-items: center; justify-content: center; }
 .u .k { position: relative; width: 82%; height: 84%; background: linear-gradient(180deg, var(--wood), var(--wood2)); clip-path: polygon(50% 0, 86% 14%, 100% 100%, 0 100%, 14% 14%); display: flex; align-items: center; justify-content: center; }
 .u.down .k { transform: rotate(180deg); }
@@ -122,6 +135,7 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
       <button class="btn small" id="m-lvl">KI-Stärke: mittel</button>
       <button class="btn small" id="m-hc">Vorgabe zu zweit: keine</button>
       <button class="btn small" id="m-clock">Rundenuhr online: aus</button>
+      <button class="btn small" id="m-3d">3D-Schlachtfeld: an</button>
       <button class="btn small" id="m-react">Reaktionspause: an</button>
       <a class="btn small" href="index.html" style="text-align:center;text-decoration:none">Zurück zum Shogi-Menü</a>
     </div>
@@ -137,7 +151,7 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
     <div class="stage" id="g-stage">Planung</div>
     <div class="sides note hidden" id="g-net"></div>
     <div class="sides note" id="g-sides"></div>
-    <div id="boardWrap"><div id="board"></div><div id="units"></div><div id="fx"></div></div>
+    <div id="boardWrap"><div id="board"></div><div id="units"></div><div id="fx"></div><div id="v3d" class="hidden"></div></div>
 
     <div id="pane-plan">
       <div class="lbl" id="lbl-shop">Laden <span class="note">(tippen, dann Feld in deinen 3 Reihen)</span></div>
@@ -167,9 +181,12 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 <div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
 <div id="cover" class="cover hidden"></div>
 <div id="intro" class="modal hidden" style="z-index:30"></div>
-<script src="js/net.js?v=202610212015"></script>
-<script src="js/armee/engine.js?v=202610212015"></script>
-<script src="js/armee/bot.js?v=202610212015"></script>
-<script src="js/armee/ui.js?v=202610212015"></script>
+<script type="importmap">{ "imports": { "three": "./js/vendor/three-shim.js" } }</script>
+<script>window.Models = { ready: function (cb) { (window.__modelsWaiting = window.__modelsWaiting || []).push(cb); } };</script>
+<script src="js/net.js?v=202610212214"></script>
+<script src="js/armee/engine.js?v=202610212214"></script>
+<script src="js/armee/bot.js?v=202610212214"></script>
+<script src="js/armee/view3d.js?v=202610212214"></script>
+<script src="js/armee/ui.js?v=202610212214"></script>
 </body>
 </html>

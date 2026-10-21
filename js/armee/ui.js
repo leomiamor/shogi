@@ -7,8 +7,8 @@
   var SHORT = { fu: 'Bau', ky: 'Lan', ke: 'Spr', gi: 'Sil', ki: 'Gol', ka: 'Läu', hi: 'Tur', ou: 'Herr', to: 'Bau+', ny: 'Lan+', nk: 'Spr+', ng: 'Sil+', um: 'Pfd', ry: 'Dra' };
   var SAVE = 'armee.v1';
   var $ = function (s) { return document.querySelector(s); };
-  var opt = { big: false, lab: 'kanji', react: true, hc: 0, danger: true, lvl: 1, snd: true, clock: 0 }; // hc: Gold pro Runde für die KI bzw. Spieler 2 (−2 … +2)
-  try { var o0 = JSON.parse(localStorage.getItem('armee.opt') || '{}'); if (o0.big) opt.big = true; if (o0.lab) opt.lab = o0.lab; if (o0.react === false) opt.react = false; if (o0.hc) opt.hc = o0.hc; if (o0.danger === false) opt.danger = false; if (o0.lvl != null) opt.lvl = o0.lvl; if (o0.snd === false) opt.snd = false; if (o0.clock) opt.clock = o0.clock; } catch (e) { }
+  var opt = { big: false, lab: 'kanji', react: true, hc: 0, danger: true, lvl: 1, snd: true, clock: 0, d3: !!(window.AK3D && AK3D.supported()) }; // hc: Gold pro Runde für die KI bzw. Spieler 2 (−2 … +2)
+  try { var o0 = JSON.parse(localStorage.getItem('armee.opt') || '{}'); if (o0.big) opt.big = true; if (o0.lab) opt.lab = o0.lab; if (o0.react === false) opt.react = false; if (o0.hc) opt.hc = o0.hc; if (o0.danger === false) opt.danger = false; if (o0.lvl != null) opt.lvl = o0.lvl; if (o0.snd === false) opt.snd = false; if (o0.clock) opt.clock = o0.clock; if (o0.d3 === false) opt.d3 = false; } catch (e) { }
   function saveOpt() { try { localStorage.setItem('armee.opt', JSON.stringify(opt)); } catch (e) { } }
 
   // ---------- Ton: wenige kurze Samples (CC0, snd/credits.txt), laden erst bei der ersten Schlacht ----------
@@ -55,8 +55,12 @@
     S = { mode: d.mode, lvl: d.lvl != null ? d.lvl : 1, g: d.g, acts: [[], []], reacts: [[], []], viewer: 0, stage: 'plan', sel: null, log: d.log || [] };
     show('game'); beginPlan(0);
   }
+  // 3D-Schlachtfeld: lädt im Hintergrund, sobald eine Partie offen ist; bis dahin läuft die Schlacht in 2D
+  function load3d() { if (opt.d3 && window.AK3D && AK3D.state === 'off') AK3D.load().catch(function () { }); }
+  if (window.AK3D) AK3D.onSlow = function () { opt.d3 = false; saveOpt(); applyOpt(); AK3D.hide(); toast('3D ruckelt auf diesem Gerät – Schlacht wieder in 2D (im Menü einschaltbar)'); };
   function show(w) {
     $('#scr-menu').classList.toggle('hidden', w !== 'menu'); $('#scr-game').classList.toggle('hidden', w !== 'game');
+    $('#boardWrap').classList.remove('d3'); if (window.AK3D) AK3D.hide(); if (w === 'game') load3d();
     if (w === 'menu') { $('#m-resume').classList.toggle('hidden', !hasSave()); $('#m-netlist').innerHTML = netList().map(function (x) { return '<button class="btn small" data-net="' + x.code + '">↻ Online-Partie ' + x.code + '</button>'; }).join(''); }
   }
   function hasSave() { try { return !!localStorage.getItem(SAVE); } catch (e) { return false; } }
@@ -162,6 +166,7 @@
   }
   function render() {
     if (!S) return;
+    if (S.stage !== 'battle' && S.d3) { if (S.stage === 'over') AK3D.freeze(5000); else { S.d3 = false; AK3D.hide(); $('#boardWrap').classList.remove('d3'); } } // Partieende: Schlachtfeld bleibt stehen, Bild friert danach ein
     if (!S.g) { $('#g-stage').textContent = 'Verbinde mit Partie ' + S.net.code + ' …'; ['#pane-plan', '#ctrl-plan', '#ctrl-play', '#info'].forEach(function (q) { $(q).classList.add('hidden'); }); return; }
     var g = S.g, p = S.viewer, planning = S.stage === 'plan' || S.stage === 'react';
     var w = planning ? view() : S.stage === 'wait' ? waitView() : S.disp || g;
@@ -352,6 +357,8 @@
     SND.init(); SND.load(); if (!S.probe) SND.play('drum');
     if (navigator.vibrate && opt.snd && ph === 0 && !S.probe && S.mode === 'net') try { navigator.vibrate(60); } catch (e) { }
     render(); drawBoard(S.disp, {});
+    var on3 = opt.d3 && !S.probe && window.AK3D && AK3D.state === 'ready'; $('#boardWrap').classList.toggle('d3', !!on3); // erst Größe, dann Kamera
+    S.d3 = on3 && AK3D.show($('#v3d'), S.disp, flipped(), PL.speed); if (!S.d3) $('#boardWrap').classList.remove('d3');
     var i = 0; S.roundLoss = S.roundLoss || [0, 0];
     var lbl = (S.probe ? 'Probe ' : '') + 'Teil ' + (ph + 1);
     if (!ticks.length || ticks.every(function (e) { return !e.length; })) S.log.push({ t: lbl, s: 'Niemand in Reichweite, keiner rückt vor.' });
@@ -365,10 +372,10 @@
     PL.fin = function () { // Überspringen: Rest ohne Animation
       clearTimeout(PL.timer);
       while (i < ticks.length) { var ev = ticks[i++]; applyEv(S.disp, ev, lbl + ', Takt ' + i); }
-      drawBoard(S.disp, {}); finish();
+      drawBoard(S.disp, {}); if (S.d3) AK3D.sync(S.disp); finish();
     };
     $('#p-pause').textContent = PL.paused ? '▶ Weiter' : '⏸ Pause';
-    PL.timer = setTimeout(next, 500 / PL.speed);
+    PL.timer = setTimeout(next, 500 / PL.speed + (S.d3 ? AK3D.introMs || 0 : 0)); // 3D: Nachschub erst ankommen lassen
   }
   // Namen mit richtigem Artikel: „Dein Turm“, „Deine Lanze“, „KI-Turm“, „Roter Turm“
   function nm(u) {
@@ -408,6 +415,7 @@
       var au = U.querySelector('[data-id="' + e.id + '"]'); if (au) { var dx = Math.sign(b2(e).x), dy = Math.sign(b2(e).y); au.style.setProperty('--bx', dx * 22 + '%'); au.style.setProperty('--by', dy * 22 + '%'); au.classList.add('bump'); }
     });
     applyEv(d, ev, lbl);
+    if (S.d3) AK3D.tick(ev, d);
     var na = 0; ev.forEach(function (e) { if (e.e === 'atk' && na < 3) { SND.play(na % 2 ? 'hit' : 'clash', na * 0.07); na++; } });
     if (ev.some(function (e) { return e.e === 'die'; })) SND.play('die', 0.25);
     if (ev.some(function (e) { return e.e === 'promo'; })) SND.play('promo', 0.3);
@@ -427,7 +435,7 @@
   }
   $('#p-pause').onclick = function () { PL.paused = !PL.paused; this.textContent = PL.paused ? '▶ Weiter' : '⏸ Pause'; if (!PL.paused && PL.step) PL.step(); };
   $('#p-step').onclick = function () { PL.paused = true; $('#p-pause').textContent = '▶ Weiter'; if (PL.step) PL.step(); };
-  $('#p-speed').onclick = function () { PL.speed = PL.speed === 1 ? 2 : PL.speed === 2 ? 0.5 : 1; this.textContent = 'Tempo ' + (PL.speed === 0.5 ? '½' : PL.speed) + '×'; };
+  $('#p-speed').onclick = function () { PL.speed = PL.speed === 1 ? 2 : PL.speed === 2 ? 0.5 : 1; this.textContent = 'Tempo ' + (PL.speed === 0.5 ? '½' : PL.speed) + '×'; if (window.AK3D) AK3D.setSpeed(PL.speed); };
   $('#p-skip').onclick = function () { if (PL.fin) PL.fin(); };
 
   // ---------- Dialoge ----------
@@ -637,9 +645,11 @@
   function applyOpt() { document.documentElement.classList.toggle('big', opt.big); $('#m-big').textContent = 'Große Schrift: ' + (opt.big ? 'an' : 'aus'); $('#m-lab').textContent = 'Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch'); $('#m-react').textContent = 'Reaktionspause: ' + (opt.react ? 'an' : 'aus (einfacher)');
     $('#m-hc').textContent = 'Vorgabe zu zweit: ' + ({ '-2': 'Spieler 2 −2 Gold/Runde', '-1': 'Spieler 2 −1 Gold/Runde', '0': 'keine', '1': 'Spieler 2 +1 Gold/Runde', '2': 'Spieler 2 +2 Gold/Runde' })[opt.hc];
     $('#m-snd').textContent = 'Ton: ' + (opt.snd ? 'an' : 'aus');
+    $('#m-3d').textContent = '3D-Schlachtfeld: ' + (opt.d3 ? 'an' : 'aus (2D)'); $('#m-3d').classList.toggle('hidden', !(window.AK3D && AK3D.supported()));
     $('#m-clock').textContent = 'Rundenuhr online: ' + (opt.clock ? opt.clock / 60 + ' Min. pro Planung' : 'aus (ohne Zeitdruck)');
     $('#m-lvl').textContent = 'KI-Stärke: ' + ['leicht', 'mittel', 'schwer'][opt.lvl]; }
   $('#m-clock').onclick = function () { opt.clock = opt.clock === 0 ? 120 : opt.clock === 120 ? 300 : 0; saveOpt(); applyOpt(); };
+  $('#m-3d').onclick = function () { opt.d3 = !opt.d3; saveOpt(); applyOpt(); };
   $('#m-snd').onclick = function () { opt.snd = !opt.snd; saveOpt(); applyOpt(); if (opt.snd) SND.init(); };
   $('#m-lvl').onclick = function () { opt.lvl = (opt.lvl + 1) % 3; saveOpt(); applyOpt(); };
   $('#m-ki').onclick = function () { newMatch('ki'); };
@@ -654,8 +664,9 @@
   $('#m-react').onclick = function () { opt.react = !opt.react; saveOpt(); applyOpt(); };
   $('#m-lab').onclick = function () { opt.lab = opt.lab === 'kanji' ? 'de' : 'kanji'; saveOpt(); applyOpt(); };
   $('#g-menu').onclick = function () {
-    modal('<h2>Menü</h2><p>Die Partie wird zu Beginn jeder Runde gespeichert.</p><div class="row"><button class="btn small" id="o-big">Große Schrift: ' + (opt.big ? 'an' : 'aus') + '</button><button class="btn small" id="o-lab">Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch') + '</button><button class="btn small" id="o-snd">Ton: ' + (opt.snd ? 'an' : 'aus') + '</button></div>' + (S && S.g && S.g.over == null && (S.stage === 'plan' || S.stage === 'react' || S.stage === 'wait') ? '<div class="row" style="margin-top:10px"><button class="btn small" id="o-resign">🏳 Aufgeben (' + names(S.viewer) + ')</button></div>' : ''), 'Zurück zum Spiel', null, 'Zum Hauptmenü');
+    modal('<h2>Menü</h2><p>Die Partie wird zu Beginn jeder Runde gespeichert.</p><div class="row"><button class="btn small" id="o-big">Große Schrift: ' + (opt.big ? 'an' : 'aus') + '</button><button class="btn small" id="o-lab">Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch') + '</button><button class="btn small" id="o-snd">Ton: ' + (opt.snd ? 'an' : 'aus') + '</button><button class="btn small" id="o-3d">3D: ' + (opt.d3 ? 'an' : 'aus') + '</button></div>' + (S && S.g && S.g.over == null && (S.stage === 'plan' || S.stage === 'react' || S.stage === 'wait') ? '<div class="row" style="margin-top:10px"><button class="btn small" id="o-resign">🏳 Aufgeben (' + names(S.viewer) + ')</button></div>' : ''), 'Zurück zum Spiel', null, 'Zum Hauptmenü');
     var rs = $('#o-resign'); if (rs) rs.onclick = function () { confirmBox('Wirklich aufgeben?', (S.mode === 'net' ? 'Du gibst' : names(S.viewer) + ' gibt') + ' die Partie verloren.', 'Aufgeben', function () { if (S.mode === 'net') return netSubmit('resign', []); S.g.over = 1 - S.viewer; S.resigned = S.viewer; gameOver(); }); };
+    $('#o-3d').onclick = function () { opt.d3 = !opt.d3; saveOpt(); applyOpt(); load3d(); this.textContent = '3D: ' + (opt.d3 ? 'an' : 'aus'); };
     $('#o-snd').onclick = function () { opt.snd = !opt.snd; saveOpt(); applyOpt(); if (opt.snd) SND.init(); this.textContent = 'Ton: ' + (opt.snd ? 'an' : 'aus'); };
     $('#o-big').onclick = function () { opt.big = !opt.big; saveOpt(); applyOpt(); this.textContent = 'Große Schrift: ' + (opt.big ? 'an' : 'aus'); render(); };
     $('#o-lab').onclick = function () { opt.lab = opt.lab === 'kanji' ? 'de' : 'kanji'; saveOpt(); applyOpt(); this.textContent = 'Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch'); render(); };
