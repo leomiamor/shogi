@@ -36,16 +36,23 @@
     up: { max: 2, hp: 2, atk: 1, base: 2, mul: 1, cost: function (t) { return R.up.base + Math.ceil(TYPES[t].cost * R.up.mul); } },
     ticks: [3, 3],       // Takte je Phase (wenige, damit sich die Schlacht über mehrere Runden zieht)
     heal: 1,             // Lebenspunkte zurück am Rundenende
-    pattRound: 12,       // ab hier rücken die Feldherren jede Runde 1 Feld vor
+    pattRound: 12,       // Generalangriff: ab hier rücken alle Truppen vor, Halten gilt nicht mehr (gegen Patt)
     reactDrops: 1,       // Überläufer in der Reaktion
     dropMax: 2,          // Überläufer pro Planung
     dropCost: function (t) { return Math.ceil(TYPES[t].cost / 2); }, // halber Preis (Shogi-Gefühl, aber kein Schneeball)
     handMax: 4,          // mehr Überläufer laufen davon (älteste zuerst)
     kingHeal: 2,
+    reactFree: 1,        // Überläufer in der Reaktion kostenlos (sonst war die Pause in 79 % der Fälle leer, weil das Gold verplant war)
+    lossGold: 1,         // Nachschub: Gold je eigener verlorener Truppe in der Runde (Aufholjagden 15 → 25 %)
+    lossGoldMax: 6,
+    holdArmor: 0,        // Halten: so viel weniger Schaden pro Treffer (mind. 1)
+    holdAtk: 1,          // Halten: +1 Schaden pro Schlag (vorher war Halten eine Falle: immer halten gewann 7 %, jetzt 73 % gegen blindes Anstürmen)
+    storm: 3,            // Sturm aufs Lager (gegen das zähe Ausspielen: Ø 2,7 → 1,3 Runden, ×4 wäre zu hart). Rundenende: Feldherr ohne eigene Truppen bekommt Schaden = storm × Schaden aller überlebenden Gegner
     startArmy: [['ou', 4, 8], ['fu', 3, 6], ['fu', 5, 6], ['ky', 4, 7]]
   };
 
   if (typeof process !== 'undefined' && process.env && process.env.ARMEE_R) { var ov = JSON.parse(process.env.ARMEE_R); Object.keys(ov).forEach(function (k) { if (k === 'kingHp') TYPES.ou.hp = ov[k]; else if (k.indexOf('.') > 0) { var q = k.split('.'); (TYPES[q[0]] || R[q[0]])[q[1]] = ov[k]; } else R[k] = ov[k]; }); }
+  function holds(g, u) { return u.ord === 'halt' && (u.t === 'ou' || g.round < R.pattRound); }
   function rng(seed) { var s = seed >>> 0 || 1; return function () { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }
   function hash() { var h = 2166136261; for (var i = 0; i < arguments.length; i++) { h ^= arguments[i] & 0xffff; h = Math.imul(h, 16777619) >>> 0; h ^= arguments[i] >>> 16; h = Math.imul(h, 16777619) >>> 0; } return h; }
   function fwd(p) { return p === 0 ? 1 : -1; } // Muster-y mit fwd multiplizieren: Spieler 1 spiegelt
@@ -55,13 +62,16 @@
   function inB(x, y) { return x >= 0 && y >= 0 && x < N && y < N; }
 
   function newGame(seed, bonus) {
-    var g = { seed: seed >>> 0, round: 1, over: null, nextId: 1, units: [], gold: [R.start, R.start], hand: [[], []], log: [], rerolls: [0, 0], drops: [0, 0], bonus: bonus || [0, 0] };
+    var g = { seed: seed >>> 0, round: 1, over: null, nid: [1, 1], units: [], gold: [R.start, R.start], hand: [[], []], log: [], rerolls: [0, 0], drops: [0, 0], lost: [0, 0], bonus: bonus || [0, 0] };
     R.startArmy.forEach(function (a) { addUnit(g, 0, a[0], a[1], a[2]); addUnit(g, 1, a[0], N - 1 - a[1], N - 1 - a[2]); });
     g.offers = [makeOffers(g, 0), makeOffers(g, 1)];
     return g;
   }
   function addUnit(g, p, t, x, y) {
-    var T = TYPES[t], u = { id: g.nextId++, p: p, t: t, x: x, y: y, hp: T.hp, mhp: T.hp, atk: T.atk, lv: 0, ord: t === 'ou' ? 'halt' : 'vor' };
+    // eigener Nummernkreis je Spieler (gerade/ungerade): sonst verschoben die Käufe von Spieler 1 die Nummern
+    // der Käufe von Spieler 2, und dessen Befehle/Aufwertungen für neue Truppen gingen ins Leere
+    if (!g.nid) g.nid = [g.nextId || 1, g.nextId || 1];
+    var T = TYPES[t], u = { id: g.nid[p]++ * 2 + p, p: p, t: t, x: x, y: y, hp: T.hp, mhp: T.hp, atk: T.atk, lv: 0, ord: t === 'ou' ? 'halt' : 'vor' };
     g.units.push(u); return u;
   }
   function makeOffers(g, p) {
@@ -90,7 +100,7 @@
     if (a.k === 'drop') {
       if (a.i == null || !g.hand[p][a.i]) return 'Kein Überläufer';
       if ((g.drops[p] || 0) >= (phase === 'react' ? R.reactDrops : R.dropMax)) return 'Diese Runde keine weiteren Überläufer';
-      if (g.gold[p] < R.dropCost(g.hand[p][a.i])) return 'Zu wenig Gold';
+      if (!(phase === 'react' && R.reactFree) && g.gold[p] < R.dropCost(g.hand[p][a.i])) return 'Zu wenig Gold';
       if (!inB(a.x, a.y) || !ownRows(p, a.y, 4)) return 'Nur in deiner Hälfte';
       if (at(g, a.x, a.y)) return 'Feld besetzt';
       return null;
@@ -109,7 +119,7 @@
   function apply(g, p, a, phase) {
     var err = canDo(g, p, a, phase); if (err) return err;
     if (a.k === 'buy') { var o = g.offers[p][a.i]; o.sold = true; g.gold[p] -= TYPES[o.t].cost; addUnit(g, p, o.t, a.x, a.y); }
-    else if (a.k === 'drop') { var t = g.hand[p].splice(a.i, 1)[0]; g.gold[p] -= R.dropCost(t); g.drops[p] = (g.drops[p] || 0) + 1; addUnit(g, p, t, a.x, a.y); }
+    else if (a.k === 'drop') { var t = g.hand[p].splice(a.i, 1)[0]; if (!(phase === 'react' && R.reactFree)) g.gold[p] -= R.dropCost(t); g.drops[p] = (g.drops[p] || 0) + 1; addUnit(g, p, t, a.x, a.y); }
     else if (a.k === 'up') { var u = unit(g, a.id); g.gold[p] -= R.up.cost(TYPES[u.t].base || u.t); u.lv++; u.mhp += R.up.hp; u.hp += R.up.hp; u.atk += R.up.atk; }
     else if (a.k === 'ord') unit(g, a.id).ord = a.ord;
     else if (a.k === 'reroll') { g.gold[p] -= R.reroll; g.rerolls[p]++; g.offers[p] = makeOffers(g, p); }
@@ -152,7 +162,8 @@
     }
     if (!best) { // kein Angriffsfeld erreichbar: dem nächsten Gegner annähern
       var bx = null, bd = 1e9;
-      Object.keys(dist).forEach(function (k) { var x = k % N, y = (k / N) | 0; enemies.forEach(function (e) { var dd = Math.max(Math.abs(e.x - x), Math.abs(e.y - y)) * 10 + dist[k]; if (dd < bd) { bd = dd; bx = [x, y]; } }); });
+      // Gleichstand aus Sicht der Truppe auflösen (vorher entschied die Feld-Reihenfolge oben links → Seitenvorteil)
+      Object.keys(dist).forEach(function (k) { var x = k % N, y = (k / N) | 0, rk = u.p === 0 ? +k : N * N - 1 - k; enemies.forEach(function (e) { var dd = (Math.max(Math.abs(e.x - x), Math.abs(e.y - y)) * 10 + dist[k]) * 100 + rk; if (dd < bd) { bd = dd; bx = [x, y]; } }); });
       if (!bx || (bx[0] === u.x && bx[1] === u.y)) return null; best = bx;
     }
     var path = [best]; while (prev[key(path[0][0], path[0][1])]) path.unshift(prev[key(path[0][0], path[0][1])]);
@@ -166,18 +177,20 @@
     alive.forEach(function (u) {
       var tg = targetsFrom(g, u, u.x, u.y); if (!tg.length) return;
       tg.sort(function (a, b) { return (a.hp - b.hp) || ((a.t === 'ou') ? -1 : (b.t === 'ou') ? 1 : 0) || (a.id - b.id); });
-      var t = tg[0]; dmg[t.id] = (dmg[t.id] || 0) + u.atk; attacked[u.id] = 1; ev.push({ e: 'atk', id: u.id, to: t.id, x: u.x, y: u.y, tx: t.x, ty: t.y, dmg: u.atk });
+      var t = tg[0], d = u.atk + (holds(g, u) && u.t !== 'ou' ? R.holdAtk : 0);
+      if (holds(g, t) && t.t !== 'ou') d = Math.max(1, d - R.holdArmor);
+      dmg[t.id] = (dmg[t.id] || 0) + d; attacked[u.id] = 1; ev.push({ e: 'atk', id: u.id, to: t.id, x: u.x, y: u.y, tx: t.x, ty: t.y, dmg: d });
     });
     var died = [];
     alive.forEach(function (u) { if (dmg[u.id]) { u.hp -= dmg[u.id]; if (u.hp <= 0) died.push(u); } });
     died.forEach(function (u) {
-      ev.push({ e: 'die', id: u.id, x: u.x, y: u.y, t: u.t, p: u.p });
-      if (u.t !== 'ou') { var b = TYPES[u.t].base || u.t; var h = g.hand[1 - u.p]; h.push(b); if (h.length > R.handMax) h.shift(); ev.push({ e: 'defect', t: b, p: 1 - u.p }); }
+      ev.push({ e: 'die', id: u.id, x: u.x, y: u.y, t: u.t, p: u.p }); (g.lost = g.lost || [0, 0])[u.p]++; // alte Spielstände haben kein lost
+      if (u.t !== 'ou') { var b = TYPES[u.t].base || u.t; var h = g.hand[1 - u.p]; h.push(b); if (h.length > R.handMax) { var lo = 0; h.forEach(function (x, k) { if (TYPES[x].cost < TYPES[h[lo]].cost) lo = k; }); ev.push({ e: 'flee', t: h.splice(lo, 1)[0], p: 1 - u.p }); } ev.push({ e: 'defect', t: b, p: 1 - u.p }); }
     });
     var kings = [0, 1].map(function (p) { return g.units.some(function (u) { return u.p === p && u.t === 'ou' && u.hp > 0; }); });
     if (!g.noKing && (!kings[0] || !kings[1])) { g.over = !kings[0] && !kings[1] ? 'remis' : kings[0] ? 0 : 1; ev.push({ e: 'end', w: g.over }); return; }
     // 2) wer nicht geschlagen hat und „vor“ hat, rückt nach (nächste zuerst, Felder werden reserviert)
-    var movers = alive.filter(function (u) { return u.hp > 0 && !attacked[u.id] && u.ord === 'vor'; });
+    var movers = alive.filter(function (u) { return u.hp > 0 && !attacked[u.id] && !holds(g, u); });
     var occ = {}; g.units.forEach(function (u) { if (u.hp > 0) occ[u.y * N + u.x] = u.id; });
     var plans = movers.map(function (u) { var p = plan(g, u, occ); return { u: u, path: p }; }).filter(function (m) { return m.path && m.path.length; });
     var first = (g.tk = (g.tk || 0) + 1) % 2; // wer bei Gleichstand zuerst zieht, wechselt jeden Takt
@@ -202,11 +215,16 @@
   }
   function endRound(g) {
     var ev = [];
-    g.units.forEach(function (u) { if (u.hp < u.mhp) u.hp = Math.min(u.mhp, u.hp + (u.t === 'ou' ? R.kingHeal : R.heal)); });
-    if (g.round >= R.pattRound) g.units.forEach(function (u) {
-      if (u.t !== 'ou') return; var ny = u.y - fwd(u.p); if (inB(u.x, ny) && !at(g, u.x, ny)) { ev.push({ e: 'move', id: u.id, x: u.x, y: u.y, tx: u.x, ty: ny }); u.y = ny; }
+    if (R.storm) [0, 1].forEach(function (p) {
+      var mine = g.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }), foes = g.units.filter(function (u) { return u.p !== p && u.t !== 'ou'; }), k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0];
+      if (!k || mine.length || !foes.length) return;
+      var d = Math.round(R.storm * foes.reduce(function (s, u) { return s + u.atk; }, 0)); k.hp -= d; ev.push({ e: 'storm', p: p, dmg: d, n: foes.length });
     });
-    g.round++; g.gold = g.gold.map(function (v, p) { return Math.max(0, v + R.income(g.round) + (g.bonus ? g.bonus[p] : 0)); }); // bonus: Vorgabe bzw. KI-Stärke g.rerolls = [0, 0];
+    var kings = [0, 1].map(function (p) { return g.units.some(function (u) { return u.p === p && u.t === 'ou' && u.hp > 0; }); });
+    if (!kings[0] || !kings[1]) { g.over = !kings[0] && !kings[1] ? 'remis' : kings[0] ? 0 : 1; ev.push({ e: 'end', w: g.over }); return ev; }
+    g.units.forEach(function (u) { if (u.hp < u.mhp) u.hp = Math.min(u.mhp, u.hp + (u.t === 'ou' ? R.kingHeal : R.heal)); });
+    g.round++; g.gold = g.gold.map(function (v, p) { return Math.max(0, v + R.income(g.round) + (g.bonus ? g.bonus[p] : 0) + Math.min(R.lossGoldMax, R.lossGold * (g.lost ? g.lost[p] : 0))); });
+    g.lost = [0, 0]; // bonus: Vorgabe bzw. KI-Stärke g.rerolls = [0, 0];
     g.offers = [makeOffers(g, 0), makeOffers(g, 1)];
     return ev;
   }
@@ -219,6 +237,6 @@
     return r;
   }
 
-  var API = { N: N, TYPES: TYPES, SHOP: SHOP, R: R, newGame: newGame, canDo: canDo, apply: apply, applyAll: applyAll, runPhase: runPhase, endRound: endRound, playRound: playRound, targetsFrom: targetsFrom, at: at, unit: unit, clone: clone, ownRows: ownRows, inZone: inZone, fwd: fwd, rng: rng, hash: hash };
+  var API = { holds: holds, N: N, TYPES: TYPES, SHOP: SHOP, R: R, newGame: newGame, canDo: canDo, apply: apply, applyAll: applyAll, runPhase: runPhase, endRound: endRound, playRound: playRound, targetsFrom: targetsFrom, at: at, unit: unit, clone: clone, ownRows: ownRows, inZone: inZone, fwd: fwd, rng: rng, hash: hash };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.AK = API;
 })(this);

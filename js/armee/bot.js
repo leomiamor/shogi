@@ -61,10 +61,10 @@
     // 3) Restgold in Aufwertungen (stärkste zuerst)
     var mine = w.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).sort(function (a, b) { return (T[T[b.t].base || b.t].cost - T[T[a.t].base || a.t].cost) || (a.id - b.id); });
     mine.forEach(function (u) { act({ k: 'up', id: u.id }); });
-    // 4) Befehle: in frühen Runden die Linie halten, bis die Armee groß genug ist
-    var n = w.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).length;
-    var foeN = w.units.filter(function (u) { return u.p !== p && u.t !== 'ou'; }).length;
-    var go = n >= foeN || g.round >= 4;
+    // 4) Befehle: halten, solange der Gegner (mit seinem Gold für neue Käufe) stärker ist (Halten gibt +1 Schaden), sonst angreifen
+    function val(q) { return w.units.filter(function (u) { return u.p === q && u.t !== 'ou'; }).reduce(function (s, u) { return s + T[T[u.t].base || u.t].cost * u.hp / u.mhp + u.lv * 2; }, 0); }
+    var go = (typeof AK_OLDBOT !== 'undefined' && AK_OLDBOT) ? (w.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).length >= w.units.filter(function (u) { return u.p !== p && u.t !== 'ou'; }).length || g.round >= 4)
+      : val(p) >= (val(1 - p) + g.gold[1 - p] * 0.8) * (typeof AK_HOLDF !== 'undefined' ? AK_HOLDF : 0.9);
     w.units.forEach(function (u) { if (u.p === p && u.t !== 'ou') { var o = go ? 'vor' : 'halt'; if (u.ord !== o) act({ k: 'ord', id: u.id, ord: o }); } });
     return acts;
   }

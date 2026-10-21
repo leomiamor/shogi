@@ -61,7 +61,7 @@
     var pro = !!T[u.t].base, lab = opt.lab === 'kanji' ? '<i class="kj" style="--km:url(img/koma/' + MASK[u.t] + '.svg)"></i>' : '<span class="tx">' + SHORT[u.t] + '</span>';
     return '<div class="u p' + u.p + ((u.p === 1) !== flipped() ? ' down' : '') + (pro ? ' pro' : '') + (extra || '') + '" data-id="' + u.id + '">' +
       '<div class="k">' + lab + '</div><div class="hp"><i style="width:' + Math.max(0, 100 * u.hp / u.mhp) + '%"></i></div>' +
-      (u.lv ? '<span class="lv">' + '★'.repeat(u.lv) + '</span>' : '') + (u.ord === 'halt' && u.t !== 'ou' ? '<span class="hold">🛡</span>' : '') + '</div>';
+      (u.lv ? '<span class="lv">' + '★'.repeat(u.lv) + '</span>' : '') + (u.ord === 'halt' && u.t !== 'ou' && S.g.round < R.pattRound ? '<span class="hold">🛡</span>' : '') + '</div>';
   }
   function place(el, x, y) { var q = pos(x, y); el.style.transform = 'translate(' + q[0] * 100 + '%,' + q[1] * 100 + '%)'; }
   function drawBoard(w, marks) {
@@ -107,7 +107,9 @@
     if (u.t === 'ou') h += '<div class="note">Fällt er, ist die Partie verloren. Heilt 2 pro Runde.</div>';
     if (mine && w.over == null) {
       h += '<div class="row" style="margin-top:6px">';
-      h += '<button class="btn small" data-ord="vor"' + (u.ord === 'vor' ? ' disabled' : '') + '>⚔ Vorrücken</button><button class="btn small" data-ord="halt"' + (u.ord === 'halt' ? ' disabled' : '') + '>🛡 Halten</button>';
+      if (u.t === 'ou') h += '<span class="note">Der Feldherr hält immer seine Stellung.</span>';
+      else if (w.round >= R.pattRound) h += '<span class="note">Generalangriff: alle rücken vor.</span>';
+      else h += '<button class="btn small' + (u.ord === 'vor' ? ' on' : '') + '" data-ord="vor">' + (u.ord === 'vor' ? '✓ ' : '') + '⚔ Vorrücken</button><button class="btn small' + (u.ord === 'halt' ? ' on' : '') + '" data-ord="halt">' + (u.ord === 'halt' ? '✓ ' : '') + '🛡 Halten (+' + R.holdAtk + ' Schaden)</button>';
       if (S.stage === 'plan' && u.t !== 'ou') { var c = R.up.cost(base); h += '<button class="btn small" data-up="1"' + (AK.canDo(w, p, { k: 'up', id: u.id }) ? ' disabled' : '') + '>★ Aufwerten (' + c + ' Gold, +' + R.up.hp + ' Leben, +' + R.up.atk + ' Schaden)</button>'; }
       h += '</div>';
     }
@@ -126,7 +128,7 @@
     $('#g-round').textContent = 'Runde ' + g.round;
     $('#g-who').innerHTML = '<span class="p' + p + 'c">' + names(p) + '</span>';
     $('#g-gold').textContent = w.gold[p];
-    var st = { plan: 'Planung – ' + names(p), react: 'Reaktion – ' + names(p) + ' (Befehle, 1 Überläufer)', battle: S.probe ? 'Probelauf (zählt nicht)' : 'Schlacht – Teil ' + (S.phase + 1), handover: 'Bitte warten …', over: 'Partie vorbei' }[S.stage] || '';
+    var st = { plan: 'Planung – ' + names(p), react: 'Reaktion – ' + names(p) + (R.reactFree ? ' (Befehle, 1 Überläufer gratis)' : ' (Befehle, 1 Überläufer)'), battle: S.probe ? 'Probelauf (zählt nicht)' : 'Schlacht – Teil ' + (S.phase + 1), handover: 'Bitte warten …', over: 'Partie vorbei' }[S.stage] || '';
     $('#g-stage').textContent = st;
     $('#pane-plan').classList.toggle('hidden', !planning);
     $('#lbl-shop').classList.toggle('hidden', S.stage !== 'plan');
@@ -158,8 +160,8 @@
     var dl = S.stage === 'react' ? R.reactDrops : R.dropMax;
     $('#dropinfo').textContent = 'Überläufer diese Runde: ' + (w.drops ? w.drops[p] || 0 : 0) + '/' + dl;
     $('#hand').innerHTML = w.hand[p].length ? w.hand[p].map(function (t, i) {
-      var c = R.dropCost(t);
-      return '<button class="card' + (S.sel && S.sel.hand === i ? ' sel' : '') + (w.gold[p] < c ? ' poor' : '') + '" data-hand="' + i + '"><div class="ck"><i style="--km:url(img/koma/' + MASK[t] + '.svg)"></i></div><div class="cn">' + T[t].n + '</div><div class="cc gold">' + c + '</div></button>';
+      var c = S.stage === 'react' && R.reactFree ? 0 : R.dropCost(t);
+      return '<button class="card' + (S.sel && S.sel.hand === i ? ' sel' : '') + (w.gold[p] < c ? ' poor' : '') + '" data-hand="' + i + '"><div class="ck"><i style="--km:url(img/koma/' + MASK[t] + '.svg)"></i></div><div class="cn">' + T[t].n + '</div><div class="cc gold">' + (c ? c : 'gratis') + '</div></button>';
     }).join('') : '<span class="note">noch keine</span>';
     // Info
     var inf = $('#info'), ih = '';
@@ -195,7 +197,7 @@
     if (t && S) {
       if (t.dataset.shop != null) { var i = +t.dataset.shop, o = view().offers[S.viewer][i]; if (o.sold) return; S.sel = S.sel && S.sel.shop === i ? null : { shop: i }; }
       else if (t.dataset.hand != null) { var j = +t.dataset.hand; S.sel = S.sel && S.sel.hand === j ? null : { hand: j }; }
-      else if (t.dataset.ord) act({ k: 'ord', id: S.sel.id, ord: t.dataset.ord });
+      else if (t.dataset.ord) { var cu = AK.unit(view(), S.sel.id); if (cu && cu.ord !== t.dataset.ord) act({ k: 'ord', id: S.sel.id, ord: t.dataset.ord }); }
       else if (t.dataset.up) act({ k: 'up', id: S.sel.id });
       render(); return;
     }
@@ -224,7 +226,7 @@
         var lost = [0, 1].map(function (q) { return snap.units.filter(function (u) { return u.p === q; }).length - w.units.filter(function (u) { return u.p === q && u.hp > 0; }).length; });
         S.log.push({ t: 'Probelauf', s: 'Du würdest ' + lost[S.viewer] + ' Truppen verlieren, der Gegner ' + lost[1 - S.viewer] + (w.over != null ? (w.over === S.viewer ? ' – sein Feldherr fällt!' : w.over === 'remis' ? ' – beide Feldherren fallen.' : ' – dein Feldherr fällt!') : '.') });
         S.probe = false; S.stage = S.back.stage; S.disp = null; render();
-        modal('<h2>Probelauf</h2><p>' + S.log[S.log.length - 1].s + '</p><p class="note">Seine neuen Käufe dieser Runde kennst du nicht. Du kannst deine Aufstellung noch ändern.</p>', 'Zurück zur Planung');
+        modal('<h2>Probelauf</h2><p>' + S.log[S.log.length - 1].s + '</p><p class="note">Seine neuen Käufe dieser Runde kennst du nicht: ' + names(1 - S.viewer) + ' hat ' + S.g.gold[1 - S.viewer] + ' Gold' + (S.g.hand[1 - S.viewer].length ? ' und ' + S.g.hand[1 - S.viewer].length + ' Überläufer' : '') + '. Du kannst deine Aufstellung noch ändern.</p>', 'Zurück zur Planung');
       };
       if (e2.length) playPhase(snap2, e2, 1, after); else after();
     });
@@ -254,23 +256,32 @@
     playPhase(snap, ev, 1, function () { if (g.over != null) return gameOver(); roundEnd(); });
   }
   function roundEnd() {
-    var g = S.g, before = AK.clone(g), r = g.round, ev = AK.endRound(g), inc = R.income(g.round);
-    var lost = S.roundLoss || [0, 0], king = [0, 1].map(function (p) { var k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0]; return k ? k.hp : 0; });
+    var g = S.g, r = g.round, lost = S.roundLoss || [0, 0];
+    var nach = [0, 1].map(function (p) { return Math.min(R.lossGoldMax, R.lossGold * ((g.lost || [0, 0])[p])); });
+    var ev = AK.endRound(g), inc = R.income(g.round), bo = g.bonus || [0, 0];
+    var storm = ev.filter(function (e) { return e.e === 'storm'; });
+    storm.forEach(function (e) { S.log.push({ t: 'Runde ' + r, s: '<b>Sturm aufs Lager:</b> ' + names(e.p) + ' hat keine Truppen mehr, ' + e.n + ' Gegner treffen den Feldherrn (−' + e.dmg + ')' }); });
+    if (g.over != null) return gameOver();
+    var king = [0, 1].map(function (p) { var k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0]; return k ? k.hp : 0; });
     var h = '<h2>Runde ' + r + ' vorbei</h2><div class="sum">';
-    [0, 1].forEach(function (p) { h += '<div><span class="p' + p + 'c">' + names(p) + '</span>: ' + lost[p] + ' Truppen verloren · Feldherr ' + king[p] + '/' + T.ou.hp + ' Leben · ' + g.units.filter(function (u) { return u.p === p; }).length + ' auf dem Feld · ' + g.hand[p].length + ' Überläufer</div>'; });
-    var bo = g.bonus || [0, 0];
-    h += '<div style="margin-top:8px">Alle heilen 1 Leben (Feldherr 2). Neues Gold: <span class="gold">+' + (inc + bo[0]) + '</span>' + (bo[1] ? ' (' + names(1) + ' +' + (inc + bo[1]) + ')' : '') + '.</div>';
-    if (ev.length) h += '<div>Die Feldherren rücken vor (ab Runde ' + R.pattRound + ').</div>';
-    else if (g.round + 1 >= R.pattRound && g.round < R.pattRound) h += '<div class="note">Ab Runde ' + R.pattRound + ' rücken beide Feldherren jede Runde ein Feld vor.</div>';
+    [0, 1].forEach(function (p) {
+      var n = g.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).length;
+      h += '<div><span class="p' + p + 'c">' + names(p) + '</span>: ' + lost[p] + ' verloren · ' + n + ' Truppen stehen · Feldherr ' + king[p] + '/' + T.ou.hp + ' · ' + g.hand[p].length + ' Überläufer · <span class="gold">+' + (inc + bo[p] + nach[p]) + ' Gold</span>' + (nach[p] ? ' (davon ' + nach[p] + ' Nachschub)' : '') + '</div>';
+    });
+    storm.forEach(function (e) { h += '<div style="margin-top:6px"><b>Sturm aufs Lager!</b> ' + names(e.p) + ' hat keine Truppen mehr. ' + e.n + ' Gegner treffen den Feldherrn: −' + e.dmg + ' Leben.</div>'; });
+    h += '<div style="margin-top:8px" class="note">Alle heilen 1 Leben, der Feldherr 2.</div>';
+    if (g.round === R.pattRound) h += '<div style="margin-top:6px"><b>Generalangriff!</b> Ab jetzt rücken alle Truppen vor, Halten gilt nicht mehr.</div>';
+    else if (g.round === R.pattRound - 2) h += '<div class="note">Ab Runde ' + R.pattRound + ' ist Generalangriff: dann rücken alle vor.</div>';
     h += '</div>';
     S.roundLoss = [0, 0];
-    S.log.push({ t: 'Runde ' + r, s: 'vorbei. ' + names(0) + ' verlor ' + lost[0] + ', ' + names(1) + ' ' + lost[1] + ' Truppen.' });
-    S.log.push({ t: 'Runde ' + g.round, s: 'beginnt. +' + inc + ' Gold für beide.' });
+    S.log.push({ t: 'Runde ' + r, s: 'vorbei. Verluste: ' + names(0) + ' ' + lost[0] + ', ' + names(1) + ' ' + lost[1] + '.' });
+    S.log.push({ t: 'Runde ' + g.round, s: 'beginnt.' });
     modal(h, 'Weiter zu Runde ' + g.round, function () { beginPlan(0); });
   }
   function gameOver() {
     var w = S.g.over, h;
     if (w === 'remis') h = '<h2>Remis</h2><p>Beide Feldherren sind gefallen.</p>';
+    else if (S.resigned != null) h = '<h2>' + (S.mode === 'ki' ? 'Aufgegeben' : names(w) + ' gewinnt!') + '</h2><p>' + (S.mode === 'ki' && S.resigned === 0 ? 'Du hast' : names(S.resigned) + ' hat') + ' in Runde ' + S.g.round + ' aufgegeben.</p>';
     else h = '<h2>' + (S.mode === 'ki' ? (w === 0 ? 'Sieg!' : 'Niederlage') : names(w) + ' gewinnt!') + '</h2><p>' + (S.mode === 'ki' ? (w === 0 ? 'Der KI-Feldherr' : 'Dein Feldherr') : 'Der Feldherr von ' + names(1 - w)) + ' ist in Runde ' + S.g.round + ' gefallen.</p>';
     S.stage = 'over'; try { localStorage.removeItem(SAVE); } catch (e) { }
     S.log.push({ t: 'Ende', s: w === 'remis' ? 'Remis.' : names(w) + ' gewinnt in Runde ' + S.g.round + '.' });
@@ -314,6 +325,7 @@
       var u = AK.unit(d, e.id);
       if (e.e === 'atk') { var t = AK.unit(d, e.to); if (t) { t.hp -= e.dmg; if (u) dmg[u.p] += e.dmg; } }
       else if (e.e === 'die') { if (u) { u.hp = 0; lines.push('<b>' + nm(u) + ' fällt</b>' + (u.t !== 'ou' ? ' (wird Überläufer für ' + (S.mode === 'ki' ? (u.p === 0 ? 'die KI' : 'dich') : names(1 - u.p)) + ')' : '')); if (!S.probe) S.roundLoss[u.p]++; } }
+      else if (e.e === 'flee' && T[e.t].cost >= 3) lines.push('Hand voll: ' + (S.mode === 'ki' ? (e.p === 0 ? 'dein' : 'ihr') : names(e.p) + 's') + ' Überläufer ' + T[e.t].n + ' läuft davon');
       else if (e.e === 'move' && u) { u.x = e.tx; u.y = e.ty; }
       else if (e.e === 'promo' && u) { var add = T[e.t].hp - T[T[e.t].base].hp, old = nm(u); u.t = e.t; u.mhp += add; u.hp += add; lines.push(old + ' wird befördert: <b>' + T[e.t].n + '</b>'); }
     });
@@ -374,12 +386,15 @@
       '<li><b>Runde:</b> Beide planen geheim. Dann läuft die Schlacht von selbst: Teil 1, kurze Reaktion, Teil 2. Die Truppen bleiben danach stehen.</li>' +
       '<li><b>Planen:</b> Truppen im Laden kaufen und in deinen 3 Reihen aufstellen. Aufwerten (★) gibt mehr Leben und Schaden. Neue Angebote kosten 1 Gold. Übriges Gold bleibt.</li>' +
       '<li><b>Kampf:</b> Jede Truppe schlägt nur in ihre Richtungen (Bild auf der Karte, wie im Shogi). Ist niemand in Reichweite, läuft sie zum nächsten Gegner und stellt sich passend hin. Alle schlagen gleichzeitig, immer den Schwächsten.</li>' +
-      '<li><b>Befehle:</b> ⚔ Vorrücken oder 🛡 Halten (bleibt stehen, schlägt aber zu).</li>' +
+      '<li><b>Befehle:</b> ⚔ Vorrücken oder 🛡 Halten: bleibt stehen und schlägt mit +' + R.holdAtk + ' Schaden zu. Halten lohnt gegen Angreifer, Schützen kontern es aus der Ferne.</li>' +
       '<li><b>Schützen:</b> Läufer und Turm schießen 3 Felder weit, auch über eigene Truppen.</li>' +
       '<li><b>Beförderung:</b> In den hinteren 3 Reihen des Gegners werden Truppen stärker.</li>' +
-      '<li><b>Überläufer:</b> Wen du schlägst, der kann für dich kämpfen: halber Preis, in deiner Hälfte, 2 pro Planung und 1 in der Reaktion.</li>' +
+      '<li><b>Überläufer:</b> Wen du schlägst, der kann für dich kämpfen: in deiner Hälfte, 2 pro Planung zum halben Preis, 1 in der Reaktion gratis. Mehr als ' + R.handMax + ' in der Hand: der billigste läuft davon.</li>' +
       '<li><b>Gold:</b> ' + R.start + ' am Anfang, dann ' + R.income(2) + ' pro Runde, steigt bis ' + R.income(99) + '.</li>' +
-      '<li><b>Lange Partie:</b> Ab Runde ' + R.pattRound + ' rücken beide Feldherren jede Runde 1 Feld vor.</li>' +
+      '<li><b>Nachschub:</b> Für jede verlorene Truppe gibt es nächste Runde 1 Gold extra (höchstens ' + R.lossGoldMax + ').</li>' +
+      '<li><b>Sturm aufs Lager:</b> Hat eine Seite am Rundenende keine Truppen mehr, trifft jede überlebende gegnerische Truppe ihren Feldherrn mit ' + R.storm + '-fachem Schaden.</li>' +
+      '<li><b>Generalangriff:</b> Ab Runde ' + R.pattRound + ' rücken alle Truppen vor, Halten gilt nicht mehr.</li>' +
+      '<li><b>Aufgeben:</b> im Menü ☰, wie beim Shogi.</li>' +
       '<li><b>Probelauf:</b> Zeigt, wie deine Aufstellung gegen den jetzigen Stand des Gegners laufen würde.</li></ul>', 'Verstanden');
   }
 
@@ -396,7 +411,8 @@
   $('#m-react').onclick = function () { opt.react = !opt.react; saveOpt(); applyOpt(); };
   $('#m-lab').onclick = function () { opt.lab = opt.lab === 'kanji' ? 'de' : 'kanji'; saveOpt(); applyOpt(); };
   $('#g-menu').onclick = function () {
-    modal('<h2>Menü</h2><p>Die Partie wird zu Beginn jeder Runde gespeichert.</p><div class="row"><button class="btn small" id="o-big">Große Schrift: ' + (opt.big ? 'an' : 'aus') + '</button><button class="btn small" id="o-lab">Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch') + '</button></div>', 'Zurück zum Spiel', null, 'Zum Hauptmenü');
+    modal('<h2>Menü</h2><p>Die Partie wird zu Beginn jeder Runde gespeichert.</p><div class="row"><button class="btn small" id="o-big">Große Schrift: ' + (opt.big ? 'an' : 'aus') + '</button><button class="btn small" id="o-lab">Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch') + '</button></div>' + (S && S.g.over == null && (S.stage === 'plan' || S.stage === 'react') ? '<div class="row" style="margin-top:10px"><button class="btn small" id="o-resign">🏳 Aufgeben (' + names(S.viewer) + ')</button></div>' : ''), 'Zurück zum Spiel', null, 'Zum Hauptmenü');
+    var rs = $('#o-resign'); if (rs) rs.onclick = function () { confirmBox('Wirklich aufgeben?', names(S.viewer) + ' gibt die Partie verloren.', 'Aufgeben', function () { S.g.over = 1 - S.viewer; S.resigned = S.viewer; gameOver(); }); };
     $('#o-big').onclick = function () { opt.big = !opt.big; saveOpt(); applyOpt(); this.textContent = 'Große Schrift: ' + (opt.big ? 'an' : 'aus'); render(); };
     $('#o-lab').onclick = function () { opt.lab = opt.lab === 'kanji' ? 'de' : 'kanji'; saveOpt(); applyOpt(); this.textContent = 'Beschriftung: ' + (opt.lab === 'kanji' ? 'Kanji' : 'Deutsch'); render(); };
     $('#mAlt').onclick = function () { $('#modal').classList.add('hidden'); clearTimeout(PL.timer); S = null; show('menu'); };
