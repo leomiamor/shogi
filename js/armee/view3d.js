@@ -37,6 +37,8 @@
   function build(box) {
     V.box = box; box.innerHTML = '<div class="v3-gl"></div><div class="v3-ov"></div>';
     var gl = box.firstChild; V.ov = box.lastChild;
+    // eigene Stimmung fürs Handy-Hochformat (Basis Gebirgspass); window.AK_MOODX überschreibt Werte zum Testen
+    var M = Board3D.FIELD_MOODS.armee = Object.assign({}, Board3D.FIELD_MOODS.pass, MOOD, window.AK_MOODX || {}); Board3D.FIELD_MOOD = 'armee';
     var B = V.B = new Board3D(gl, THEMES.feudal, SETTINGS);
     B.onSquare = function (s) { if (V.onCell) V.onCell(s % 9, (s / 9) | 0); }; // Tippen aufs Feld (Planung)
     B.viewShift = 0; B.orbit.user = true;
@@ -119,6 +121,8 @@
     return (V._mt = new THREE.CanvasTexture(c));
   }
   var MCOL = [0xff7a10, 0x2a8cff];
+  // Licht/Farbe (22.10., im Hochformat verglichen): weniger Ocker-Dunst, grünere Wiese, Seitenlicht für Kontrast; Ahornbäume bleiben rot
+  var MOOD = { tint: [0.8, 0.96, 0.68], hfog: [0.4, 0.004, 0.3], glow: [0xffa060, 0.3, 6], exp: 0.92, hemi: [0x9ab4ec, 0x2a2228, 0.8], sun: [0xffb070, 3.5, [0.62, 0.36, -0.7]], mist: { c: 0xffd8b4, o: 0.18, n: 9, r: [28, 70], h: 3 } };
   var SPELL = { hagel: 0xf2e2b8, feuer: 0xff5a1a, heil: 0x6cff8a, ruf: 0xff3030, schild: 0xffd36a };
   function mark(g, u) {
     var T = THREE, key = 'm' + u.p, mat = V[key] || (V[key] = new T.MeshBasicMaterial({ map: markTex(), color: MCOL[u.p], transparent: true, opacity: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
