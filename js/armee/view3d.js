@@ -38,9 +38,13 @@
     V.box = box; box.innerHTML = '<div class="v3-gl"></div><div class="v3-ov"></div>';
     var gl = box.firstChild; V.ov = box.lastChild;
     var B = V.B = new Board3D(gl, THEMES.feudal, SETTINGS);
-    B.onSquare = function () { };
+    B.onSquare = function (s) { if (V.onCell) V.onCell(s % 9, (s / 9) | 0); }; // Tippen aufs Feld (Planung)
     B.viewShift = 0; B.orbit.user = true;
     B.armyIntro = function () { }; // kein Kameraflug
+    B.resetCamera = camera; // Doppeltippen: zurück zur Grundsicht
+    // Planung: nur zeichnen, solange sich etwas tut (Tippen, Drehen, Anmarsch); sonst steht das Bild (Akku)
+    ['pointerdown', 'pointermove', 'wheel'].forEach(function (n) { box.addEventListener(n, function (e) { if (V.planning && (n !== 'pointermove' || e.buttons)) kick(); }, { passive: true }); });
+    document.addEventListener('visibilitychange', function () { if (!document.hidden && V.planning && V.isOn()) kick(); });
     camera();
   }
   // feste Schrägsicht, eigenes Lager unten; Abstand so, dass das Feld ins (fast quadratische) Bild passt
@@ -56,7 +60,7 @@
   }
   function drop(g) { if (g.parent) g.parent.remove(g); }
   // Anzeige an einen Stand angleichen; neu = Truppe kommt aus dem Lager (nur mit Animation)
-  function reconcile(w, anim) {
+  function reconcile(w, anim, refill) {
     var seen = {}, B = V.B, wait = 0;
     // andere Partie (Nummern fangen dort wieder bei 0 an): alles abräumen; erste 3D-Schlacht der Partie: alle stehen schon
     if (V.game !== w.seed) { Object.keys(V.groups).forEach(function (id) { drop(V.groups[id]); }); V.groups = {}; V.game = w.seed; anim = false; }
@@ -71,6 +75,7 @@
         var dist = Math.abs(to.z - from.z); wait = Math.max(wait, 520 + Math.min(dist, 3) * 430 + Math.max(0, dist - 3) * 190);
         B.armyRun(g, from, to); return;
       }
+      if (refill && !g.userData.marching && live(g).length < want(u)) { drop(g); makeG(u); return; } // Planung nach Probelauf: wieder volle Stärke
       g.rotation.y = baseRot(g); if (!g.userData.marching) B.placePiece(g, sq(u.x, u.y));
       thin(g, want(u), null);
     });
@@ -110,6 +115,26 @@
   }
   function scr(x, z, y) { var c = V.B.renderer.domElement, v = new THREE.Vector3(x, V.B.BT + (y || 0), z).project(V.B.camera); if (v.z > 1) return null; return { x: (v.x + 1) / 2 * c.clientWidth, y: (1 - v.y) / 2 * c.clientHeight }; }
 
+  // Felder einfärben (Planung): ok = hier aufstellen, reach = Angriffsrichtungen, hit = Ziel in Reichweite, danger = Gegner trifft hier
+  var MK = { ok: [0x5fe08f, 0.45], reach: [0x46b4ff, 0.32], hit: [0xff8a2a, 0.55], danger: [0xff3030, 0.2], sel: [0xffe070, 0.55] };
+  function tiles(marks, selSq) {
+    var B = V.B; B.hlGroup.visible = true;
+    for (var q = 0; q < 81; q++) {
+      var t = B.tiles[q], m = q === selSq ? 'sel' : marks && marks[q], c = m && MK[m]; t.visible = !!c;
+      if (c) { t.material.color.setHex(c[0]); t.material.opacity = c[1]; }
+      if (B.dots[q]) { B.dots[q].dot.visible = false; B.dots[q].ring.visible = false; }
+    }
+  }
+  function kick() {
+    if (!V.B) return; V._kick = performance.now(); if (V.B.paused) V.B.setPaused(false); follow();
+    if (!V._idle) V._idle = setInterval(function () {
+      var B = V.B; if (!V.planning || !V.isOn()) { clearInterval(V._idle); V._idle = null; return; }
+      if (B.paused) return;
+      var busy = B.tweens.some(function (t) { return !t.forever; }) || performance.now() - Math.max(V._kick, B.lastInput || 0) < 2500 || Math.abs(B.orbit.theta - B.orbit.thetaGoal) > 1e-3;
+      if (!busy) { B.setPaused(true); place(); }
+    }, 700);
+  }
+
   // laufende Animationen sofort zu Ende bringen (sonst bleiben sie beim Pausieren stecken, z. B. ein halber Anmarsch)
   function flush() {
     var B = V.B; if (!B) return;
@@ -129,10 +154,25 @@
     if (!V.B || V.box !== box) build(box);
     if (flip !== V.flip) { V.flip = flip; camera(); }
     clearTimeout(V._frz); V._frz = null; var still = box.querySelector('.v3-still'); if (still) still.remove(); flush(); box.classList.remove('hidden'); V.B.setPaused(false); V.B.resize(); camera();
+    V.planning = false; box.classList.remove('plan'); tiles(null, -1);
     V.units = w; V.speed = speed || 1; V.B.timeScale = V.speed; V.introMs = reconcile(w, true) / V.speed; bars(); follow(); V.watch();
     return true;
   };
-  V.hide = function () { if (!V.B) return; clearTimeout(V._frz); V._frz = null; var still = V.box.querySelector('.v3-still'); if (still) still.remove(); flush(); V.box.classList.add('hidden'); V.B.setPaused(true); V.ov.querySelectorAll('.v3-dmg').forEach(function (n) { n.remove(); }); };
+  // Planung in 3D: Stand mit eigenen Plänen zeigen, Felder markieren; neu gekaufte Truppen marschieren vom Feldrand ein
+  V.plan = function (box, w, flip, marks, selSq) {
+    if (V.state !== 'ready') return false;
+    if (!V.B || V.box !== box) build(box);
+    var fresh = !V.isOn() || !V.planning;
+    if (fresh) { clearTimeout(V._frz); V._frz = null; var still = box.querySelector('.v3-still'); if (still) still.remove(); flush(); box.classList.remove('hidden'); V.B.setPaused(false); V.B.resize(); }
+    if (fresh || flip !== V.flip) { V.flip = flip; camera(); }
+    V.planning = true; box.classList.add('plan'); V.B.timeScale = 1; V.units = w;
+    // nur bei echter Änderung neu zeichnen (Netz-Meldungen und Rundenuhr rufen render() oft auf)
+    var sig = JSON.stringify([V.flip, selSq, marks, w.units.map(function (u) { return [u.id, u.t, u.x, u.y, u.hp, u.mhp, u.lv, u.ord]; })]);
+    if (!fresh && sig === V._sig) return true; V._sig = sig;
+    reconcile(w, !fresh, true); tiles(marks, selSq); bars(); kick(); V.watch();
+    return true;
+  };
+  V.hide = function () { if (!V.B) return; V.planning = false; clearTimeout(V._frz); V._frz = null; var still = V.box.querySelector('.v3-still'); if (still) still.remove(); flush(); V.box.classList.add('hidden'); V.B.setPaused(true); V.ov.querySelectorAll('.v3-dmg').forEach(function (n) { n.remove(); }); };
   // sichtbar lassen, aber nach ms nicht mehr zeichnen (stehendes Bild, kein Akku)
   V.freeze = function (ms) { if (!V.B || V._frz) return; V._frz = setTimeout(function () {
     V._frz = null; if (!V.isOn()) return; var B = V.B, url;
@@ -187,14 +227,15 @@
     if (!box) { box = document.createElement('div'); box.className = 'v3-bars'; V.ov.insertBefore(box, V.ov.firstChild); V.bar = {}; }
     V.units.units.forEach(function (u) {
       if (u.hp <= 0 || !V.groups[u.id]) return; keep[u.id] = 1; var el = V.bar[u.id];
-      if (!el) { el = V.bar[u.id] = document.createElement('div'); el.innerHTML = '<i></i>'; box.appendChild(el); }
+      if (!el) { el = V.bar[u.id] = document.createElement('div'); el.innerHTML = '<i></i><b></b>'; box.appendChild(el); }
       el.className = 'v3-hp p' + u.p + (u.t === 'ou' ? ' king' : ''); el.firstChild.style.width = Math.max(0, 100 * u.hp / u.mhp).toFixed(0) + '%'; el._h = u.t === 'ou' ? 0.75 : 0.6;
+      var bd = V.badge ? V.badge(u) : ''; if (el.lastChild._b !== bd) { el.lastChild._b = bd; el.lastChild.innerHTML = bd; }
     });
     Object.keys(V.bar).forEach(function (id) { if (!keep[id]) { V.bar[id].remove(); delete V.bar[id]; } });
     place();
   }
   function place() { Object.keys(V.bar || {}).forEach(function (id) { var g = V.groups[id], el = V.bar[id], s = g && g.parent && scr(g.position.x, g.position.z, el._h); if (!s) { el.style.display = 'none'; return; } el.style.display = ''; el.style.transform = 'translate(' + s.x.toFixed(1) + 'px,' + s.y.toFixed(1) + 'px) translate(-50%,-50%)'; }); }
-  function follow() { if (V._fol) return; V._fol = true; (function f() { if (!V.isOn()) { V._fol = false; return; } place(); requestAnimationFrame(f); })(); }
+  function follow() { if (V._fol) return; V._fol = true; (function f() { if (!V.isOn() || V.B.paused) { V._fol = false; return; } place(); requestAnimationFrame(f); })(); }
   // erst nach 2 s messen (Shader übersetzen, Modelle), nur bei sichtbarer Seite; kaum Bilder = Fenster versteckt/gedrosselt, dann keine Aussage
   V.watch = function () {
     if (V._watched || V.slowChecked) return; V._watched = true; var t0 = null, n = 0, start = performance.now();

@@ -56,7 +56,22 @@
     show('game'); beginPlan(0);
   }
   // 3D-Schlachtfeld: lädt im Hintergrund, sobald eine Partie offen ist; bis dahin läuft die Schlacht in 2D
-  function load3d() { if (opt.d3 && window.AK3D && AK3D.state === 'off') AK3D.load().catch(function () { }); }
+  function load3d() { if (opt.d3 && window.AK3D && AK3D.state === 'off') AK3D.load().then(function () { if (S && S.stage !== 'battle') render(); }).catch(function () { }); }
+  if (window.AK3D) {
+    AK3D.onCell = function (x, y) { clickCell(x, y); };
+    // über jedem Regiment in der Planung: Kanji, Sterne, Halten
+    AK3D.badge = function (u) { return '<span class="v3k" style="--km:url(img/koma/' + MASK[u.t] + '.svg)"></span>' + (u.lv ? '<span class="v3s">' + '★'.repeat(u.lv) + '</span>' : '') + (u.ord === 'halt' && u.t !== 'ou' && S.g.round < R.pattRound ? '🛡' : ''); };
+  }
+  // Planung und Warten in 3D (Brett darunter bleibt für 2D); Partieende: Bild friert ein
+  function plan3d(w, marks) {
+    if (S.stage === 'over') { if (S.d3) AK3D.freeze(5000); return; }
+    var on = opt.d3 && window.AK3D && AK3D.state === 'ready' && S.stage !== 'handover';
+    $('#boardWrap').classList.toggle('d3', !!on);
+    if (!on) { if (S.d3) { S.d3 = false; AK3D.hide(); } return; }
+    var sel = S.sel && S.sel.id && AK.unit(w, S.sel.id);
+    S.d3 = AK3D.plan($('#v3d'), w, flipped(), marks, sel ? sel.y * N + sel.x : -1);
+    if (!S.d3) $('#boardWrap').classList.remove('d3');
+  }
   if (window.AK3D) AK3D.onSlow = function () { opt.d3 = false; saveOpt(); applyOpt(); AK3D.hide(); toast('3D ruckelt auf diesem Gerät – Schlacht wieder in 2D (im Menü einschaltbar)'); };
   function show(w) {
     $('#scr-menu').classList.toggle('hidden', w !== 'menu'); $('#scr-game').classList.toggle('hidden', w !== 'game');
@@ -166,8 +181,7 @@
   }
   function render() {
     if (!S) return;
-    if (S.stage !== 'battle' && S.d3) { if (S.stage === 'over') AK3D.freeze(5000); else { S.d3 = false; AK3D.hide(); $('#boardWrap').classList.remove('d3'); } } // Partieende: Schlachtfeld bleibt stehen, Bild friert danach ein
-    if (!S.g) { $('#g-stage').textContent = 'Verbinde mit Partie ' + S.net.code + ' …'; ['#pane-plan', '#ctrl-plan', '#ctrl-play', '#info'].forEach(function (q) { $(q).classList.add('hidden'); }); return; }
+    if (!S.g) { if (S.d3) { S.d3 = false; AK3D.hide(); } $('#boardWrap').classList.remove('d3'); $('#g-stage').textContent = 'Verbinde mit Partie ' + S.net.code + ' …'; ['#pane-plan', '#ctrl-plan', '#ctrl-play', '#info'].forEach(function (q) { $(q).classList.add('hidden'); }); return; }
     var g = S.g, p = S.viewer, planning = S.stage === 'plan' || S.stage === 'react';
     var w = planning ? view() : S.stage === 'wait' ? waitView() : S.disp || g;
     $('#g-round').textContent = 'Runde ' + g.round;
@@ -202,7 +216,7 @@
     if (S.mode === 'net') $('#g-net').innerHTML = (S.net.status === 'online' ? '<span style="color:var(--good)">● online</span>' : '<span style="color:var(--bad)">● ' + (S.net.status || 'verbinde') + ' …</span>') + ' · ' + peerText() + (S.net.st && !S.net.st.seats[1] ? ' · <button class="btn small" id="g-share">Link an Gegner schicken</button>' : '');
     document.title = (S.stage === 'plan' || S.stage === 'react') && S.mode === 'net' && ent(S.net.st, S.g.round, S.nph, 1 - S.me) ? '⚔ Du bist dran – Armee' : 'Armee';
     $('#g-sides').innerHTML = [p, 1 - p].map(function (q) { return '<span class="p' + q + 'c">' + names(q) + '</span> 王 ' + kh(q) + '/' + T.ou.hp + ' · ' + tr(q) + ' Truppen · ' + (q === p ? '' : '<span class="gold">' + g.gold[q] + '</span> Gold · ') + w.hand[q].length + ' Überl.'; }).join('<br>');
-    if (S.stage !== 'battle') drawBoard(w, marks);
+    if (S.stage !== 'battle') { drawBoard(w, marks); plan3d(w, marks); }
     // Laden
     var shop = $('#shop');
     shop.innerHTML = S.stage === 'plan' ? w.offers[p].map(function (o, i) {
@@ -258,6 +272,7 @@
     }
   });
   $('#boardWrap').addEventListener('click', function (e) {
+    if ($('#boardWrap').classList.contains('d3')) return; // 3D: Tippen kommt über AK3D.onCell
     var r = $('#board').getBoundingClientRect(), cx = Math.floor((e.clientX - r.left) / r.width * N), cy = Math.floor((e.clientY - r.top) / r.height * N);
     if (cx < 0 || cy < 0 || cx >= N || cy >= N) return;
     if (flipped()) { cx = N - 1 - cx; cy = N - 1 - cy; }
@@ -357,7 +372,7 @@
     SND.init(); SND.load(); if (!S.probe) SND.play('drum');
     if (navigator.vibrate && opt.snd && ph === 0 && !S.probe && S.mode === 'net') try { navigator.vibrate(60); } catch (e) { }
     render(); drawBoard(S.disp, {});
-    var on3 = opt.d3 && !S.probe && window.AK3D && AK3D.state === 'ready'; $('#boardWrap').classList.toggle('d3', !!on3); // erst Größe, dann Kamera
+    var on3 = opt.d3 && window.AK3D && AK3D.state === 'ready'; $('#boardWrap').classList.toggle('d3', !!on3); // erst Größe, dann Kamera
     S.d3 = on3 && AK3D.show($('#v3d'), S.disp, flipped(), PL.speed); if (!S.d3) $('#boardWrap').classList.remove('d3');
     var i = 0; S.roundLoss = S.roundLoss || [0, 0];
     var lbl = (S.probe ? 'Probe ' : '') + 'Teil ' + (ph + 1);

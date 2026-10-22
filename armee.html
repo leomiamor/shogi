@@ -51,6 +51,11 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 .v3-hp.king { width: 38px; height: 5px; }
 .v3-hp i { display: block; height: 100%; border-radius: 2px; transition: width .4s; }
 .v3-hp.p0 i { background: #ff9a3c; } .v3-hp.p1 i { background: #5cb8ff; }
+/* Planung in 3D: Kanji, Sterne und Halten über dem Lebensbalken */
+.v3-hp b { display: none; }
+#v3d.plan .v3-hp b { display: flex; position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); align-items: center; gap: 1px; font: 700 10px sans-serif; color: #ffd76a; white-space: nowrap; filter: drop-shadow(0 0 1px #000) drop-shadow(0 1px 1px #000); }
+.v3k { width: 17px; height: 17px; background: #ffd08a; -webkit-mask: var(--km) center / contain no-repeat; mask: var(--km) center / contain no-repeat; }
+.v3-hp.p1 .v3k { background: #bfe2ff; } .v3-hp.king .v3k { width: 21px; height: 21px; }
 .v3-dmg { position: absolute; transform: translate(-50%, -50%); font: 700 15px sans-serif; color: #ffe0a0; text-shadow: 0 1px 3px #000, 0 0 2px #000; animation: v3up 1.1s ease-out forwards; }
 .v3-dmg.promo { color: #ffd36a; font-size: 14px; }
 @keyframes v3up { to { transform: translate(-50%, -190%); opacity: 0; } }
@@ -183,10 +188,10 @@ button, a.btn { font: inherit; color: inherit; cursor: pointer; }
 <div id="intro" class="modal hidden" style="z-index:30"></div>
 <script type="importmap">{ "imports": { "three": "./js/vendor/three-shim.js" } }</script>
 <script>window.Models = { ready: function (cb) { (window.__modelsWaiting = window.__modelsWaiting || []).push(cb); } };</script>
-<script src="js/net.js?v=202610212214"></script>
-<script src="js/armee/engine.js?v=202610212214"></script>
-<script src="js/armee/bot.js?v=202610212214"></script>
-<script src="js/armee/view3d.js?v=202610212214"></script>
-<script src="js/armee/ui.js?v=202610212214"></script>
+<script src="js/net.js?v=202610221519"></script>
+<script src="js/armee/engine.js?v=202610221519"></script>
+<script src="js/armee/bot.js?v=202610221519"></script>
+<script src="js/armee/view3d.js?v=202610221519"></script>
+<script src="js/armee/ui.js?v=202610221519"></script>
 </body>
 </html>
