@@ -7,9 +7,9 @@
   var SHORT = { fu: 'Bau', ky: 'Lan', ke: 'Spr', gi: 'Sil', ki: 'Gol', ka: 'Läu', hi: 'Tur', ou: 'Herr', to: 'Bau+', ny: 'Lan+', nk: 'Spr+', ng: 'Sil+', um: 'Pfd', ry: 'Dra' };
   var SAVE = 'armee.v1';
   var $ = function (s) { return document.querySelector(s); };
-  var opt = { big: false, lab: 'kanji', react: true, hc: 0, danger: true, lvl: 1, snd: true, clock: 0, d3: !!(window.AK3D && AK3D.supported()) }; // hc: Gold pro Runde für die KI bzw. Spieler 2 (−2 … +2)
-  try { var o0 = JSON.parse(localStorage.getItem('armee.opt') || '{}'); if (o0.big) opt.big = true; if (o0.lab) opt.lab = o0.lab; if (o0.react === false) opt.react = false; if (o0.hc) opt.hc = o0.hc; if (o0.danger === false) opt.danger = false; if (o0.lvl != null) opt.lvl = o0.lvl; if (o0.snd === false) opt.snd = false; if (o0.clock) opt.clock = o0.clock; if (o0.d3 === false) opt.d3 = false; } catch (e) { }
-  function saveOpt() { try { localStorage.setItem('armee.opt', JSON.stringify(opt)); } catch (e) { } }
+  var opt = { big: false, lab: 'kanji', react: true, hc: 0, danger: true, lvl: 1, snd: true, clock: 0, d3: !!(window.AK3D && AK3D.supported()), vars: 'BC' }; // vars: Standard Feldherr-Held + Verstärkung (22.10.) // hc: Gold pro Runde für die KI bzw. Spieler 2 (−2 … +2)
+  try { var o0 = JSON.parse(localStorage.getItem('armee.opt') || '{}'); if (o0.big) opt.big = true; if (o0.lab) opt.lab = o0.lab; if (o0.react === false) opt.react = false; if (o0.hc) opt.hc = o0.hc; if (o0.danger === false) opt.danger = false; if (o0.lvl != null) opt.lvl = o0.lvl; if (o0.snd === false) opt.snd = false; if (o0.clock) opt.clock = o0.clock; if (o0.d3 === false) opt.d3 = false; if (typeof o0.rules === 'string') opt.vars = o0.rules; } catch (e) { }
+  function saveOpt() { try { var o = JSON.parse(JSON.stringify(opt)); o.rules = opt.vars; delete o.vars; localStorage.setItem('armee.opt', JSON.stringify(o)); } catch (e) { } } // eigener Schlüssel: alte gespeicherte '' (Klassisch als alter Standard) zählen nicht
 
   // ---------- Ton: wenige kurze Samples (CC0, snd/credits.txt), laden erst bei der ersten Schlacht ----------
   var SND = (function () {
@@ -40,13 +40,15 @@
 
   // S: ganzer Spielzustand der Seite
   var S = null;
+  function fh(p) { var n = names(p); return n === 'Du' ? 'dein Feldherr' : n === 'KI' ? 'Feldherr der KI' : n === 'Gegner' ? 'Feldherr des Gegners' : 'Feldherr von ' + n; }
+  function tv(x) { return String(x).replace('.', ','); }
   function names(p) { return S.mode === 'ki' ? (p === 0 ? 'Du' : 'KI') : S.mode === 'net' ? (p === S.me ? 'Du' : 'Gegner') : 'Spieler ' + (p + 1); }
 
   // ---------- Start ----------
   function newMatch(mode) {
     var seed = (Date.now() ^ (Math.random() * 1e9)) >>> 0;
-    S = { mode: mode, lvl: opt.lvl, g: AK.newGame(seed, [0, mode === 'ki' ? 0 : opt.hc]), acts: [[], []], reacts: [[], []], viewer: 0, stage: 'plan', sel: null, log: [] };
-    S.log.push({ t: 'Runde 1', s: 'Die Armeen stehen. Kaufe Truppen und stelle sie in deinen 3 Reihen auf.' });
+    S = { mode: mode, lvl: opt.lvl, g: AK.newGame(seed, [0, mode === 'ki' ? 0 : opt.hc], varsObj(opt.vars)), acts: [[], []], reacts: [[], []], viewer: 0, stage: 'plan', sel: null, log: [] };
+    S.log.push({ t: 'Runde 1', s: 'Die Armeen stehen. Kaufe Truppen und stelle sie in deinen 3 Reihen auf.' + (opt.vars ? ' Regeln: <b>' + varsTxt(opt.vars) + '</b>.' : ' Regeln: <b>Klassisch</b>.') });
     show('game'); beginPlan(0);
   }
   function save() { try { if (S && S.g.over == null && (S.stage === 'plan' || S.stage === 'handover') && S.viewer === 0 && !S.acts[0].length) localStorage.setItem(SAVE, JSON.stringify({ mode: S.mode, lvl: S.lvl, g: S.g, log: S.log.slice(-60) })); else if (S && S.g.over != null) localStorage.removeItem(SAVE); } catch (e) { } }
@@ -101,7 +103,32 @@
     save(); render();
   }
   // Reaktion nur, wenn man einen Überläufer einsetzen kann (sonst spart das im Zu-zweit-Modus zwei Gerätewechsel)
-  function needReact(p) { return S.g.hand[p].length > 0 && S.g.units.some(function (u) { return u.p === p && u.t === 'ou'; }); }
+  function needReact(p) { return S.g.units.some(function (u) { return u.p === p && u.t === 'ou'; }) && (S.g.hand[p].length > 0 || (AK.vv(S.g, 'B') && S.g.hero[p].mana >= 2)); }
+  // ---------- Regel-Varianten (Test) ----------
+  var VARS = ['BC', 'ABC', 'A', ''], VNAME = { A: 'Rückkehr', B: 'Feldherr-Held', C: 'Verstärkung & Forschung' };
+  function varsObj(v) { var o = {}; (v || '').split('').forEach(function (k) { o[k] = 1; }); return o; }
+  function varsTxt(v) { return v === 'BC' ? 'Standard (Feldherr-Held + Verstärkung)' : v === 'ABC' ? 'Standard + Rückkehr' : v ? v.split('').map(function (k) { return VNAME[k]; }).join(' + ') : 'Klassisch'; }
+  function vOn(k) { return !!(S && S.g && AK.vv(S.g, k)); }
+  function cardTxt(c) { return c.c === 'gold' ? '+' + c.v + ' Gold' : c.c === 'unit' ? T[c.t].n + ' gratis' : c.c === 'unit2' ? '2 Bauern gratis' : c.c === 'tech' ? 'Forschung gratis' : c.c === 'up' ? 'Aufwertung ★ gratis' : c.c === 'mana' ? '+' + c.v + ' Mana' : '?'; }
+  function renderVars(w, p) {
+    var h = '', el = $('#vpanel'); if (!el) return;
+    if (vOn('A') && S.stage === 'plan' && w.round > 2) h += '<div class="note"><b>Rückkehr:</b> Umstellen: eigene Truppe antippen, dann freies Feld. Höchstens ' + R.rvCap + ' Truppen.</div>';
+    if (vOn('A') && S.stage === 'plan' && w.round <= 2) h += '<div class="note"><b>Rückkehr:</b> Nach jeder Runde steht deine Armee wieder vollzählig. Wer am Rundenende mehr Truppenwert übrig hat, trifft den gegnerischen Feldherrn. Umstellen: eigene Truppe antippen, dann freies Feld in deinen 3 Reihen. Höchstens ' + R.rvCap + ' Truppen.</div>';
+    if (vOn('B')) {
+      var hh = w.hero[p];
+      if (S.stage === 'plan' && w.round <= 2) h += '<div class="note"><b>Feldherr-Held:</b> Geschlagene Gegner bringen deinem Feldherrn Erfahrung. Jede Stufe: 1 von 3 Fähigkeiten wählen. In der Reaktionspause kannst du mit Mana zaubern.</div>';
+      h += '<div class="vrow"><b>Feldherr Stufe ' + hh.lv + '</b> · Erfahrung ' + hh.xp + (hh.lv < AK.XPN.length ? '/' + AK.XPN[hh.lv] : '') + ' · <span class="mana">Mana ' + hh.mana + '/' + R.manaMax + '</span>' + (hh.skills.length ? '<br><span class="note">' + hh.skills.map(function (k) { return AK.SKILL[k].n; }).join(', ') + '</span>' : '') + '</div>';
+      if (hh.pick && S.stage === 'plan') h += '<div class="lbl">Neue Stufe! Wähle einen Skill</div><div class="vcards">' + hh.pick.map(function (k, i) { var e = AK.SKILL[k]; return '<button class="card vc" data-skill="' + i + '"><div class="cn">' + e.n + '</div><div class="note">' + e.d + '</div></button>'; }).join('') + '</div>';
+      if (S.stage === 'react') h += '<div class="lbl">Zauber (einer pro Reaktion)</div><div class="vcards">' + hh.spells.map(function (s) { var sp = AK.SPELL[s]; return '<button class="card vc' + (S.sel && S.sel.spell === s ? ' sel' : '') + (hh.mana < sp.mana || hh.cast ? ' poor' : '') + '" data-spell="' + s + '"><div class="cn">' + sp.n + ' · ' + sp.mana + ' Mana</div><div class="note">' + sp.d + (sp.target ? '. Dann Feld antippen.' : '') + '</div></button>'; }).join('') + '</div>' + (hh.cast ? '<div class="note">Gewirkt: <b>' + AK.SPELL[hh.cast.s].n + '</b> (wirkt zu Beginn von Teil 2)</div>' : '');
+    }
+    if (vOn('C') && S.stage === 'plan') {
+      if (w.round <= 2) h += '<div class="note"><b>Verstärkung & Forschung:</b> Jede Runde eine Gratis-Karte aus 3. Forschung verbessert alle Truppen eines Typs für die ganze Partie.</div>';
+      if (!w.cardUsed[p]) h += '<div class="lbl">Verstärkung (1 aus 3, gratis)</div><div class="vcards">' + w.cards[p].map(function (c, i) { return '<button class="card vc" data-vcard="' + i + '"><div class="cn">' + cardTxt(c) + '</div></button>'; }).join('') + '</div>';
+      var fr = []; if (w.free[p].tech) fr.push('nächste Forschung gratis'); if (w.free[p].up) fr.push('nächste Aufwertung gratis');
+      h += '<div class="note">' + (fr.length ? '<b>Gutschein:</b> ' + fr.join(', ') + '. ' : '') + '<b>Forschung:</b> eigene Truppe antippen, gilt dann für alle Truppen dieses Typs.</div>';
+    }
+    el.innerHTML = h; el.classList.toggle('hidden', !h);
+  }
   function beginReact(p) {
     if (p === -1) return submitReact(true);
     if (!needReact(p)) { if (S.mode === 'hot' && p === 0) return beginReact(needReact(1) ? 1 : -1); return submitReact(true); }
@@ -168,7 +195,8 @@
       if (u.t === 'ou') h += '<span class="note">Der Feldherr hält immer seine Stellung.</span>';
       else if (w.round >= R.pattRound) h += '<span class="note">Generalangriff: alle rücken vor.</span>';
       else h += '<button class="btn small' + (u.ord === 'vor' ? ' on' : '') + '" data-ord="vor">' + (u.ord === 'vor' ? '✓ ' : '') + '⚔ Vorrücken</button><button class="btn small' + (u.ord === 'halt' ? ' on' : '') + '" data-ord="halt">' + (u.ord === 'halt' ? '✓ ' : '') + '🛡 Halten (+' + R.holdAtk + ' Schaden)</button>';
-      if (S.stage === 'plan' && u.t !== 'ou') { var c = R.up.cost(base); h += '<button class="btn small" data-up="1"' + (AK.canDo(w, p, { k: 'up', id: u.id }) ? ' disabled' : '') + '>★ Aufwerten (' + c + ' Gold, +' + R.up.hp + ' Leben, +' + R.up.atk + ' Schaden)</button>'; }
+      if (S.stage === 'plan' && u.t !== 'ou') { var c = R.up.cost(base); h += '<button class="btn small" data-up="1"' + (AK.canDo(w, p, { k: 'up', id: u.id }) ? ' disabled' : '') + '>★ Aufwerten (' + (w.free && w.free[p].up ? 'gratis' : c + ' Gold') + ', +' + R.up.hp + ' Leben, +' + R.up.atk + ' Schaden)</button>'; }
+      if (vOn('C') && S.stage === 'plan' && u.t !== 'ou' && AK.TECH[base]) AK.TECH[base].forEach(function (e, j) { var own = (w.tech[p][base] || {})[j]; h += '<button class="btn small' + (own ? ' on' : '') + '" data-tech="' + base + ',' + j + '"' + (own || AK.canDo(w, p, { k: 'tech', t: base, j: j }) ? ' disabled' : '') + '>' + (own ? '✓ ' : '🔬 ') + 'Alle ' + T[base].n + ': ' + e.n + ' (' + e.d + (own ? '' : ', ' + (w.free[p].tech ? 'gratis' : R.techCost(base) + ' Gold')) + ')</button>'; });
       h += '</div>';
     }
     h += '</div>';
@@ -205,7 +233,8 @@
       } else if (S.sel.id) {
         var su = AK.unit(w, S.sel.id);
         if (su) { patCells(su, su.x, su.y).forEach(function (c) { marks[c[1] * N + c[0]] = 'reach'; }); AK.targetsFrom(w, su, su.x, su.y).forEach(function (e) { marks[e.y * N + e.x] = 'hit'; }); }
-      }
+        if (su && su.p === p && vOn('A') && S.stage === 'plan') for (var my = 0; my < N; my++) for (var mx = 0; mx < N; mx++) if (AK.ownRows(p, my, 3) && !AK.at(w, mx, my) && !marks[my * N + mx]) marks[my * N + mx] = 'ok';
+      } else if (S.sel.spell) w.units.forEach(function (e) { if (e.p !== p && e.hp > 0) marks[e.y * N + e.x] = 'hit'; });
     }
     if (planning && opt.danger) w.units.forEach(function (e) { if (e.p !== p && e.hp > 0) patCells(e, e.x, e.y).forEach(function (c) { var k = c[1] * N + c[0]; if (!marks[k]) marks[k] = 'danger'; }); });
     $('#b-danger').classList.toggle('on', opt.danger); $('#b-danger').classList.toggle('hidden', !planning);
@@ -215,13 +244,14 @@
     $('#g-net').classList.toggle('hidden', S.mode !== 'net');
     if (S.mode === 'net') $('#g-net').innerHTML = (S.net.status === 'online' ? '<span style="color:var(--good)">● online</span>' : '<span style="color:var(--bad)">● ' + (S.net.status || 'verbinde') + ' …</span>') + ' · ' + peerText() + (S.net.st && !S.net.st.seats[1] ? ' · <button class="btn small" id="g-share">Link an Gegner schicken</button>' : '');
     document.title = (S.stage === 'plan' || S.stage === 'react') && S.mode === 'net' && ent(S.net.st, S.g.round, S.nph, 1 - S.me) ? '⚔ Du bist dran – Armee' : 'Armee';
-    $('#g-sides').innerHTML = [p, 1 - p].map(function (q) { return '<span class="p' + q + 'c">' + names(q) + '</span> 王 ' + kh(q) + '/' + T.ou.hp + ' · ' + tr(q) + ' Truppen · ' + (q === p ? '' : '<span class="gold">' + g.gold[q] + '</span> Gold · ') + w.hand[q].length + ' Überl.'; }).join('<br>');
+    $('#g-sides').innerHTML = [p, 1 - p].map(function (q) { return '<span class="p' + q + 'c">' + names(q) + '</span> 王 ' + kh(q) + '/' + ((w.units.filter(function (u) { return u.p === q && u.t === 'ou'; })[0] || T.ou).mhp || T.ou.hp) + ' · ' + tr(q) + ' Truppen · ' + (q === p ? '' : '<span class="gold">' + g.gold[q] + '</span> Gold · ') + w.hand[q].length + ' Überl.'; }).join('<br>');
     if (S.stage !== 'battle') { drawBoard(w, marks); plan3d(w, marks); }
+    if (planning) renderVars(w, p); else if ($('#vpanel')) $('#vpanel').classList.add('hidden');
     // Laden
     var shop = $('#shop');
     shop.innerHTML = S.stage === 'plan' ? w.offers[p].map(function (o, i) {
       var c = 'card' + (o.sold ? ' sold' : '') + (S.sel && S.sel.shop === i ? ' sel' : '') + (!o.sold && w.gold[p] < T[o.t].cost ? ' poor' : '');
-      return '<button class="' + c + '" data-shop="' + i + '"><div class="ck"><i style="--km:url(img/koma/' + MASK[o.t] + '.svg)"></i></div><div class="cn">' + T[o.t].n + '</div><div class="cc gold">' + (o.sold ? 'gekauft' : T[o.t].cost) + '</div></button>';
+      return '<button class="' + c + '" data-shop="' + i + '"><div class="ck"><i style="--km:url(img/koma/' + MASK[o.t] + '.svg)"></i></div><div class="cn">' + T[o.t].n + '</div><div class="cc gold">' + (o.sold ? 'gekauft' : o.free ? 'gratis' : T[o.t].cost) + '</div></button>';
     }).join('') : '<div class="note" style="grid-column:1/-1">Laden geschlossen, nur Befehle und 1 Überläufer.</div>';
     $('#b-reroll').classList.toggle('hidden', S.stage !== 'plan');
     $('#b-reroll').disabled = !!AK.canDo(w, p, { k: 'reroll' });
@@ -253,6 +283,8 @@
   function clickCell(x, y) {
     if (S.stage !== 'plan' && S.stage !== 'react') return;
     var w = view(), p = S.viewer, u = AK.at(w, x, y);
+    if (S.sel && S.sel.spell) { act({ k: 'cast', s: S.sel.spell, x: x, y: y }); S.sel = null; render(); return; }
+    if (S.sel && S.sel.id && !u && vOn('A') && S.stage === 'plan') { var mu = AK.unit(w, S.sel.id); if (mu && mu.p === p) { act({ k: 'mv', id: mu.id, x: x, y: y }); render(); return; } }
     if (S.sel && (S.sel.shop != null || S.sel.hand != null) && !u) {
       var a = S.sel.shop != null ? { k: 'buy', i: S.sel.shop, x: x, y: y } : { k: 'drop', i: S.sel.hand, x: x, y: y };
       if (act(a)) { var w2 = view(), nu = AK.at(w2, x, y); S.newIds = (S.newIds || []).concat(nu ? [nu.id] : []); S.sel = nu ? { id: nu.id } : null; }
@@ -261,8 +293,12 @@
     S.sel = u ? { id: u.id } : null; render();
   }
   document.addEventListener('click', function (e) {
-    var t = e.target.closest('[data-shop],[data-hand],[data-ord],[data-up],[data-close]');
+    var t = e.target.closest('[data-shop],[data-hand],[data-ord],[data-up],[data-close],[data-skill],[data-spell],[data-vcard],[data-tech]');
     if (t && S) {
+      if (t.dataset.skill != null) { act({ k: 'skill', i: +t.dataset.skill }); render(); return; }
+      if (t.dataset.vcard != null) { act({ k: 'card', i: +t.dataset.vcard }); render(); return; }
+      if (t.dataset.tech) { var tq = t.dataset.tech.split(','); act({ k: 'tech', t: tq[0], j: +tq[1] }); render(); return; }
+      if (t.dataset.spell) { var spl = AK.SPELL[t.dataset.spell], er = AK.canDo(view(), S.viewer, { k: 'cast', s: t.dataset.spell, x: 0, y: 0 }, 'react'); if (er) { toast(er); return; } if (spl.target) S.sel = S.sel && S.sel.spell === t.dataset.spell ? null : { spell: t.dataset.spell }; else act({ k: 'cast', s: t.dataset.spell }); render(); return; }
       if (t.dataset.shop != null) { var i = +t.dataset.shop, o = view().offers[S.viewer][i]; if (o.sold) return; S.sel = S.sel && S.sel.shop === i ? null : { shop: i }; }
       else if (t.dataset.hand != null) { var j = +t.dataset.hand; S.sel = S.sel && S.sel.hand === j ? null : { hand: j }; }
       else if (t.dataset.ord) { var cu = AK.unit(view(), S.sel.id); if (cu && cu.ord !== t.dataset.ord) act({ k: 'ord', id: S.sel.id, ord: t.dataset.ord }); }
@@ -333,15 +369,21 @@
     var nach = [0, 1].map(function (p) { return Math.min(R.lossGoldMax, R.lossGold * ((g.lost || [0, 0])[p])); });
     var ev = AK.endRound(g), inc = R.income(g.round), bo = g.bonus || [0, 0];
     var storm = ev.filter(function (e) { return e.e === 'storm'; });
-    storm.forEach(function (e) { S.log.push({ t: 'Runde ' + r, s: '<b>Sturm aufs Lager:</b> ' + names(e.p) + ' hat keine Truppen mehr, ' + e.n + ' Gegner treffen den Feldherrn (−' + e.dmg + ')' }); });
+    ev.forEach(function (e) { if (e.e === 'rdmg' && e.p != null) S.log.push({ t: 'Runde ' + r, s: '<b>Rundensieg ' + names(1 - e.p) + '</b> (Truppenwert ' + tv(e.v[0]) + ' : ' + tv(e.v[1]) + '), ' + fh(e.p) + ' −' + e.dmg }); });
+    storm.forEach(function (e) { S.log.push({ t: 'Runde ' + r, s: '<b>Sturm aufs Lager:</b> ' + names(e.p) + (names(e.p) === 'Du' ? ' hast' : ' hat') + ' keine Truppen mehr, ' + e.n + ' Gegner treffen den Feldherrn (−' + e.dmg + ')' }); });
     if (g.over != null) return gameOver();
+    var kmax = [0, 1].map(function (p) { var k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0]; return k ? k.mhp : T.ou.hp; });
     var king = [0, 1].map(function (p) { var k = g.units.filter(function (u) { return u.p === p && u.t === 'ou'; })[0]; return k ? Math.max(0, k.hp) : 0; });
     var h = '<h2>Runde ' + r + ' vorbei</h2><div class="sum">';
     [0, 1].forEach(function (p) {
       var n = g.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).length;
-      h += '<div><span class="p' + p + 'c">' + names(p) + '</span>: ' + lost[p] + ' verloren · ' + n + ' Truppen stehen · Feldherr ' + king[p] + '/' + T.ou.hp + ' · ' + g.hand[p].length + ' Überläufer · <span class="gold">+' + (inc + bo[p] + nach[p]) + ' Gold</span>' + (nach[p] ? ' (davon ' + nach[p] + ' Nachschub)' : '') + '</div>';
+      h += '<div><span class="p' + p + 'c">' + names(p) + '</span>: ' + lost[p] + ' verloren · ' + n + ' Truppen stehen · Feldherr ' + king[p] + '/' + kmax[p] + ' · ' + g.hand[p].length + ' Überläufer · <span class="gold">+' + (inc + bo[p] + nach[p]) + ' Gold</span>' + (nach[p] ? ' (davon ' + nach[p] + ' Nachschub)' : '') + '</div>';
     });
-    storm.forEach(function (e) { h += '<div style="margin-top:6px"><b>Sturm aufs Lager!</b> ' + names(e.p) + ' hat keine Truppen mehr. ' + e.n + ' Gegner treffen den Feldherrn: −' + e.dmg + ' Leben.</div>'; });
+    storm.forEach(function (e) { h += '<div style="margin-top:6px"><b>Sturm aufs Lager!</b> ' + names(e.p) + (names(e.p) === 'Du' ? ' hast' : ' hat') + ' keine Truppen mehr. ' + e.n + ' Gegner treffen den Feldherrn: −' + e.dmg + ' Leben.</div>'; });
+    ev.forEach(function (e) {
+      if (e.e === 'rdmg') h += '<div style="margin-top:6px">' + (e.p == null ? 'Runde unentschieden' : '<b>Rundensieg ' + names(1 - e.p) + '</b>') + ' (Truppenwert ' + names(0) + ' ' + tv(e.v[0]) + ' : ' + names(1) + ' ' + tv(e.v[1]) + ')' + (e.p == null ? (e.dmg ? ': beide Feldherren −' + e.dmg + ' Leben.' : '.') : ': ' + fh(e.p) + ' −' + e.dmg + ' Leben.') + ' Alle Truppen stehen wieder auf.</div>';
+      if (e.e === 'lvl') h += '<div style="margin-top:6px">' + fh(e.p).replace(/^d/, 'D') + ' erreicht <b>Stufe ' + e.lv + '</b>.</div>';
+    });
     h += '<div style="margin-top:8px" class="note">Alle heilen 1 Leben, der Feldherr 2.</div>';
     if (g.round === R.pattRound) h += '<div style="margin-top:6px"><b>Generalangriff!</b> Ab jetzt rücken alle Truppen vor, Halten gilt nicht mehr.</div>';
     else if (g.round === R.pattRound - 2) h += '<div class="note">Ab Runde ' + R.pattRound + ' ist Generalangriff: dann rücken alle vor.</div>';
@@ -409,6 +451,9 @@
       else if (e.e === 'die') { if (u) { u.hp = 0; lines.push('<b>' + nm(u) + ' fällt</b>' + (u.t !== 'ou' ? ' (wird Überläufer für ' + (S.mode === 'ki' ? (u.p === 0 ? 'die KI' : 'dich') : S.mode === 'net' ? (u.p === S.me ? 'den Gegner' : 'dich') : names(1 - u.p)) + ')' : '')); if (!S.probe) S.roundLoss[u.p]++; } }
       else if (e.e === 'flee' && T[e.t].cost >= 3) lines.push('Hand voll: ' + (S.mode === 'ki' ? (e.p === 0 ? 'dein' : 'ihr') : names(e.p) + 's') + ' Überläufer ' + T[e.t].n + ' läuft davon');
       else if (e.e === 'move' && u) { u.x = e.tx; u.y = e.ty; }
+      else if (e.e === 'hurt') { if (u) { u.hp -= e.dmg; dmg[1 - u.p] += e.dmg; } }
+      else if (e.e === 'heal') { if (u) u.hp += e.v; }
+      else if (e.e === 'spell') lines.push('Zauber <b>' + AK.SPELL[e.s].n + '</b> von ' + names(e.p));
       else if (e.e === 'promo' && u) { var add = T[e.t].hp - T[T[e.t].base].hp, old = nm(u); u.t = e.t; u.mhp += add; u.hp += add; lines.push(old + ' wird befördert: <b>' + T[e.t].n + '</b>'); }
     });
     if (dmg[0] || dmg[1]) lines.unshift('Schaden ' + names(0) + ' ' + dmg[0] + ', ' + names(1) + ' ' + dmg[1]);
@@ -428,6 +473,10 @@
       el.className = 'dmg'; el.textContent = '−' + e.dmg; el.style.left = (q[0] + .5) / 9 * 100 + '%'; el.style.top = (q[1] + .5) / 9 * 100 + '%'; fx.appendChild(el);
       var tu = U.querySelector('[data-id="' + e.to + '"]'); if (tu) { tu.classList.remove('flash'); void tu.offsetWidth; tu.classList.add('flash'); }
       var au = U.querySelector('[data-id="' + e.id + '"]'); if (au) { var dx = Math.sign(b2(e).x), dy = Math.sign(b2(e).y); au.style.setProperty('--bx', dx * 22 + '%'); au.style.setProperty('--by', dy * 22 + '%'); au.classList.add('bump'); }
+    });
+    if (!S.d3) ev.forEach(function (e) { // Zauber: Feld leuchtet, Schadenszahlen (in 3D zeigt view3d.js das)
+      if (e.e === 'spell' && e.x != null) [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) { var sx = e.x + o[0], sy = e.y + o[1]; if (sx >= 0 && sy >= 0 && sx < N && sy < N) puff(sx, sy, 'puff gold'); });
+      if (e.e === 'hurt') { var q = pos(e.x, e.y), el = document.createElement('div'); el.className = 'dmg'; el.textContent = '−' + e.dmg; el.style.left = (q[0] + .5) / 9 * 100 + '%'; el.style.top = (q[1] + .5) / 9 * 100 + '%'; fx.appendChild(el); }
     });
     applyEv(d, ev, lbl);
     if (S.d3) AK3D.tick(ev, d);
@@ -468,10 +517,17 @@
   }
   var toastT;
   function toast(s) { var st = $('#g-stage'), old = st.textContent; st.textContent = '⚠ ' + s; st.style.color = '#ff8a70'; clearTimeout(toastT); toastT = setTimeout(function () { st.style.color = ''; render(); }, 1600); }
+  function varRules() {
+    var v = S && S.g && S.g.vars ? Object.keys(S.g.vars).join('') : opt.vars || '', h = '';
+    if (v.indexOf('B') >= 0) h += '<li><b>Feldherr-Held:</b> Geschlagene Gegner bringen deinem Feldherrn Erfahrung. Jede neue Stufe: 1 von 3 Fähigkeiten wählen (stärkere Truppen, mehr Gold, neue Zauber). In der Reaktion kannst du 1 Zauber wirken, er kostet Mana (+' + R.mana + ' pro Runde, höchstens ' + R.manaMax + '). Pfeilhagel: Zauber antippen, dann Ziel-Feld.</li>';
+    if (v.indexOf('C') >= 0) h += '<li><b>Verstärkung:</b> Jede Runde 1 von 3 Karten gratis (Gold, Truppe, Forschung …).</li><li><b>Forschung:</b> Eigene Truppe antippen, dann 🔬. Gilt für alle Truppen dieses Typs, auch später gekaufte.</li>';
+    if (v.indexOf('A') >= 0) h += '<li><b>Rückkehr:</b> Nach jeder Runde steht deine Armee wieder vollzählig. Wer mehr Truppenwert übrig hat, trifft den gegnerischen Feldherrn (mindestens ' + (R.rvMin + R.rvEsc) + ', steigt jede Runde). Eigene Truppen darfst du in deinen 3 Reihen umstellen, höchstens ' + R.rvCap + ' Truppen.</li>';
+    return h;
+  }
   function rules() {
     modal('<h2>Regeln</h2><ul>' +
       '<li><b>Ziel:</b> Der gegnerische Feldherr (王) fällt.</li>' +
-      '<li><b>Runde:</b> Beide planen geheim. Dann läuft die Schlacht von selbst: Teil 1, kurze Reaktion (nur wer Überläufer hat), Teil 2. Die Truppen bleiben danach stehen.</li>' +
+      '<li><b>Runde:</b> Beide planen geheim. Dann läuft die Schlacht von selbst: Teil 1, kurze Reaktion (nur wer Überläufer oder Mana hat), Teil 2. Die Truppen bleiben danach stehen.</li>' +
       '<li><b>Planen:</b> Truppen im Laden kaufen und in deinen 3 Reihen aufstellen. Aufwerten (★) gibt mehr Leben und Schaden. Neue Angebote kosten 1 Gold. Übriges Gold bleibt.</li>' +
       '<li><b>Kampf:</b> Jede Truppe schlägt nur in ihre Richtungen (Bild auf der Karte, wie im Shogi). Ist niemand in Reichweite, läuft sie zum nächsten Gegner und stellt sich passend hin. Alle schlagen gleichzeitig, immer den Schwächsten.</li>' +
       '<li><b>Befehle:</b> ⚔ Vorrücken oder 🛡 Halten: bleibt stehen und schlägt mit +' + R.holdAtk + ' Schaden zu. Halten lohnt gegen Angreifer, Schützen kontern es aus der Ferne.</li>' +
@@ -486,7 +542,7 @@
       '<li><b>Aufgeben:</b> im Menü ☰, wie beim Shogi.</li>' +
       '<li><b>⚠ Gefahr:</b> färbt beim Planen die Felder, die der Gegner treffen kann.</li>' +
       '<li><b>Online:</b> Im Menü „Online gegen ein zweites Handy“ und den Link schicken. Jeder plant auf seinem Gerät, die Partie wird gespeichert. Mit Rundenuhr wird bei 0:00 automatisch abgeschickt.</li>' +
-      '<li><b>Probelauf:</b> Zeigt, wie deine Aufstellung gegen den jetzigen Stand des Gegners laufen würde.</li></ul>', 'Verstanden');
+      '<li><b>Probelauf:</b> Zeigt, wie deine Aufstellung gegen den jetzigen Stand des Gegners laufen würde.</li>' + varRules() + '</ul>', 'Verstanden');
   }
 
   // ---------- Online gegen ein zweites Gerät ----------
@@ -503,10 +559,10 @@
     m.sort(function (x, y) { return x.r - y.r || ORD[x.ph] - ORD[y.ph] || x.p - y.p; });
     var s1 = a.seats[1] && b.seats[1] ? (a.seats[1] < b.seats[1] ? a.seats[1] : b.seats[1]) : a.seats[1] || b.seats[1] || null;
     var nx = a.next && b.next ? (a.next < b.next ? a.next : b.next) : a.next || b.next;
-    var o = { game: 'armee', seed: a.seed, bonus: a.bonus, clock: a.clock || b.clock || 0, seats: { 0: a.seats[0] || b.seats[0], 1: s1 }, moves: m, t: Math.max(a.t || 0, b.t || 0) }; if (nx) o.next = nx; return o;
+    var o = { game: 'armee', seed: a.seed, bonus: a.bonus, vars: a.vars || b.vars || '', clock: a.clock || b.clock || 0, seats: { 0: a.seats[0] || b.seats[0], 1: s1 }, moves: m, t: Math.max(a.t || 0, b.t || 0) }; if (nx) o.next = nx; return o;
   }
   function netRebuild(st) {
-    var g = AK.newGame(st.seed, st.bonus), nph = 'plan';
+    var g = AK.newGame(st.seed, st.bonus, varsObj(st.vars)), nph = 'plan';
     for (var k = 0; k < 200 && g.over == null; k++) {
       var r = g.round, a0 = ent(st, r, 'plan', 0), a1 = ent(st, r, 'plan', 1);
       if (!a0 || !a1) { nph = 'plan'; break; }
@@ -530,7 +586,7 @@
     }, 'Später');
   }
   function netCreate() {
-    var code = Net.code(), st = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: [0, opt.hc], clock: opt.clock, seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
+    var code = Net.code(), st = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: [0, opt.hc], vars: opt.vars || '', clock: opt.clock, seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
     netStart(code, st); shareNet();
   }
   function netStart(code, st) {
@@ -539,7 +595,7 @@
     S = { mode: 'net', me: st ? 0 : -1, net: { code: code, st: st, status: 'verbinde' }, g: null, acts: [[], []], reacts: [[], []], viewer: 0, stage: 'wait', sel: null, log: [] };
     try { history.replaceState(null, '', '#armee=' + code); } catch (e) { }
     netRemember(code); show('game');
-    if (st) { S.g = AK.newGame(st.seed, st.bonus); S.viewer = 0; S.log.push({ t: 'Runde 1', s: 'Neue Online-Partie. Du spielst Orange (unten).' }); beginPlan(0); } else render();
+    if (st) { S.g = AK.newGame(st.seed, st.bonus, varsObj(st.vars)); S.viewer = 0; S.log.push({ t: 'Runde 1', s: 'Neue Online-Partie. Du spielst Orange (unten).' }); beginPlan(0); } else render();
     netLoad(function () {
       if (typeof mqtt === 'undefined') { S.net.status = 'offline'; render(); toast('Keine Verbindung zum Netz'); return; }
       Net.connect('armee-' + code, onNet, function () { if (S && S.mode === 'net') { S.net.peer = Date.now(); if (S.stage !== 'battle') render(); } }, function (x) { if (S && S.mode === 'net') { S.net.status = x; if (S.stage !== 'battle') render(); } });
@@ -607,7 +663,7 @@
   function rematch() {
     var st = S.net.st, code = st.next || Net.code();
     if (st.next) return netStart(st.next, null);
-    var nst = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: st.bonus, clock: st.clock || 0, seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
+    var nst = { game: 'armee', seed: (Date.now() ^ (Math.random() * 1e9)) >>> 0, bonus: st.bonus, vars: st.vars || '', clock: st.clock || 0, seats: { 0: cid(), 1: null }, moves: [], t: Date.now() };
     st = merge(st, { game: 'armee', seed: st.seed, bonus: st.bonus, seats: st.seats, moves: [], t: st.t, next: code }); S.net.st = st; Net.publishState(st);
     if (st.next !== code) return netStart(st.next, null);
     toast('Revanche wird angelegt …');
@@ -635,11 +691,12 @@
     return '<div class="mini" style="grid-template-rows:repeat(' + cells.length / 5 + ', 26px)">' + cells.split('').map(function (c) { return '<b class="' + (c === '.' ? '' : c) + '"></b>'; }).join('') + '</div>';
   }
   var INTRO = [
-    function () { return '<div class="big-k">軍</div><h2>Armee</h2><p>Zwei Feldherren, zwei Armeen. Du kaufst Truppen, stellst sie auf und gibst Befehle. <b>Dann kämpfen sie von selbst.</b></p><p>Gewonnen hat, wessen Truppen den <b>gegnerischen Feldherrn (王)</b> besiegen.</p><p class="note">Dauert etwa 10 Runden. Die Truppen kennst du vom Shogi.</p>'; },
+    function () { return '<div class="big-k">軍</div><h2>Armee</h2><p>Zwei Feldherren, zwei Armeen. Du kaufst Truppen, stellst sie auf und gibst Befehle. <b>Dann kämpfen sie von selbst.</b></p><p>Gewonnen hat, wessen Truppen den <b>gegnerischen Feldherrn (王)</b> besiegen.</p><p class="note">Dauert etwa 8 Runden. Die Truppen kennst du vom Shogi.</p>'; },
     function () { return '<h2>1 · Planen</h2><p>Jede Runde bekommst du <span class="gold">Gold</span>. Tippe im <b>Laden</b> auf eine Truppe und dann auf ein freies Feld in deinen <b>3 unteren Reihen</b> (grün).</p>' + mini('.xkx.' + '..x..' + '.....' + '.....' + 'zzozz' + 'zozoz' + 'zzkzz') + '<p class="note" style="text-align:center"><span class="p0c">Orange</span> = du, <span class="p1c">Blau</span> = Gegner, weiß umrandet = Feldherr</p><p>Beide planen <b>gleichzeitig und geheim</b>. Übriges Gold bleibt dir.</p>'; },
     function () { return '<h2>2 · Wie Truppen kämpfen</h2><p>Jede Truppe schlägt nur in ihre Shogi-Richtungen (rot). Die Karte zeigt es, wenn du eine Truppe antippst.</p><div class="row" style="gap:16px;justify-content:center">' + ['fu', 'ki', 'ka'].map(function (t) { return '<div style="text-align:center">' + patHTML(t) + '<div class="note">' + T[t].n + '</div></div>'; }).join('') + '</div><p>Ist kein Gegner in Reichweite, läuft sie zum nächsten. Alle schlagen gleichzeitig, immer den Schwächsten. <b>Läufer und Turm schießen</b> von hinten.</p>'; },
     function () { return '<h2>3 · Die Schlacht</h2><p>Wenn beide fertig sind, läuft die Schlacht von selbst: <b>Teil 1</b>, kurze <b>Reaktion</b>, <b>Teil 2</b>. Danach bleiben alle stehen, wo sie sind, und die nächste Runde beginnt.</p><p>Wer fällt, wird <b>Überläufer</b> für den Gegner: Den kannst du später für dich einsetzen, in der Reaktion sogar gratis.</p><p>Truppen in den hinteren Reihen des Gegners werden <b>befördert</b> und stärker.</p>'; },
     function () { return '<h2>4 · Befehle</h2><p>Tippe eine eigene Truppe an: <b>⚔ Vorrücken</b> oder <b>🛡 Halten</b> (bleibt stehen, schlägt härter zu).</p><p>Aber: Jede Truppe <b>außerhalb deiner 3 Reihen</b> bringt am Rundenende 1 Gold extra. Wer nur hält, verdient weniger.</p><p class="note">Ab Runde ' + R.pattRound + ' greifen alle an.</p>'; },
+    function () { return '<h2>5 · Feldherr und Verstärkung</h2><p>Dein <b>Feldherr</b> sammelt Erfahrung, wenn deine Truppen Gegner schlagen. Bei jeder neuen Stufe wählst du <b>1 von 3 Fähigkeiten</b>.</p><p>In der Reaktion kann er <b>zaubern</b>, z. B. Pfeilhagel: Zauber antippen, dann ein Feld beim Gegner. Das kostet <span class="mana">Mana</span>, das jede Runde nachwächst.</p><p>Jede Runde gibt es außerdem <b>1 Gratis-Karte</b> aus 3: Gold, eine Truppe oder <b>Forschung</b> (macht alle Truppen eines Typs stärker).</p>'; },
     function () { return '<h2>Tipps</h2><ul><li><b>⚠ Gefahr</b> färbt die Felder rot, die der Gegner treffen kann.</li><li><b>Probelauf</b> zeigt vorher, wie deine Aufstellung ausgehen würde.</li><li>Billige Bauern vorn schützen teure Truppen dahinter.</li><li>Unter <b>?</b> stehen alle Regeln, unter <b>☰</b> große Schrift.</li></ul><p>Am besten erst eine Übungspartie gegen die KI auf <b>leicht</b>.</p>'; }
   ];
   function intro(done) {
@@ -662,11 +719,13 @@
     $('#m-snd').textContent = 'Ton: ' + (opt.snd ? 'an' : 'aus');
     $('#m-3d').textContent = '3D-Schlachtfeld: ' + (opt.d3 ? 'an' : 'aus (2D)'); $('#m-3d').classList.toggle('hidden', !(window.AK3D && AK3D.supported()));
     $('#m-clock').textContent = 'Rundenuhr online: ' + (opt.clock ? opt.clock / 60 + ' Min. pro Planung' : 'aus (ohne Zeitdruck)');
-    $('#m-lvl').textContent = 'KI-Stärke: ' + ['leicht', 'mittel', 'schwer'][opt.lvl]; }
+    $('#m-lvl').textContent = 'KI-Stärke: ' + ['leicht', 'mittel', 'schwer'][opt.lvl];
+    if ($('#m-vars')) $('#m-vars').textContent = 'Regeln: ' + varsTxt(opt.vars); }
   $('#m-clock').onclick = function () { opt.clock = opt.clock === 0 ? 120 : opt.clock === 120 ? 300 : 0; saveOpt(); applyOpt(); };
   $('#m-3d').onclick = function () { opt.d3 = !opt.d3; saveOpt(); applyOpt(); };
   $('#m-snd').onclick = function () { opt.snd = !opt.snd; saveOpt(); applyOpt(); if (opt.snd) SND.init(); };
   $('#m-lvl').onclick = function () { opt.lvl = (opt.lvl + 1) % 3; saveOpt(); applyOpt(); };
+  if ($('#m-vars')) $('#m-vars').onclick = function () { opt.vars = VARS[(VARS.indexOf(opt.vars || '') + 1) % VARS.length]; saveOpt(); applyOpt(); };
   $('#m-ki').onclick = function () { newMatch('ki'); };
   $('#m-net').onclick = netCreate;
   $('#m-netlist').onclick = function (e) { var b = e.target.closest('[data-net]'); if (b) netStart(b.dataset.net, null); };

@@ -36,6 +36,17 @@
     var w = AK.clone(g), acts = [], r = AK.rng(AK.hash(seed || 1, g.round, p, 991));
     stil = stil || 'mix'; var easy = lvl === 0, EZ = (typeof AK_EZ !== 'undefined' && AK_EZ) || {}; var ez = function (k) { return easy || EZ[k]; };
     function act(a) { if (!AK.apply(w, p, a, 'plan')) { acts.push(a); return true; } return false; }
+    var V = w.vars || {};
+    // Variante B: Skill wählen (der, der den meisten eigenen Truppen hilft)
+    if (V.B && w.hero[p].pick && !ez('up')) {
+      var bi0 = 0, bs0 = -1; w.hero[p].pick.forEach(function (k, i) { var sc = skillVal(w, p, k) + r() * 0.3; if (sc > bs0) { bs0 = sc; bi0 = i; } });
+      act({ k: 'skill', i: bi0 });
+    }
+    // Variante C: Verstärkungskarte (Wert in Gold geschätzt)
+    if (V.C && !w.cardUsed[p]) {
+      var ci = 0, cs = -1; w.cards[p].forEach(function (c, i) { var sc = cardVal(w, p, c) + r() * 0.5; if (sc > cs) { cs = sc; ci = i; } });
+      act({ k: 'card', i: ci });
+    }
     // 1) Überläufer einsetzen (kostenlos)
     // die wertvollsten zuerst
     for (var d = 0; d < 4 && w.hand[p].length > 1 && !ez('drop'); d++) { // einen für die Reaktion behalten (dort gratis)
@@ -46,8 +57,8 @@
     for (var guard = 0, bought = 0; guard < 12 && !(easy && bought >= 3); guard++) { // leicht kauft höchstens 3 pro Runde
       var gold = w.gold[p], best = -1, bv = 0;
       w.offers[p].forEach(function (o, i) {
-        if (o.sold || T[o.t].cost > gold) return;
-        var v = ez('buy') ? r() : VAL[o.t] / T[o.t].cost;
+        if (o.sold || (!o.free && T[o.t].cost > gold)) return;
+        var v = o.free ? 99 : ez('buy') ? r() : VAL[o.t] / T[o.t].cost;
         if (stil === 'breit') v += o.t === 'fu' ? 0.6 : 0;
         if (stil === 'elite') v += T[o.t].cost >= 6 ? 0.5 : T[o.t].cost <= 1 ? -0.8 : 0;
         v += r() * 0.15;
@@ -61,6 +72,19 @@
       var tt = w.offers[p][best].t, s = ez('spot') ? (function (c) { return c.length ? c[Math.floor(r() * c.length)] : null; })(freeCells(w, p, 3)) : spot(w, p, tt, 3, r); if (!s) break;
       if (act({ k: 'buy', i: best, x: s[0], y: s[1] })) bought++;
     }
+    // Variante C: Forschung für den Typ, den man am häufigsten hat (ab 2 Stück)
+    if (V.C && !ez('up')) {
+      var cnt = {}; w.units.forEach(function (u) { if (u.p === p && u.t !== 'ou') { var b = T[u.t].base || u.t; cnt[b] = (cnt[b] || 0) + T[b].cost; } });
+      Object.keys(cnt).sort(function (a, b) { return cnt[b] - cnt[a]; }).forEach(function (t) {
+        if (cnt[t] < 4) return; var tc = AK.TECH[t]; if (!tc) return;
+        var order = tc[0].rng ? [0, 1] : tc[1].rng ? [1, 0] : (r() < 0.5 ? [0, 1] : [1, 0]);
+        order.forEach(function (j) { act({ k: 'tech', t: t, j: j }); });
+      });
+    }
+    // Variante A: Armee steht jede Runde wieder auf → Fernkämpfer und Lanzen dorthin umstellen, wo jetzt Gegner stehen (kontern)
+    if (V.A && !ez('spot')) w.units.filter(function (u) { return u.p === p && (u.t === 'ka' || u.t === 'hi' || u.t === 'ky' || u.t === 'ke'); }).forEach(function (u) {
+      var sv = [u.x, u.y]; u.x = -9; var c = spot(w, p, u.t, 3, r); u.x = sv[0]; if (c && (c[0] !== u.x || c[1] !== u.y)) act({ k: 'mv', id: u.id, x: c[0], y: c[1] });
+    });
     // 3) Restgold in Aufwertungen (stärkste zuerst)
     var mine = w.units.filter(function (u) { return u.p === p && u.t !== 'ou'; }).sort(function (a, b) { return (T[T[b.t].base || b.t].cost - T[T[a.t].base || a.t].cost) || (a.id - b.id); });
     if (!ez('up')) mine.forEach(function (u) { act({ k: 'up', id: u.id }); });
@@ -70,6 +94,16 @@
       : val(p) >= (val(1 - p) + g.gold[1 - p] * 0.8) * (typeof AK_HOLDF !== 'undefined' ? AK_HOLDF : 0.9);
     w.units.forEach(function (u) { if (u.p === p && u.t !== 'ou') { var o = go ? 'vor' : 'halt'; if (u.ord !== o) act({ k: 'ord', id: u.id, ord: o }); } });
     return acts;
+  }
+  function skillVal(w, p, k) {
+    var e = AK.SKILL[k], n = 0;
+    if (e.types) w.units.forEach(function (u) { if (u.p === p && e.types.indexOf(T[u.t].base || u.t) >= 0) n += (e.hp || 0) * 0.5 + (e.atk || 0) * 1.2; });
+    if (e.gold) n += 3; if (e.king) n += 2.5; if (e.mana) n += 2; if (e.spell) n += e.spell === 'feuer' ? 3 : 2.5;
+    return n;
+  }
+  function cardVal(w, p, c) {
+    if (c.c === 'gold') return c.v; if (c.c === 'unit') return T[c.t].cost; if (c.c === 'unit2') return 2;
+    if (c.c === 'tech') return 4.5; if (c.c === 'up') return 3; if (c.c === 'mana') return 2.5; return 0;
   }
   function val(w, q) { return w.units.filter(function (u) { return u.p === q && u.t !== 'ou'; }).reduce(function (s, u) { return s + T[T[u.t].base || u.t].cost * u.hp / u.mhp + u.lv * 2; }, 0); }
   function withOrders(g, p, acts, mode) {
@@ -107,11 +141,29 @@
   // Reaktion: Überläufer an die Front, Feldherr in Not zurückhalten (er hält ohnehin)
   function react(g, p, seed) {
     var w = AK.clone(g), acts = [], r = AK.rng(AK.hash(seed || 1, g.round, p, 313));
+    if (w.vars && w.vars.B) { var cs = castPick(w, p); if (cs && !AK.apply(w, p, cs, 'react')) acts.push(cs); }
     for (var i = 0; i < AK.R.reactDrops && w.hand[p].length; i++) {
       var s = spot(w, p, w.hand[p][0], 4, r); if (!s) break;
       var a = { k: 'drop', i: 0, x: s[0], y: s[1] }; if (!AK.apply(w, p, a, 'react')) acts.push(a);
     }
     return acts;
+  }
+  // Zauber wählen: Flächenschaden auf die lohnendste Stelle, sonst Kriegsruf/Schutz/Heilung je nach Lage
+  function castPick(w, p) {
+    var h = w.hero[p], best = null, bs = 0, mine = w.units.filter(function (u) { return u.p === p && u.t !== 'ou'; });
+    h.spells.forEach(function (s) {
+      var sp = AK.SPELL[s]; if (h.mana < sp.mana) return;
+      if (sp.target) {
+        for (var y = 0; y < N; y++) for (var x = 0; x < N; x++) {
+          var sc = 0; [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]].forEach(function (o) { var u = AK.at(w, x + o[0], y + o[1]); if (u && u.p !== p) { var c = u.t === 'ou' ? 3 : T[T[u.t].base || u.t].cost; sc += u.hp <= sp.dmg ? c : c * sp.dmg / u.mhp; } });
+          sc -= sp.mana * 0.6; if (sc > bs) { bs = sc; best = { k: 'cast', s: s, x: x, y: y }; }
+        }
+      } else {
+        var sc2 = s === 'heil' ? mine.reduce(function (a, u) { return a + Math.min(3, u.mhp - u.hp); }, 0) * 0.5 : mine.length * 0.7;
+        sc2 -= sp.mana * 0.6; if (sc2 > bs) { bs = sc2; best = { k: 'cast', s: s }; }
+      }
+    });
+    return bs >= 1 ? best : null;
   }
   var API = { plan: plan, react: react };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.AKBot = API;
