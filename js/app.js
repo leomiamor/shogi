@@ -244,7 +244,7 @@
 
   // ---------- Rätsel-Liste ----------
   var SETS = [
-    { id: 'm1', name: 'Matt in 1', desc: 'Ein Zug, und der Daimyō fällt.', unit: 5 },
+    { id: 'm1', name: 'Matt in 1', desc: 'Ein Zug, und der Ōshō fällt.', unit: 5 },
     { id: 'm3', name: 'Matt in 3', desc: 'Schach, Antwort, Matt.', unit: 7 },
     { id: 'tac', name: 'Tesuji', desc: 'Gabeln, Drops, Material gewinnen.', unit: 3 },
     { id: 'rush', name: 'Matt-Sturm', desc: '3 Leben, 3 Minuten. Wie viele schaffst du?', unit: 14 }
@@ -363,7 +363,7 @@
       c.innerHTML = '<div class="codex-card"><div><div style="position:relative;width:58px;height:64px;margin-bottom:8px">' + komaHTML(t, 0) + '</div>' + moveGrid(t) + '</div><div><h3>' + u.name + '</h3><small style="color:var(--mute)">' + u.real + ' · ' + u.kanji + '</small><p style="margin-top:6px">' + u.lore + '</p></div></div>';
       list.appendChild(c);
     });
-    var leg = h('div', 'card', '<h3>Legende</h3><p><span style="color:var(--good)">■</span> 1 Feld &nbsp; <span style="color:#2fa8d8">■</span> beliebig weit &nbsp; <span style="color:#ff9a3c">■</span> Sprung</p><p>Alle beförderten kleinen Einheiten (Ashigaru, Lanze, Späher, Silber) ziehen wie die Goldwache.</p>');
+    var leg = h('div', 'card', '<h3>Legende</h3><p><span style="color:var(--good)">■</span> 1 Feld &nbsp; <span style="color:#2fa8d8">■</span> beliebig weit &nbsp; <span style="color:#ff9a3c">■</span> Sprung</p><p>Alle beförderten kleinen Einheiten (Fu, Kyōsha, Keima, Ginshō) ziehen wie ein Kinshō.</p>');
     list.appendChild(leg);
     var cred = h('div', 'card', '<h3>Credits</h3><p>Figuren, Karte und Porträts: lokal generiert mit TRELLIS.2 (Microsoft, MIT) und FLUX.2 klein.</p><p>2D-Steinschrift: „kanji_light“ von Ka-hu (lishogi.org, CC BY 4.0).</p><p>Kampfklänge (CC0): Kenney (Impact Sounds, RPG Audio), StarNinjas (OpenGameArt), craigsmith, joelcarrsound, PearceWilsonKing, leonelmail (Freesound).</p><small id="cred-env" style="color:var(--mute)"></small>');
     list.appendChild(cred);
