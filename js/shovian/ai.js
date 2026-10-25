@@ -9,16 +9,19 @@ var SVA = (function () {
     // Mauer zählt für den Verteidiger
     if (st.wallMax) s += (side === 1 ? 1 : -1) * (B.wallMult(st) - 1) * 1500;
     // Angreifer sucht den Kontakt (Abstand zum nächsten Gegner oder Mauerstein), sonst laufen Trupps aneinander vorbei; Beförderte
-    // Ohne Mauer stellt sich auch der Verteidiger (Tiere fliehen nicht übers Brett), nur schwächer
-    var foes = [st.pcs.filter(function (q) { return q.side === 1 && q.n > 0 && q.x >= 0; }).concat(st.stones), st.stones.length ? [] : st.pcs.filter(function (q) { return q.side === 0 && q.n > 0 && q.x >= 0; })];
+    // Haltung des Verteidigers (vom Spieler vorab gewählt): halten = hinter der Mauer bleiben, kontern = stehen und zuschlagen, wenn es sich lohnt
+    // (ohne Mauer stellt er sich), ausfallen = dem Angreifer entgegengehen
+    var stance = (st.stance && st.stance[1]) || 'kontern', dGo = stance === 'ausfallen' ? 6 : stance === 'kontern' && !st.stones.length ? 2 : 0;
+    var foes = [st.pcs.filter(function (q) { return q.side === 1 && q.n > 0 && q.x >= 0; }).concat(st.stones), dGo ? st.pcs.filter(function (q) { return q.side === 0 && q.n > 0 && q.x >= 0; }) : []];
     st.pcs.forEach(function (p) {
       if (p.n <= 0 || p.x < 0) return;
       var sg = p.side === side ? 1 : -1, u = B.U(p);
       var fs = foes[p.side];
       if (!u.ranged && fs.length) {
         var d = 99; fs.forEach(function (q) { d = Math.min(d, Math.max(Math.abs(q.x - p.x), Math.abs(q.y - p.y))); });
-        s -= sg * d * (p.side === 1 ? 2 : u.hero ? 2 : 5);
+        s -= sg * d * (p.side === 1 ? dGo : u.hero ? 2 : 5);
       }
+      if (p.side === 1 && stance === 'halten' && !B.inZone(st, 1, p.y)) s -= sg * 30;
       if (p.pro) s += sg * 20;
     });
     // Kein Zuglimit, aber Stillstand = Verteidiger hält: Ruhe drückt auf den Angreifer, damit er angreift statt zu warten
@@ -68,6 +71,9 @@ var SVA = (function () {
     }
     return bestM;
   }
-  return { best: best, evalSt: evalSt };
+  // Angreifer-KI (wenn der Angreifer nicht selbst spielt): Rückzug, sobald der eigene Verlust die gewählte Grenze erreicht,
+  // außer der Verteidiger hat anteilig noch mehr verloren (dann ist der Sieg nah)
+  function wantsRetreat(st) { var l = B.lostPct(st, 0); return st.turn === 0 && !st.over && st.retreatAt != null && l >= st.retreatAt && l >= B.lostPct(st, 1); }
+  return { best: best, evalSt: evalSt, wantsRetreat: wantsRetreat };
 })();
 if (typeof module !== 'undefined') module.exports = SVA;

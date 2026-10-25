@@ -32,16 +32,59 @@
     { id: 'mauer', name: 'Sturm auf die Stadtmauer', sub: 'Germanen gegen Römer hinter Mauer Stufe 12 (nur eine Lücke)', cfg: { att: { tribe: 'teu', squads: [{ key: 'club', n: 30 }, { key: 'axe', n: 15 }, { key: 'tk', n: 6 }, { key: 'ram', n: 20 }, { key: 'cata', n: 4 }] }, def: { tribe: 'rom', wall: 12, squads: [{ key: 'legion', n: 20 }, { key: 'praet', n: 20 }, { key: 'ecaes', n: 3 }, { key: 'cata', n: 1 }] } } }
   ];
   var SIDE = ['Angreifer', 'Verteidiger'];
-  var S = { st: null, cfg: null, human: [true, false], phase: 'menu', setupSide: 0, sel: null, chip: null, peek: null, busy: false, cell: 40, start: null };
+  var S = { st: null, cfg: null, mode: 'ai', human: [true, false], phase: 'menu', setupSide: 0, sel: null, chip: null, peek: null, busy: false, cell: 40, start: null };
 
   // ---------- Menü ----------
   function menu() {
     show('scr-menu'); var m = $('menu'); m.innerHTML = '';
-    SCEN.forEach(function (sc) { var b = el('button', 'btn', sc.name + '<small>' + sc.sub + '</small>'); b.onclick = function () { start(JSON.parse(JSON.stringify(sc.cfg)), sc.name); }; m.appendChild(b); });
+    SCEN.forEach(function (sc) { var b = el('button', 'btn', sc.name + '<small>' + sc.sub + '</small>'); b.onclick = function () { launch(JSON.parse(JSON.stringify(sc.cfg)), sc.name); }; m.appendChild(b); });
     var c = el('button', 'btn', 'Eigenes Gefecht<small>Völker, Truppen und Mauer selbst wählen</small>'); c.onclick = custom; m.appendChild(c);
   }
-  $('opp-ai').onclick = function () { S.human[1] = false; $('opp-ai').classList.add('on'); $('opp-hs').classList.remove('on'); };
-  $('opp-hs').onclick = function () { S.human[1] = true; $('opp-hs').classList.add('on'); $('opp-ai').classList.remove('on'); };
+  // Gegner: KI, Hot-Seat oder vorbereitete Verteidigung (Fernschlacht-Modell: Verteidiger stellt vorab auf, seine KI führt sie)
+  var OPP = { ai: 'opp-ai', hs: 'opp-hs', prep: 'opp-prep' };
+  Object.keys(OPP).forEach(function (k) { $(OPP[k]).onclick = function () { S.mode = k; Object.keys(OPP).forEach(function (j) { $(OPP[j]).classList.toggle('on', j === k); }); }; });
+
+  // ---------- Vorbereitete Verteidigung ----------
+  var HALTUNG = {
+    halten: ['Halten', 'Bleibt hinter der Mauer bzw. in der Startzone und lässt den Angreifer kommen. Stark mit hoher Mauer.'],
+    kontern: ['Kontern', 'Bleibt stehen und schlägt zu, wenn es sich lohnt. Ohne Mauer stellt er sich dem Angreifer.'],
+    ausfallen: ['Ausfallen', 'Geht dem Angreifer entgegen. Gut gegen Rammen und schwache Angriffe, riskant gegen starke.']
+  };
+  function defKey(cfg) { return 'shovian-def:' + JSON.stringify(cfg.def); }
+  function loadDef(cfg) { try { return JSON.parse(localStorage.getItem(defKey(cfg)) || 'null'); } catch (e) { return null; } }
+  function saveDef(cfg, d) { try { localStorage.setItem(defKey(cfg), JSON.stringify(d)); return true; } catch (e) { return false; } }
+  function launch(cfg, title) {
+    if (S.mode !== 'prep') { start(cfg, title); return; }
+    var d = loadDef(cfg);
+    modal('<h2>' + title + '</h2><p class="note">Fernschlacht-Probe: Der Verteidiger stellt vorher auf und wählt eine Haltung. Danach greift der Angreifer an, die Verteidigung führt die KI nach dieser Haltung. Der Verteidiger sieht hinterher die Wiederholung.</p>' +
+      '<p>' + (d ? 'Vorbereitet: <b>' + HALTUNG[d.stance][0] + '</b>, ' + d.pcs.length + ' Trupps' : 'Noch keine Verteidigung vorbereitet (sonst stellt die KI auf, Haltung Kontern).') + '</p>' +
+      '<div class="ctrl"><button class="btn" id="p-def">🛡 Verteidigung vorbereiten</button></div>' +
+      '<h3>Angreifen</h3><div class="ctrl"><button class="btn go" id="p-self">Selbst angreifen</button></div>' +
+      '<div class="ctrl"><button class="btn" id="p-auto">Automatisch (meine KI)</button><label class="note">Rückzug ab <select id="p-rt"><option value="">nie</option><option value="0.3">30 %</option><option value="0.5" selected>50 %</option><option value="0.7">70 %</option></select> Verlust</label></div>');
+    $('p-def').onclick = function () { closeModal(); start(cfg, title, { prep: 'def' }); };
+    $('p-self').onclick = function () { closeModal(); start(cfg, title, { prep: 'att' }); };
+    $('p-auto').onclick = function () { var v = $('p-rt').value; closeModal(); start(cfg, title, { prep: 'att', auto: true, retreatAt: v === '' ? null : +v }); };
+  }
+  function pickStance() {
+    var h = '<h2>Haltung wählen</h2><p class="note">So führt die KI deine Verteidigung, wenn der Angriff ankommt.</p>';
+    Object.keys(HALTUNG).forEach(function (k) { h += '<button class="btn" data-st="' + k + '" style="width:100%;margin:4px 0">' + HALTUNG[k][0] + '<small>' + HALTUNG[k][1] + '</small></button>'; });
+    modal(h);
+    [].forEach.call(document.querySelectorAll('#modalBox [data-st]'), function (b) {
+      b.onclick = function () {
+        var st = S.st, pcs = st.pcs.filter(function (p) { return p.side === 1 && p.n > 0; }).map(function (p) { return { id: p.id, key: p.key, tribe: p.tribe, n: p.n, x: p.x, y: p.y }; });
+        var ok = saveDef(S.cfg, { stance: b.dataset.st, pcs: pcs, t: Date.now() });
+        modal('<h2>' + (ok ? 'Verteidigung steht' : 'Speichern ging nicht') + '</h2><p class="note">' + (ok ? 'Haltung ' + HALTUNG[b.dataset.st][0] + '. Greift jemand an, kämpft deine KI so, und du bekommst die Wiederholung.' : 'Der Browser erlaubt keinen Speicher (privates Fenster?).') + '</p><div class="ctrl"><button class="btn" id="d-menu">Menü</button><button class="btn go" id="d-att">Jetzt dagegen angreifen</button></div>');
+        $('d-menu').onclick = function () { closeModal(); menu(); };
+        $('d-att').onclick = function () { closeModal(); start(JSON.parse(JSON.stringify(S.cfg)), S.title, { prep: 'att' }); };
+      };
+    });
+  }
+  // gespeicherte Verteidigung aufs Brett (Ids passen, weil create bei gleicher Konfiguration gleich nummeriert)
+  function applyDef(st, d) {
+    st.pcs = st.pcs.filter(function (p) { return p.side !== 1; });
+    d.pcs.forEach(function (q) { st.pcs.push({ id: q.id, side: 1, tribe: q.tribe, key: q.key, n: q.n, n0: q.n, x: q.x, y: q.y, pro: false }); });
+    st.val0 = [B.value(st, 0), B.value(st, 1)];
+  }
   function show(id) { ['scr-menu', 'scr-custom', 'scr-battle'].forEach(function (s) { $(s).classList.toggle('hidden', s !== id); }); window.scrollTo(0, 0); }
 
   // ---------- Eigenes Gefecht ----------
@@ -69,19 +112,45 @@
     function sq(c) { var out = Object.keys(c.n).filter(function (k) { return c.n[k] > 0 && R.TRIBES[c.tribe].units[k]; }).map(function (k) { return { key: k, n: c.n[k] }; }); if (c.hero) out.unshift({ key: 'hero', n: 1 }); return out; }
     var a = sq(CUST.att), d = sq(CUST.def);
     if (!a.length || !d.length) { alert('Beide Seiten brauchen mindestens eine Truppe.'); return; }
-    start({ att: { tribe: CUST.att.tribe, squads: a }, def: { tribe: CUST.def.tribe, wall: CUST.def.tribe === 'nat' ? 0 : CUST.def.wall, squads: d } }, 'Eigenes Gefecht');
+    launch({ att: { tribe: CUST.att.tribe, squads: a }, def: { tribe: CUST.def.tribe, wall: CUST.def.tribe === 'nat' ? 0 : CUST.def.wall, squads: d } }, 'Eigenes Gefecht');
   };
 
   // ---------- Gefecht aufbauen ----------
-  function start(cfg, title) {
-    S.cfg = JSON.parse(JSON.stringify(cfg)); S.title = title;
+  // o.prep: 'def' = nur Verteidigung aufstellen und speichern, 'att' = gegen die gespeicherte Verteidigung angreifen (o.auto: Angreifer-KI, o.retreatAt)
+  function start(cfg, title, o) {
+    o = o || {};
+    S.cfg = JSON.parse(JSON.stringify(cfg)); S.title = title; S.prep = o.prep || null; S.again = o; S.replay = false; S.rec = null;
+    S.human = o.prep === 'def' ? [false, true] : o.prep === 'att' ? [!o.auto, false] : [true, S.mode === 'hs'];
     S.st = B.create(cfg); S.sel = S.chip = S.peek = null; S.busy = false; S.logs = [];
     show('scr-battle'); $('b-title').textContent = title; $('log').innerHTML = '';
     buildBoard();
-    if (!S.human[1]) B.autoPlace(S.st, 1);
-    S.setupSide = 0; S.phase = 'setup'; B.autoPlace(S.st, 0);
+    var st = S.st;
+    if (o.prep === 'att') {
+      var d = loadDef(cfg);
+      if (d) applyDef(st, d); else B.autoPlace(st, 1);
+      st.stance = [null, d ? d.stance : 'kontern']; st.retreatAt = o.auto ? o.retreatAt : null;
+      log(null, 'Verteidigung: ' + (d ? 'vorbereitet, Haltung ' + HALTUNG[d.stance][0] : 'nicht vorbereitet, KI stellt auf (Kontern)') + '.');
+    } else if (!S.human[1]) B.autoPlace(st, 1);
+    S.phase = 'setup';
+    if (o.prep === 'def') { S.setupSide = 1; B.autoPlace(st, 1); log(null, 'Stell deine Verteidigung auf. Der Angreifer sieht sie erst, wenn er ankommt. Danach wählst du die Haltung.'); refresh(); return; }
+    S.setupSide = 0; B.autoPlace(st, 0);
+    if (o.auto) { log(null, 'Angriff läuft automatisch' + (o.retreatAt != null ? ', Rückzug ab ' + Math.round(o.retreatAt * 100) + ' % Verlust' : ', ohne Rückzug') + '.'); begin(); return; }
     log(null, 'Aufstellung: Tippe einen Trupp, dann ein Feld in deiner Startzone. „Teilen“ halbiert den gewählten Trupp.');
     refresh();
+  }
+  function begin() {
+    var st = S.st;
+    S.phase = 'battle'; S.start = st.pcs.map(function (p) { return { id: p.id, n: p.n }; });
+    S.rec = { snap: B.clone(st), moves: [] }; // für die Wiederholung (Gefecht ist ohne Zufall, also reicht Start + Züge)
+    log(null, 'Gefecht beginnt. Der Angreifer zieht zuerst. Es läuft, bis eine Seite keine Truppen mehr hat.');
+    refresh(); nextTurn();
+  }
+  function replay() {
+    var r = S.rec; if (!r) return;
+    S.st = B.clone(r.snap); S.st.stance = r.snap.stance; S.replay = true; S.ri = 0; S.human = [false, false]; S.busy = false; S.sel = S.chip = S.peek = null;
+    show('scr-battle'); $('b-title').textContent = 'Wiederholung: ' + S.title; $('log').innerHTML = '';
+    buildBoard(); S.phase = 'battle'; S.start = S.st.pcs.map(function (p) { return { id: p.id, n: p.n }; });
+    log(null, 'Wiederholung: So ist der Angriff abgelaufen.'); refresh(); nextTurn();
   }
   function buildBoard() {
     var st = S.st, b = $('board'); b.innerHTML = '';
@@ -158,7 +227,7 @@
     var wall = B.wallUp(st) ? R.TRIBES[st.tribe[1]].wallName + ' Stufe ' + lvl(B.wallLevel(st)) + '/' + st.wallLvl + ': +' + Math.round((B.wallMult(st) - 1) * 100) + ' % Verteidigung' : st.wallLvl ? 'Mauer geschleift, kein Bonus mehr' : '';
     var ql = B.quietLeft(st), calm = !sp && !st.over && st.quiet >= B.QUIET / 2 ? ' · <b class="warn">Entscheidungsschlacht in ' + ql + ' Zügen ohne Treffer</b>' : '';
     $('meta').innerHTML = '<span><b class="s0">' + R.TRIBES[st.tribe[0]].name + '</b></span><span>' + (sp ? '' : 'Zug ' + (st.moves[0] + st.moves[1] + 1)) + calm + (wall ? ' · ' + wall : '') + '</span><span><b class="s1">' + R.TRIBES[st.tribe[1]].name + '</b></span>';
-    $('b-retreat').classList.toggle('hidden', sp || st.over || !S.human[0] || st.turn !== 0);
+    $('b-retreat').classList.toggle('hidden', sp || st.over || S.replay || !S.human[0] || st.turn !== 0);
     if (sp) tray();
     drawUnits(); highlights(); info();
   }
@@ -226,10 +295,9 @@
     var st = S.st;
     if (!B.ready(st, S.setupSide)) { B.autoPlace(st, S.setupSide, true); if (!B.ready(st, S.setupSide)) { log(null, 'Nicht alle Trupps haben Platz: zusammenlegen oder in die Reserve.'); refresh(); return; } }
     S.sel = S.chip = S.peek = null;
+    if (S.prep === 'def') { refresh(); pickStance(); return; }
     if (S.setupSide === 0 && S.human[1]) { S.setupSide = 1; log(null, 'Jetzt stellt der Verteidiger auf.'); refresh(); return; }
-    S.phase = 'battle'; S.start = st.pcs.map(function (p) { return { id: p.id, n: p.n }; });
-    log(null, 'Gefecht beginnt. Der Angreifer zieht zuerst. Es läuft, bis eine Seite keine Truppen mehr hat.');
-    refresh(); nextTurn();
+    begin();
   };
   function battleTap(x, y) {
     var st = S.st; if (st.over) return;
@@ -248,11 +316,18 @@
   function nextTurn() {
     var st = S.st; refresh();
     if (st.over) { setTimeout(result, 700); return; }
+    if (S.replay) {
+      var rm = S.rec.moves[S.ri++]; if (!rm) return;
+      setTimeout(function () { if (S.st !== st) return; if (rm.k === 'retreat') { B.retreat(st); log(0, 'Angreifer tritt den Rückzug an'); nextTurn(); } else doMove(rm); }, 450);
+      return;
+    }
+    if (A.wantsRetreat(st)) { B.retreat(st); S.rec.moves.push({ k: 'retreat' }); log(0, 'Angreifer tritt den Rückzug an (Verlust ' + Math.round(B.lostPct(st, 0) * 100) + ' %)'); setTimeout(nextTurn, 600); return; }
     if (!S.human[st.turn]) { S.busy = true; setTimeout(function () { var m = A.best(st, 700); S.busy = false; if (m) doMove(m); }, 350); }
   }
   function nm(p) { var u = B.U(p); return u.n + (u.hero ? '' : ' ×' + cnt(p)); }
   async function doMove(m) {
     var st = S.st, p = B.byId(st, m.id), t = B.at(st, m.x, m.y), side = p.side, before = nm(p), tb = t ? nm(t) : '';
+    if (S.rec && !S.replay) S.rec.moves.push({ id: m.id, x: m.x, y: m.y, k: m.k });
     S.busy = true; S.sel = S.peek = null; highlights();
     var cur = { x: p.x, y: p.y }, ev = B.apply(st, m), txt = '';
     var ord = function (e) { return e.before ? 0 : e.t === 'help' ? 2 : 1; };
@@ -315,10 +390,12 @@
       Object.keys(by).forEach(function (k) { var x = by[k]; h += '<tr><td>' + x.u.n + '</td><td>' + (x.u.hero ? '100 %' : x.a) + '</td><td>→</td><td>' + (x.u.hero ? Math.round(x.b * 100) + ' %' : Math.floor(x.b + 1e-9)) + '</td></tr>'; });
       h += '</table>';
     });
-    h += '<div class="ctrl"><button class="btn" id="r-menu">Menü</button><button class="btn go" id="r-again">Nochmal</button></div>';
+    if (S.prep === 'att' && !S.replay) h += '<p class="note">Der Verteidiger bekäme jetzt eine Nachricht und kann sich die Wiederholung ansehen.</p>';
+    h += '<div class="ctrl"><button class="btn" id="r-menu">Menü</button>' + (S.rec ? '<button class="btn" id="r-replay">▶ Wiederholung</button>' : '') + '<button class="btn go" id="r-again">Nochmal</button></div>';
     modal(h);
     $('r-menu').onclick = function () { closeModal(); menu(); };
-    $('r-again').onclick = function () { closeModal(); start(JSON.parse(JSON.stringify(S.cfg)), S.title); };
+    if (S.rec) $('r-replay').onclick = function () { closeModal(); replay(); };
+    $('r-again').onclick = function () { closeModal(); start(JSON.parse(JSON.stringify(S.cfg)), S.title, S.again); };
   }
   function modal(h) { $('modalBox').innerHTML = h; $('modal').classList.remove('hidden'); }
   function closeModal() { $('modal').classList.add('hidden'); }
@@ -327,7 +404,7 @@
     var st = S.st; if (!st || st.over || S.busy || st.turn !== 0) return;
     modal('<h2>Rückzug?</h2><p class="note">Die Überlebenden ziehen heim, der Verteidiger hält.</p><div class="ctrl"><button class="btn" id="rt-no">Weiterkämpfen</button><button class="btn go" id="rt-yes">Rückzug</button></div>');
     $('rt-no').onclick = function () { $('modal').classList.add('hidden'); };
-    $('rt-yes').onclick = function () { $('modal').classList.add('hidden'); if (st.over || S.st !== st) return; B.retreat(st); log(0, 'Angreifer tritt den Rückzug an'); nextTurn(); };
+    $('rt-yes').onclick = function () { $('modal').classList.add('hidden'); if (st.over || S.st !== st) return; B.retreat(st); if (S.rec) S.rec.moves.push({ k: 'retreat' }); log(0, 'Angreifer tritt den Rückzug an'); nextTurn(); };
   };
   $('b-menu').onclick = function () { S.st = null; S.phase = 'menu'; menu(); };
   $('b-help').onclick = function () {
