@@ -5,6 +5,7 @@
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   function num(x) { return (Math.round(x * 10) / 10).toString().replace('.', ','); }
+  function lvl(x) { return (Math.round(x * 10) / 10).toLocaleString('de'); }
   function cnt(p) { return Math.max(1, Math.ceil(p.n - 1e-9)); }
 
   // simple Trupp-Symbole (Ersatz, bis die Travian-Bilder per Hotlink kommen)
@@ -27,8 +28,8 @@
   var SCEN = [
     { id: 'abenteuer', name: 'Abenteuer: Held gegen Wölfe', sub: 'Nur dein Held (1 Figur) gegen 2 Wölfe und 4 Ratten', cfg: { att: { tribe: 'rom', squads: [{ key: 'hero', n: 1 }] }, def: { tribe: 'nat', squads: [{ key: 'wolf', n: 2 }, { key: 'rat', n: 4 }] } } },
     { id: 'oase', name: 'Oase räumen', sub: 'Held, 20 Legionäre, 6 Equites Imperatoris gegen Wildschweine, Wölfe, Spinnen', cfg: { att: { tribe: 'rom', squads: [{ key: 'hero', n: 1 }, { key: 'legion', n: 20 }, { key: 'eimp', n: 6 }] }, def: { tribe: 'nat', squads: [{ key: 'boar', n: 8 }, { key: 'wolf', n: 5 }, { key: 'spider', n: 10 }] } } },
-    { id: 'dorf', name: 'Angriff auf ein Gallier-Dorf', sub: 'Römer mit Rammen und Katapulten gegen Palisade Stufe 5', cfg: { att: { tribe: 'rom', squads: [{ key: 'legion', n: 20 }, { key: 'imper', n: 10 }, { key: 'eimp', n: 6 }, { key: 'ram', n: 3 }, { key: 'cata', n: 2 }] }, def: { tribe: 'gal', wall: 5, squads: [{ key: 'phal', n: 25 }, { key: 'sword', n: 8 }, { key: 'druid', n: 4 }] } } },
-    { id: 'mauer', name: 'Sturm auf die Stadtmauer', sub: 'Germanen gegen Römer hinter Mauer Stufe 12 (nur eine Lücke)', cfg: { att: { tribe: 'teu', squads: [{ key: 'club', n: 30 }, { key: 'axe', n: 15 }, { key: 'tk', n: 6 }, { key: 'ram', n: 5 }, { key: 'cata', n: 2 }] }, def: { tribe: 'rom', wall: 12, squads: [{ key: 'legion', n: 20 }, { key: 'praet', n: 20 }, { key: 'ecaes', n: 3 }, { key: 'cata', n: 1 }] } } }
+    { id: 'dorf', name: 'Angriff auf ein Gallier-Dorf', sub: 'Römer mit Rammen und Katapulten gegen Palisade Stufe 5', cfg: { att: { tribe: 'rom', squads: [{ key: 'legion', n: 20 }, { key: 'imper', n: 10 }, { key: 'eimp', n: 6 }, { key: 'ram', n: 6 }, { key: 'cata', n: 2 }] }, def: { tribe: 'gal', wall: 5, squads: [{ key: 'phal', n: 25 }, { key: 'sword', n: 8 }, { key: 'druid', n: 4 }] } } },
+    { id: 'mauer', name: 'Sturm auf die Stadtmauer', sub: 'Germanen gegen Römer hinter Mauer Stufe 12 (nur eine Lücke)', cfg: { att: { tribe: 'teu', squads: [{ key: 'club', n: 30 }, { key: 'axe', n: 15 }, { key: 'tk', n: 6 }, { key: 'ram', n: 20 }, { key: 'cata', n: 4 }] }, def: { tribe: 'rom', wall: 12, squads: [{ key: 'legion', n: 20 }, { key: 'praet', n: 20 }, { key: 'ecaes', n: 3 }, { key: 'cata', n: 1 }] } } }
   ];
   var SIDE = ['Angreifer', 'Verteidiger'];
   var S = { st: null, cfg: null, human: [true, false], phase: 'menu', setupSide: 0, sel: null, chip: null, peek: null, busy: false, cell: 40, start: null };
@@ -118,7 +119,7 @@
       d.querySelector('.hp i').style.width = Math.max(0, p.n / p.n0 * 100) + '%';
       d.classList.toggle('sel', S.sel === p.id); d.classList.toggle('peek', S.peek === p.id);
     });
-    st.stones.forEach(function (s) { var d = document.querySelector('.stone[data-sx="' + s.x + '"][data-sy="' + s.y + '"]'); if (d) d.querySelector('.hp i').style.width = s.hp / s.max * 100 + '%'; });
+    st.stones.forEach(function (s) { var d = document.querySelector('.stone[data-sx="' + s.x + '"][data-sy="' + s.y + '"]'); if (d) d.querySelector('.hp i').style.width = st.wallHp / st.wallMax * 100 + '%'; });
   }
   function cellEl(x, y) { return $('board').children[y * S.st.W + x]; }
   function highlights() {
@@ -138,13 +139,14 @@
   }
   // Vorschau: was der Angriff bewirkt (Verluste Ziel / Gegenschlag)
   function preview(p, m) {
-    var c = B.clone(S.st), ev = B.apply(c, { id: p.id, x: m.x, y: m.y, k: m.k }), out = '';
+    var c = B.clone(S.st), ev = B.apply(c, { id: p.id, x: m.x, y: m.y, k: m.k }), out = '', help = 0;
     ev.forEach(function (e) {
       if (e.t === 'hit' || e.t === 'shoot') out += (e.dead ? '✝' : '−' + num(e.lost));
-      if (e.t === 'counter') out += ' ↩−' + num(e.lost);
-      if (e.t === 'stone') out += e.broke ? '💥' : '−' + Math.round(e.dmg);
+      if (e.t === 'counter') out += '<br><small>↩' + (e.dead ? '✝' : '−' + num(e.lost)) + '</small>';
+      if (e.t === 'help') help++;
+      if (e.t === 'stone') out += (e.gone.length ? '💥' : '') + '−' + lvl(e.dmg) + ' St.';
     });
-    return out;
+    return out + (help ? '<small> ⚔' + help + '</small>' : '');
   }
   function refresh() {
     var st = S.st, sp = S.phase === 'setup';
@@ -153,8 +155,10 @@
     if (sp) { stg.className = 'stage s' + S.setupSide; stg.textContent = SIDE[S.setupSide] + ': Aufstellung'; }
     else if (st.over) { stg.className = 'stage'; stg.textContent = SIDE[st.winner] + ' siegt (' + st.reason + ')'; }
     else { stg.className = 'stage s' + st.turn; stg.textContent = SIDE[st.turn] + ' am Zug' + (S.human[st.turn] ? '' : ' (KI denkt …)'); }
-    var wall = st.stones.length ? R.TRIBES[st.tribe[1]].wallName + ' Stufe ' + st.wallLvl + ': ' + st.stones.length + ' Steine, +' + num(st.wallPct * st.wallLvl * 100) + ' % Verteidigung' : st.wallLvl ? 'Mauer gefallen, kein Bonus mehr' : '';
-    $('meta').innerHTML = '<span><b class="s0">' + R.TRIBES[st.tribe[0]].name + '</b> ' + Math.min(st.moves[0], st.limit) + '/' + st.limit + ' Züge</span><span>' + wall + '</span><span><b class="s1">' + R.TRIBES[st.tribe[1]].name + '</b> ' + Math.min(st.moves[1], st.limit) + '/' + st.limit + '</span>';
+    var wall = B.wallUp(st) ? R.TRIBES[st.tribe[1]].wallName + ' Stufe ' + lvl(B.wallLevel(st)) + '/' + st.wallLvl + ': +' + Math.round((B.wallMult(st) - 1) * 100) + ' % Verteidigung' : st.wallLvl ? 'Mauer geschleift, kein Bonus mehr' : '';
+    var ql = B.quietLeft(st), calm = !sp && !st.over && st.quiet >= B.QUIET / 2 ? ' · <b class="warn">Entscheidungsschlacht in ' + ql + ' Zügen ohne Treffer</b>' : '';
+    $('meta').innerHTML = '<span><b class="s0">' + R.TRIBES[st.tribe[0]].name + '</b></span><span>' + (sp ? '' : 'Zug ' + (st.moves[0] + st.moves[1] + 1)) + calm + (wall ? ' · ' + wall : '') + '</span><span><b class="s1">' + R.TRIBES[st.tribe[1]].name + '</b></span>';
+    $('b-retreat').classList.toggle('hidden', sp || st.over || !S.human[0] || st.turn !== 0);
     if (sp) tray();
     drawUnits(); highlights(); info();
   }
@@ -173,9 +177,9 @@
   function info() {
     var p = S.sel ? B.byId(S.st, S.sel) : S.peek ? B.byId(S.st, S.peek) : S.chip ? B.byId(S.st, S.chip) : null, box = $('info');
     if (!p) { box.classList.add('hidden'); return; }
-    var u = B.U(p), mt = B.mvType(p), st = S.st, wb = p.side === 1 && B.wallUp(st) ? ' <span style="color:#ffd76a">(+' + num(st.wallPct * st.wallLvl * 100) + ' % Mauer)</span>' : '';
+    var u = B.U(p), mt = B.mvType(p), st = S.st, wb = p.side === 1 && B.wallUp(st) ? ' <span style="color:#ffd76a">(+' + Math.round((B.wallMult(st) - 1) * 100) + ' % Mauer)</span>' : '';
     var sp = [];
-    if (u.cav) sp.push('Kavallerie'); if (u.ram) sp.push('3× Schaden gegen Mauersteine'); if (u.ranged) sp.push('schießt diagonal 1–3 Felder weit, auch über Figuren; halber Schaden gegen Truppen, kein Gegenschlag');
+    if (u.cav) sp.push('Kavallerie'); if (u.ram) sp.push('senkt die Mauerstufe (1 Ramme = 1 Mauerpunkt)'); if (u.ranged) sp.push('schießt diagonal 1–3 Felder weit, auch über Figuren, ohne Gegenschlag; trifft auch die Mauer (halb so gut wie eine Ramme)');
     if (u.hero) sp.push('Held: % = Lebenskraft'); if (u.chief) sp.push('senkt nach dem Sieg die Zustimmung'); if (p.pro) sp.push('befördert: +25 % Angriff');
     box.classList.remove('hidden');
     box.innerHTML = pattern(p) + '<div class="st"><div class="nm">' + u.n + ' ' + (u.hero ? Math.round(p.n * 100) + ' %' : '×' + cnt(p) + (p.n0 !== p.n ? ' <span class="note">(von ' + p.n0 + ')</span>' : '')) + ' <span class="note">· ' + SIDE[p.side] + '</span></div>' +
@@ -224,7 +228,7 @@
     S.sel = S.chip = S.peek = null;
     if (S.setupSide === 0 && S.human[1]) { S.setupSide = 1; log(null, 'Jetzt stellt der Verteidiger auf.'); refresh(); return; }
     S.phase = 'battle'; S.start = st.pcs.map(function (p) { return { id: p.id, n: p.n }; });
-    log(null, 'Gefecht beginnt. Der Angreifer zieht zuerst, je Seite ' + st.limit + ' Züge.');
+    log(null, 'Gefecht beginnt. Der Angreifer zieht zuerst. Es läuft, bis eine Seite keine Truppen mehr hat.');
     refresh(); nextTurn();
   };
   function battleTap(x, y) {
@@ -250,7 +254,9 @@
   async function doMove(m) {
     var st = S.st, p = B.byId(st, m.id), t = B.at(st, m.x, m.y), side = p.side, before = nm(p), tb = t ? nm(t) : '';
     S.busy = true; S.sel = S.peek = null; highlights();
-    var ev = B.apply(st, m), txt = '';
+    var cur = { x: p.x, y: p.y }, ev = B.apply(st, m), txt = '';
+    var ord = function (e) { return e.before ? 0 : e.t === 'help' ? 2 : 1; };
+    ev.sort(function (a, b) { return ord(a) - ord(b); }); // erst heranlaufen, dann zuschlagen, dann die Nachbarn
     try { await playEvents(); } catch (err) { console.error('Shovian-Anzeige', err); } // Anzeige-Fehler dürfen das Gefecht nicht blockieren
     if (m.k === 'move') txt = ' zieht';
     log(side, before + txt);
@@ -258,24 +264,32 @@
     async function playEvents() {
     for (var i = 0; i < ev.length; i++) {
       var e = ev[i];
-      if (e.t === 'move') { drawUnits(); await sleep(270); }
+      if (e.t === 'move') { var mvEl = unitEl(p); mvEl.style.transform = 'translate(' + e.x * S.cell + 'px,' + e.y * S.cell + 'px)'; cur = { x: e.x, y: e.y }; await sleep(270); }
       else if (e.t === 'hit' || e.t === 'shoot') {
         if (e.t === 'shoot') await shot(p, e);
+        else await lunge(p, cur, e);
         hitFx(e.tid, '−' + (B.U(B.byId(st, e.tid)).hero ? Math.round(e.lost * 100) + '%' : num(e.lost)), e.dead);
-        txt += (e.t === 'shoot' ? ' beschießt ' : ' greift an: ') + tb + ' verliert ' + num(e.lost) + (e.dead ? ' (vernichtet)' : '');
+        txt += (e.t === 'shoot' ? ' beschießt ' : ' greift an: ') + tb + (e.dead ? ' fällt' : ' verliert ' + num(e.lost));
         await sleep(420);
-      } else if (e.t === 'counter') { hitFx(e.tid, '↩−' + num(e.lost), e.dead); txt += ', Gegenschlag −' + num(e.lost) + (e.dead ? ' (vernichtet)' : ''); await sleep(420); }
+      } else if (e.t === 'counter') { hitFx(e.tid, '−' + num(e.lost), e.dead); txt += e.dead ? ' · Angriff gescheitert, ' + before + ' fällt' : ' · eigene Verluste −' + num(e.lost); await sleep(420); }
+      else if (e.t === 'help') { hitFx(e.id, '−' + num(e.lost), e.dead); txt += ' · ' + B.U(B.byId(st, e.id)).n + ' (mitgekämpft) −' + num(e.lost) + (e.dead ? ' ✝' : ''); await sleep(260); }
       else if (e.t === 'stone') {
         if (m.k === 'shoot') await shot(p, e);
-        var sd = document.querySelector('.stone[data-sx="' + e.x + '"][data-sy="' + e.y + '"]');
-        floatTxt(e.x, e.y, e.broke ? 'Stein zerstört!' : '−' + Math.round(e.dmg), 'grey');
-        if (e.broke && sd) sd.classList.add('gone');
-        txt += ' trifft die Mauer (−' + Math.round(e.dmg) + (e.broke ? ', Stein zerstört' : '') + ')';
+        floatTxt(e.x, e.y, '−' + lvl(e.dmg) + ' Stufen' + (e.gone.length ? ', Bresche!' : ''), 'grey');
+        e.gone.forEach(function (g) { var sd = document.querySelector('.stone[data-sx="' + g.x + '"][data-sy="' + g.y + '"]'); if (sd) sd.classList.add('gone'); });
+        txt += ' trifft die Mauer (−' + lvl(e.dmg) + ' Stufen' + (e.gone.length ? ', ' + e.gone.length + ' Stein' + (e.gone.length > 1 ? 'e' : '') + ' eingestürzt' : '') + ')';
         drawUnits(); await sleep(420);
-      } else if (e.t === 'wallDown') { banner('Mauer gefallen! Kein Verteidigungsbonus mehr'); await sleep(900); }
+      } else if (e.t === 'final') { st.final = e; banner('Entscheidungsschlacht! ' + num(e.A) + ' gegen ' + num(e.D)); txt += ' · Entscheidungsschlacht: Angriff ' + num(e.A) + ' gegen Verteidigung ' + num(e.D); drawUnits(); await sleep(1600); }
+      else if (e.t === 'wallDown') { banner('Mauer geschleift! Kein Verteidigungsbonus mehr'); await sleep(900); }
       else if (e.t === 'promo') { var d = unitEl(p); d.classList.add('glow'); setTimeout(function () { d.classList.remove('glow'); }, 1300); floatTxt(p.x, p.y, '⬆ befördert', 'gold'); txt += ', befördert'; await sleep(500); }
     }
     }
+  }
+  // Nahkampf sichtbar machen: Trupp stößt ein Stück aufs Ziel vor
+  function lunge(p, cur, e) {
+    var d = unitEl(p), k = 0.38 * S.cell, dx = Math.sign(e.x - cur.x) * k, dy = Math.sign(e.y - cur.y) * k;
+    d.style.transform = 'translate(' + (cur.x * S.cell + dx) + 'px,' + (cur.y * S.cell + dy) + 'px)';
+    return sleep(150);
   }
   function hitFx(id, t, dead) {
     var q = B.byId(S.st, id), d = unitEl(q); d.classList.add('flash'); setTimeout(function () { d.classList.remove('flash'); }, 340);
@@ -293,7 +307,7 @@
 
   // ---------- Ergebnis ----------
   function result() {
-    var st = S.st, h = '<h2>' + SIDE[st.winner] + ' siegt</h2><p class="note">' + (st.reason === 'vernichtet' ? 'Alle Truppen der anderen Seite sind gefallen.' : 'Zuglimit erreicht: Wer prozentual weniger Truppenwert verloren hat, gewinnt.') + '</p>';
+    var st = S.st, h = '<h2>' + SIDE[st.winner] + ' siegt</h2><p class="note">' + ({ vernichtet: 'Alle Truppen der anderen Seite sind gefallen.', 'Rückzug': 'Der Angreifer hat sich zurückgezogen. Die Überlebenden ziehen heim.', Entscheidungsschlacht: (st.final ? 'Angriff ' + num(st.final.A) + ' gegen Verteidigung ' + num(st.final.D) + ': ' : '') + 'Alle verbliebenen Truppen sind in einer offenen Schlacht aufeinandergeprallt (Travian-Formel).' }[st.reason] || '') + '</p>';
     [0, 1].forEach(function (side) {
       h += '<h3>' + SIDE[side] + ' (' + R.TRIBES[st.tribe[side]].name + ') · Verlust ' + Math.round(B.lostPct(st, side) * 100) + ' %</h3><table class="res">';
       var by = {};
@@ -309,15 +323,22 @@
   function modal(h) { $('modalBox').innerHTML = h; $('modal').classList.remove('hidden'); }
   function closeModal() { $('modal').classList.add('hidden'); }
   $('modal').addEventListener('click', function (e) { if (e.target.id === 'modal') closeModal(); });
+  $('b-retreat').onclick = function () {
+    var st = S.st; if (!st || st.over || S.busy || st.turn !== 0) return;
+    modal('<h2>Rückzug?</h2><p class="note">Die Überlebenden ziehen heim, der Verteidiger hält.</p><div class="ctrl"><button class="btn" id="rt-no">Weiterkämpfen</button><button class="btn go" id="rt-yes">Rückzug</button></div>');
+    $('rt-no').onclick = function () { $('modal').classList.add('hidden'); };
+    $('rt-yes').onclick = function () { $('modal').classList.add('hidden'); if (st.over || S.st !== st) return; B.retreat(st); log(0, 'Angreifer tritt den Rückzug an'); nextTurn(); };
+  };
   $('b-menu').onclick = function () { S.st = null; S.phase = 'menu'; menu(); };
   $('b-help').onclick = function () {
     modal('<h2>So geht das Gefecht</h2><ul>' +
       '<li><b>Jede Figur ist ein Trupp</b> mit Anzahl. Sie zieht wie die Shogi-Figur in der Ecke (歩 金 銀 桂 香 角 飛 王).</li>' +
-      '<li><b>Zug auf einen Gegner = Angriff:</b> Schaden = Anzahl × Angriff. Überlebt das Ziel, schlägt es mit halber Kraft zurück und du bleibst stehen. Ist es vernichtet, rückst du nach.</li>' +
-      '<li>Gegen Reiter zählt die Kavallerie-Verteidigung, sonst die Infanterie-Verteidigung (wie in Travian). Rote Zahl über dem Ziel: was dein Angriff anrichtet, ↩ = Gegenschlag.</li>' +
-      '<li><b>Mauer:</b> Solange ein Stein steht, haben alle Verteidiger den Mauerbonus. Rammen machen 3× Schaden an Steinen, Katapulte schießen drüber.</li>' +
+      '<li><b>Zug auf einen Gegner = Kampf.</b> Gewinnst du, fällt der Gegner und du rückst nach. Verlierst du, fällt dein Trupp. Rote Zahl über dem Ziel: sein Verlust (✝ = fällt), ↩ = dein Verlust.</li>' +
+      '<li><b>Unterstützung:</b> Alle Trupps beider Seiten, die an das umkämpfte Feld grenzen, kämpfen mit und teilen das Ergebnis. Zusammenbleiben lohnt sich, einzelne Trupps sind leichte Beute.</li>' +
       '<li><b>Beförderung:</b> In den gegnerischen Startreihen wird ein Trupp befördert (+25 % Angriff, zieht wie Gold), nur für dieses Gefecht.</li>' +
-      '<li><b>Ende:</b> Wer keine Truppen mehr hat, verliert. Nach ' + (S.st ? S.st.limit : 10) + ' Zügen je Seite gewinnt, wer prozentual weniger verloren hat.</li>' +
+      '<li><b>Kampf wie Travian:</b> Angreifer zählen mit Angriff, Verteidiger mit Verteidigung (gegen Infanterie bzw. Kavallerie), egal wer zieht. Der Schwächere fällt ganz, der Stärkere verliert (schwach/stark)<sup>1,5</sup>. Die Vorschau zeigt es vorher.</li>' +
+      '<li><b>Mauer:</b> Bonus wie Travian (Römer 1,03<sup>Stufe</sup>, Gallier 1,025, Germanen 1,02), nur für Verteidiger hinter der Mauer. Rammen senken die Stufe (je Ramme 1 Mauerpunkt, Stufe 5 hat 9, Stufe 10 hat 25), Katapulte halb so stark aus der Ferne. Mit der Stufe stürzen Steine ein.</li>' +
+      '<li><b>Ende:</b> Kein Zuglimit. Wer keine Truppen mehr hat, verliert. Der Angreifer kann jederzeit den <b>Rückzug</b> antreten. Gibt es ' + B.QUIET / 2 + ' Züge je Seite keinen Treffer, prallen alle Truppen in einer <b>Entscheidungsschlacht</b> aufeinander (ein Travian-Kampf).</li>' +
       '<li>Gegnerische Figur antippen zeigt ihre Züge (weiß).</li></ul><div class="ctrl"><button class="btn" onclick="document.getElementById(\'modal\').classList.add(\'hidden\')">OK</button></div>');
   };
 

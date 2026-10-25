@@ -7,15 +7,22 @@ var SVA = (function () {
     if (st.over) return st.winner === side ? 1e7 : -1e7;
     var v = [B.value(st, 0) / (st.val0[0] || 1), B.value(st, 1) / (st.val0[1] || 1)], s = (v[side] - v[1 - side]) * 1000;
     // Mauer zählt für den Verteidiger
-    var wall = 0; st.stones.forEach(function (x) { wall += x.hp / x.max; });
-    if (st.stones.length) s += (side === 1 ? 1 : -1) * wall * 15;
-    // Vorrücken (nur leicht) und Beförderte
+    if (st.wallMax) s += (side === 1 ? 1 : -1) * (B.wallMult(st) - 1) * 1500;
+    // Angreifer sucht den Kontakt (Abstand zum nächsten Gegner oder Mauerstein), sonst laufen Trupps aneinander vorbei; Beförderte
+    // Ohne Mauer stellt sich auch der Verteidiger (Tiere fliehen nicht übers Brett), nur schwächer
+    var foes = [st.pcs.filter(function (q) { return q.side === 1 && q.n > 0 && q.x >= 0; }).concat(st.stones), st.stones.length ? [] : st.pcs.filter(function (q) { return q.side === 0 && q.n > 0 && q.x >= 0; })];
     st.pcs.forEach(function (p) {
       if (p.n <= 0 || p.x < 0) return;
-      var sg = p.side === side ? 1 : -1, adv = p.side === 0 ? (st.H - 1 - p.y) : p.y, u = B.U(p);
-      if (!u.hero && !u.ranged) s += sg * adv * 2;
+      var sg = p.side === side ? 1 : -1, u = B.U(p);
+      var fs = foes[p.side];
+      if (!u.ranged && fs.length) {
+        var d = 99; fs.forEach(function (q) { d = Math.min(d, Math.max(Math.abs(q.x - p.x), Math.abs(q.y - p.y))); });
+        s -= sg * d * (p.side === 1 ? 2 : u.hero ? 2 : 5);
+      }
       if (p.pro) s += sg * 20;
     });
+    // Kein Zuglimit, aber Stillstand = Verteidiger hält: Ruhe drückt auf den Angreifer, damit er angreift statt zu warten
+    s += (side === 1 ? 1 : -1) * (st.quiet * 8 + st.quiet * st.quiet * 0.8);
     // Mobilität: wer am Zug ist, kann zuerst zuschlagen
     s += (st.turn === side ? 1 : -1) * 8;
     return s;

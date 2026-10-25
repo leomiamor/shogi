@@ -2,30 +2,37 @@
 // Seite 0 = Angreifer (unten, zieht zuerst), Seite 1 = Verteidiger (oben, hinter der Mauer). Reine Logik, keine Oberfläche.
 var SVB = (function () {
   var R = typeof SV !== 'undefined' ? SV : require('./rules.js');
-  var K = 0.5;            // Schadensfaktor: gleich starke Trupps brauchen ~2 Treffer
-  var COUNTER = 0.5;      // Gegenschlag: Anteil des eigenen Angriffs
-  var RAM_X = 3;          // Rammen gegen Mauersteine
-  var SHOOT_TROOP = 0.5;  // Katapult gegen Truppen
-  var PROMO_A = 1.25;     // Beförderte: +25 % Angriff
+  // Kampf nach Travian (kirilloid, Wunsch 25.10.): Angriffspunkte (Anzahl × Angriff) gegen Verteidigungspunkte (Anzahl × Verteidigung gegen Infanterie bzw.
+  // Kavallerie × Mauer). Normaler Angriff: der Schwächere fällt komplett, der Stärkere verliert (schwach/stark)^1,5 seiner Truppen.
+  var EXP = 1.5;          // Travian-Exponent der Verlustformel
+  var PROMO_A = 1.25;     // Beförderte: +25 % Angriff (nur im Gefecht)
   var DEAD = 0.05;        // darunter ist ein Trupp vernichtet
-  var STONE_HP = 120;     // Leben pro Stein je Mauerstufe
+  // Mauer wie Travian: Bonus = Basis^Stufe (Römer 1,030, Gallier 1,025, Germanen 1,020). Rammen senken die Stufe.
+  // Mauerpunkte = Rammen, die die Mauer ganz schleifen (geschätzt nach Travian ohne Schmiede-Upgrades): 0,15·L² + L (Stufe 5: 9, 10: 25, 20: 80)
+  var RAM_HIT = 1;        // Mauerpunkte je Ramme
+  var CATA_HIT = 0.5;     // je Katapult (in Travian treffen Katapulte die Mauer nicht; hier halb so gut wie Rammen, dafür aus der Ferne)
+  var TROOP_HIT = 0.001;  // andere Truppen je Angriffspunkt (20 Legionäre = 0,8 Rammen)
+  function ramsNeeded(L) { return 0.15 * L * L + L; }
+  var QUIET = 16;         // kein Zuglimit (Wunsch 25.10.): nach so vielen Halbzügen ohne Treffer kommt die Entscheidungsschlacht (alle gegen alle, Travian-Formel)
 
   function sizeFor(n) { return n <= 3 ? 5 : n <= 8 ? 7 : 9; }
   function rowsFor(w) { return w === 5 ? 1 : w === 7 ? 2 : 3; }
   function U(p) { return R.unit(p.tribe, p.key); }
 
-  // cfg: { att: { tribe, squads: [{ key, n }] }, def: { tribe, squads, wall }, size?, limit? }
+  // cfg: { att: { tribe, squads: [{ key, n }] }, def: { tribe, squads, wall }, size? }
   function create(cfg) {
     var nFig = Math.max(cfg.att.squads.length, cfg.def.squads.length);
     var W = cfg.size || sizeFor(nFig), rows = rowsFor(W), id = 1;
-    var st = { W: W, H: W, rows: rows, pcs: [], stones: [], turn: 0, moves: [0, 0], limit: cfg.limit || 10, over: false, winner: null, reason: '',
+    var st = { W: W, H: W, rows: rows, pcs: [], stones: [], turn: 0, moves: [0, 0], quiet: 0, over: false, winner: null, reason: '',
       tribe: [cfg.att.tribe, cfg.def.tribe], wallLvl: cfg.def.wall || 0, wallPct: (R.TRIBES[cfg.def.tribe] || {}).wall || 0, log: [] };
     [cfg.att, cfg.def].forEach(function (s, side) {
       s.squads.forEach(function (q) { if (q.n > 0) st.pcs.push({ id: id++, side: side, tribe: q.key === 'hero' ? s.tribe : s.tribe, key: q.key, n: q.n, n0: q.n, x: -1, y: -1, pro: false }); });
     });
+    st.wallMax = st.wallHp = st.wallLvl > 0 ? ramsNeeded(st.wallLvl) : 0;
     if (st.wallLvl > 0) {
       var y = rows, gaps = st.wallLvl < 10 ? [1, W - 2] : st.wallLvl < 15 ? [(W - 1) / 2] : [];
-      for (var x = 0; x < W; x++) if (gaps.indexOf(x) < 0) st.stones.push({ x: x, y: y, hp: STONE_HP * st.wallLvl, max: STONE_HP * st.wallLvl });
+      for (var x = 0; x < W; x++) if (gaps.indexOf(x) < 0) st.stones.push({ x: x, y: y });
+      st.stones0 = st.stones.length;
     }
     st.val0 = [value(st, 0), value(st, 1)];
     return st;
@@ -45,7 +52,10 @@ var SVB = (function () {
   function inZone(st, side, y) { return side === 0 ? y >= st.H - st.rows : y < st.rows; }
   function mvType(p) { var b = U(p).mv; return p.pro && R.PROMO[b] ? R.PROMO[b] : b; }
   function canPromote(p) { var u = U(p); return !p.pro && !u.hero && !u.ranged && !u.ram && !u.chief && !!R.PROMO[u.mv]; }
-  function wallUp(st) { return st.stones.length > 0; }
+  function wallUp(st) { return st.wallHp > 0; }
+  // aktuelle Mauerstufe (mit Kommastellen) und Verteidigungs-Faktor
+  function wallLevel(st) { return st.wallMax ? st.wallLvl * st.wallHp / st.wallMax : 0; }
+  function wallMult(st) { return Math.pow(1 + st.wallPct, wallLevel(st)); }
 
   // ---------- Aufstellung ----------
   function place(st, id, x, y) {
@@ -130,11 +140,36 @@ var SVB = (function () {
 
   // ---------- Kampf ----------
   function atk(p) { return U(p).a * (p.pro ? PROMO_A : 1); }
-  function defOf(st, t, byCav) { var u = U(t), d = byCav ? u.vk : u.vi; return d * (t.side === 1 && wallUp(st) ? 1 + st.wallPct * st.wallLvl : 1); }
-  function strike(st, a, t, mult) {
-    var dmg = a.n * atk(a) * K * (mult || 1), lost = Math.min(t.n, dmg / Math.max(1, defOf(st, t, !!U(a).cav)));
-    t.n -= lost; if (t.n < DEAD) { lost += t.n; t.n = 0; }
-    return lost;
+  // Mauer hilft nur Verteidigern hinter ihr (in der eigenen Startzone); wer ausfällt, kämpft ohne Bonus
+  function defOf(st, t, byCav) { var u = U(t), d = byCav ? u.vk : u.vi; return d * (t.side === 1 && inZone(st, 1, t.y) ? wallMult(st) : 1); }
+  function lose(q, f) { var l = Math.min(q.n, q.n * f); q.n -= l; if (q.n < DEAD) { l += q.n; q.n = 0; } return l; }
+  // Zusammenstoß wie eine Travian-Schlacht: der Angreifer-Trupp (Seite 0) zählt mit Angriff, der Verteidiger-Trupp (Seite 1) mit Verteidigung,
+  // egal wer zieht (in Travian greifen Verteidiger nie mit Angriffswerten an). Liefert [Verlust Ziel, Verlust Ziehender].
+  function power(st, mover, target) {
+    var o = mover.side === 0 ? mover : target, d = mover.side === 0 ? target : mover;
+    return { o: o, d: d, po: o.n * atk(o), pd: d.n * defOf(st, d, !!U(o).cav) };
+  }
+  // Unterstützung (wie gedeckte Figuren im Shogi, und wie in Travian, wo immer alle mitkämpfen): Trupps beider Seiten,
+  // die an das umkämpfte Feld grenzen, kämpfen mit (Nahkampf, keine Katapulte). Sie teilen das Schicksal ihrer Seite.
+  var HELP = true;
+  function helpers(st, side, x, y, skip) {
+    return st.pcs.filter(function (q) { return q.side === side && q.n > 0 && q.x >= 0 && q !== skip && !U(q).ranged && Math.max(Math.abs(q.x - x), Math.abs(q.y - y)) === 1; });
+  }
+  function fight(st, a, t, ev) {
+    var o = a.side === 0 ? a : t, d = a.side === 0 ? t : a, os = [o], ds = [d];
+    if (HELP) { os = os.concat(helpers(st, 0, t.x, t.y, o)); ds = ds.concat(helpers(st, 1, t.x, t.y, d)); }
+    var ai = 0, ac = 0; os.forEach(function (q) { if (U(q).cav) ac += q.n * atk(q); else ai += q.n * atk(q); });
+    var po = ai + ac, sh = po ? ai / po : 1, pd = 0;
+    ds.forEach(function (q) { pd += q.n * (sh * defOf(st, q, false) + (1 - sh) * defOf(st, q, true)); });
+    var win = po >= pd ? 0 : 1, f = Math.pow(Math.min(po, pd) / Math.max(po, pd, 1e-9), EXP), res = {};
+    os.concat(ds).forEach(function (q) { res[q.id] = lose(q, q.side === win ? f : 1); });
+    if (ev) os.concat(ds).forEach(function (q) { if (q !== a && q !== t && res[q.id] > 0) ev.push({ t: 'help', id: q.id, lost: res[q.id], dead: q.n <= 0, x: q.x, y: q.y }); });
+    return [res[t.id], res[a.id]];
+  }
+  // Katapult-Schuss: Katapult-Angriff gegen Verteidigung des Ziels, kein Rückschlag; Ziel verliert seinen Anteil wie beim Travian-Raubzug (gleich stark = 50 %)
+  function shoot(st, a, t) {
+    var pa = a.n * atk(a), pd = t.n * defOf(st, t, false), x = Math.pow(Math.min(pa, pd) / Math.max(pa, pd), EXP);
+    return lose(t, pa >= pd ? 1 / (1 + x) : x / (1 + x));
   }
   // Zug ausführen; liefert Ereignisse für die Anzeige
   function apply(st, mv) {
@@ -143,50 +178,70 @@ var SVB = (function () {
     else if (mv.k === 'attack' || mv.k === 'shoot') {
       var t = at(st, mv.x, mv.y);
       if (t) {
-        var lost = strike(st, p, t, mv.k === 'shoot' ? SHOOT_TROOP : 1);
-        ev.push({ t: mv.k === 'shoot' ? 'shoot' : 'hit', id: p.id, tid: t.id, lost: lost, dead: t.n <= 0, x: t.x, y: t.y });
-        if (t.n > 0 && mv.k === 'attack') {
-          var back = strike(st, t, p, COUNTER);
-          ev.push({ t: 'counter', id: t.id, tid: p.id, lost: back, dead: p.n <= 0, x: p.x, y: p.y });
-        }
+        var res = mv.k === 'shoot' ? [shoot(st, p, t), 0] : fight(st, p, t, ev);
+        ev.push({ t: mv.k === 'shoot' ? 'shoot' : 'hit', id: p.id, tid: t.id, lost: res[0], dead: t.n <= 0, x: t.x, y: t.y });
+        if (res[1] > 0) ev.push({ t: 'counter', id: t.id, tid: p.id, lost: res[1], dead: p.n <= 0, x: p.x, y: p.y });
         if (t.n <= 0 && mv.k === 'attack' && p.n > 0) { p.x = mv.x; p.y = mv.y; ev.push({ t: 'move', id: p.id, fx: fx, fy: fy, x: mv.x, y: mv.y }); }
+        else if (mv.k === 'attack' && p.n > 0) {
+          // Nahkampf aus der Distanz (Lanze, Läufer, Turm): Ziel lebt noch, dann bleibt der Trupp auf dem Feld direkt davor stehen (Wunsch 25.10., sonst wirkt es wie Fernkampf)
+          var dx = mv.x - fx, dy = mv.y - fy, sx = Math.sign(dx), sy = Math.sign(dy);
+          if ((dx === 0 || dy === 0 || Math.abs(dx) === Math.abs(dy)) && Math.max(Math.abs(dx), Math.abs(dy)) > 1) {
+            p.x = mv.x - sx; p.y = mv.y - sy; ev.push({ t: 'move', id: p.id, fx: fx, fy: fy, x: p.x, y: p.y, before: true });
+          }
+        }
       } else {
         var s = stoneAt(st, mv.x, mv.y); if (s) wallHit(st, p, s, mv, ev, fx, fy);
       }
     } else if (mv.k === 'wall') { var s2 = stoneAt(st, mv.x, mv.y); if (s2) wallHit(st, p, s2, mv, ev, fx, fy); }
-    if (p.n > 0 && canPromote(p) && (p.side === 0 ? p.y < st.rows : p.y >= st.H - st.rows) && p.x === mv.x && p.y === mv.y) { p.pro = true; ev.push({ t: 'promo', id: p.id }); }
+    if (p.n > 0 && canPromote(p) && (p.side === 0 ? p.y < st.rows : p.y >= st.H - st.rows) && (p.x !== fx || p.y !== fy)) { p.pro = true; ev.push({ t: 'promo', id: p.id }); }
     st.moves[p.side]++;
+    st.quiet = ev.some(function (e) { return e.t === 'hit' || e.t === 'shoot' || e.t === 'stone'; }) ? 0 : st.quiet + 1;
     endTurn(st, ev);
     return ev;
   }
+  // Treffer auf die Mauer senkt ihre Stufe; Steine fallen anteilig (der getroffene zuerst, dann die nächsten daneben)
   function wallHit(st, p, s, mv, ev, fx, fy) {
-    var u = U(p), dmg = p.n * atk(p) * K * (u.ram ? RAM_X : 1);
-    s.hp -= dmg; var broke = s.hp <= 0;
-    ev.push({ t: 'stone', id: p.id, x: s.x, y: s.y, dmg: dmg, broke: broke });
-    if (broke) {
-      st.stones.splice(st.stones.indexOf(s), 1);
-      if (!st.stones.length) ev.push({ t: 'wallDown' });
-      if (mv.k === 'wall') { p.x = s.x; p.y = s.y; ev.push({ t: 'move', id: p.id, fx: fx, fy: fy, x: s.x, y: s.y }); }
+    var u = U(p), l0 = wallLevel(st), dmg = u.ram ? p.n * RAM_HIT : u.ranged ? p.n * CATA_HIT : p.n * atk(p) * TROOP_HIT;
+    st.wallHp = Math.max(0, st.wallHp - dmg); if (st.wallHp < 0.05) st.wallHp = 0;
+    var keep = st.wallHp > 0 ? Math.ceil(st.stones0 * st.wallHp / st.wallMax - 1e-9) : 0, gone = [];
+    while (st.stones.length > keep) {
+      var q = st.stones.indexOf(s) >= 0 ? s : st.stones.slice().sort(function (a, b) { return Math.abs(a.x - s.x) - Math.abs(b.x - s.x); })[0];
+      st.stones.splice(st.stones.indexOf(q), 1); gone.push({ x: q.x, y: q.y });
     }
+    var broke = st.stones.indexOf(s) < 0;
+    ev.push({ t: 'stone', id: p.id, x: s.x, y: s.y, dmg: l0 - wallLevel(st), broke: broke, gone: gone });
+    if (!st.wallHp && l0 > 0) ev.push({ t: 'wallDown' });
+    if (broke && mv.k === 'wall') { p.x = s.x; p.y = s.y; ev.push({ t: 'move', id: p.id, fx: fx, fy: fy, x: s.x, y: s.y }); }
   }
   function endTurn(st, ev) {
     var a0 = alive(st, 0).length, a1 = alive(st, 1).length;
     if (!a0 || !a1) { finish(st, a0 ? 0 : 1, 'vernichtet'); ev.push({ t: 'over' }); return; }
+    if (st.quiet >= QUIET) { decide(st, ev); return; }
     st.turn = 1 - st.turn;
-    for (var tries = 0; tries < 2; tries++) {
-      if (st.moves[0] >= st.limit && st.moves[1] >= st.limit) { score(st); ev.push({ t: 'over' }); return; }
-      if (st.moves[st.turn] < st.limit && allMoves(st, st.turn).length) return;
-      st.moves[st.turn] = Math.max(st.moves[st.turn], st.limit); // kann nicht mehr ziehen
-      st.turn = 1 - st.turn;
-    }
-    score(st); ev.push({ t: 'over' });
+    if (allMoves(st, st.turn).length) return;
+    st.turn = 1 - st.turn; // kann nicht ziehen: der andere zieht weiter
+    if (!allMoves(st, st.turn).length) decide(st, ev);
   }
+  // Entscheidungsschlacht wie ein Travian-Angriff: alle Angriffspunkte (Infanterie/Kavallerie) gegen die gewichtete Verteidigung aller Verteidiger
+  // (Mauer nur für die hinter ihr). Verlierer fällt komplett, Sieger verliert (Verlierer/Sieger)^1,5 jedes Trupps.
+  function decide(st, ev) {
+    var o = alive(st, 0), d = alive(st, 1), ai = 0, ac = 0, di = 0, dc = 0;
+    o.forEach(function (p) { if (U(p).cav) ac += p.n * atk(p); else ai += p.n * atk(p); });
+    d.forEach(function (p) { di += p.n * defOf(st, p, false); dc += p.n * defOf(st, p, true); });
+    var A = ai + ac, sh = A ? ai / A : 1, D = sh * di + (1 - sh) * dc, win = A > D ? 0 : 1, f = Math.pow(Math.min(A, D) / Math.max(A, D, 1e-9), EXP);
+    var lost = [0, 0];
+    o.concat(d).forEach(function (p) { lost[p.side] += lose(p, p.side === win ? f : 1) * U(p).cost; });
+    ev.push({ t: 'final', A: A, D: D, winner: win, f: f });
+    finish(st, win, 'Entscheidungsschlacht'); ev.push({ t: 'over' });
+  }
+  // Angreifer bricht ab: Überlebende ziehen heim, Verteidiger hält
+  function retreat(st) { if (!st.over) finish(st, 1, 'Rückzug'); }
+  function quietLeft(st) { return QUIET - st.quiet; }
   function lostPct(st, side) { return st.val0[side] ? 1 - value(st, side) / st.val0[side] : 0; }
-  function score(st) { var l0 = lostPct(st, 0), l1 = lostPct(st, 1); finish(st, l0 < l1 ? 0 : 1, 'Wertung'); }
   function finish(st, w, why) { st.over = true; st.winner = w; st.reason = why; }
 
   return { create: create, clone: clone, value: value, alive: alive, at: at, stoneAt: stoneAt, inZone: inZone, mvType: mvType, place: place, unplace: unplace,
     split: split, merge: merge, autoPlace: autoPlace, ready: ready, zoneCells: zoneCells, byId: byId, moves: moves, allMoves: allMoves, apply: apply,
-    lostPct: lostPct, defOf: defOf, atk: atk, U: U, wallUp: wallUp, K: K, COUNTER: COUNTER };
+    power: power, helpers: helpers, setHelp: function (v) { HELP = v; }, lostPct: lostPct, retreat: retreat, quietLeft: quietLeft, QUIET: QUIET, defOf: defOf, atk: atk, U: U, wallUp: wallUp, wallLevel: wallLevel, wallMult: wallMult, ramsNeeded: ramsNeeded };
 })();
 if (typeof module !== 'undefined') module.exports = SVB;
