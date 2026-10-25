@@ -19,9 +19,10 @@ var THEMES = {
     id: 'feudal', name: 'Pfad des Shōgun', sub: 'Feudaljapan', ready: true, board: 'urushi',
     // Welten (nur im 3D-Modus sichtbar), id = settings.scene
     maps: [{ id: 'buehne', name: 'Dunkle Bühne', sub: 'Spotlicht, schwarzer Glanzboden' }, { id: 'garten', name: 'Zen-Garten', sub: 'Kies, Felsen, Bambus, Sternenhimmel' }, { id: 'see', name: 'Mondsee', sub: 'Steininsel im Wasser, Torii' }],
+    // Seiten heißen wie im echten Shogi (Wunsch 25.10.): Sente 先手 zieht zuerst, Gote 後手
     factions: [
-      { name: 'Kitsune-Clan', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
-      { name: 'Oni-Clan', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
+      { name: 'Sente', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
+      { name: 'Gote', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
     ],
     // Index = Figurentyp aus core.js
     units: {
@@ -56,8 +57,8 @@ var THEMES = {
     id: 'mecha', name: 'Iron Protocol', sub: 'Mecha / Sci-Fi', ready: true, board: 'carbon',
     maps: [{ id: 'hangar', name: 'Hangar', sub: 'Montagehalle, Kräne, Warnstreifen' }, { id: 'neon', name: 'Neon-Dach', sub: 'Hochhausdach bei Nacht, Regen' }, { id: 'orbit', name: 'Orbitalstation', sub: 'Deck im All, Planet, Sterne' }],
     factions: [
-      { name: 'Aurora-Pakt', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
-      { name: 'Eisen-Syndikat', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
+      { name: 'Sente', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
+      { name: 'Gote', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
     ],
     units: {
       1: { name: 'Infanterie-Droide', icon: 'pawn', kanji: '歩', real: 'Fu (Bauer)', lore: 'Kleiner Kampfroboter. Geht nur 1 Feld geradeaus und schlägt auch geradeaus, nicht schräg wie im Schach.' },
@@ -81,8 +82,8 @@ var THEMES = {
     id: 'fantasy', name: 'Kronen & Drachen', sub: 'Klassisch Fantasy', ready: true, board: 'urushi',
     maps: [{ id: 'burghof', name: 'Burghof', sub: 'Mauern, Türme, Banner, Abendrot' }, { id: 'hort', name: 'Drachenhort', sub: 'Höhle voller Gold, Lava, Kristalle' }, { id: 'wald', name: 'Elfenwald', sub: 'Riesenbäume, Leuchtpilze, Glühwürmchen' }],
     factions: [
-      { name: 'Haus Löwenherz', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
-      { name: 'Haus Rabenstein', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
+      { name: 'Sente', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
+      { name: 'Gote', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
     ],
     units: {
       1: { name: 'Knappe', icon: 'pawn', kanji: '歩', real: 'Fu (Bauer)', lore: 'Junger Fußsoldat. Geht nur 1 Feld geradeaus und schlägt auch geradeaus, nicht schräg wie im Schach.' },
@@ -106,8 +107,8 @@ var THEMES = {
     id: 'hunde', name: 'Rudel der Rassen', sub: 'Hunde', ready: true, board: 'urushi',
     maps: [{ id: 'park', name: 'Hundepark', sub: 'Wiese, Zaun, Bäume, Hydrant, Sommerabend' }, { id: 'show', name: 'Hundeschau', sub: 'Siegerring, roter Teppich, Podest, Scheinwerfer' }, { id: 'strand', name: 'Strand', sub: 'Sand, Wellen, Leuchtturm, Sonnenuntergang' }],
     factions: [
-      { name: 'Rudel Sonnenfell', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
-      { name: 'Rudel Mondpfote', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
+      { name: 'Sente', color: '#46d7ff', glow: 'rgba(70,215,255,.6)', dark: '#0b3a52' },
+      { name: 'Gote', color: '#ff5a4e', glow: 'rgba(255,90,78,.6)', dark: '#4a0f0f' }
     ],
     units: {
       1: { name: 'Dackel', icon: 'pawn', kanji: '歩', real: 'Fu (Bauer)', lore: 'Klein, aber mutig. Geht nur 1 Feld geradeaus und schlägt auch geradeaus, nicht schräg wie im Schach.' },

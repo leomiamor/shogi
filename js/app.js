@@ -286,7 +286,7 @@
     });
   }
   function chooseColor(cb) {
-    var box = modal('<h2>Deine Seite</h2><p>Kitsune zieht zuerst.</p><div class="acts"><button class="btn" data-c="0">🦊 Kitsune</button><button class="btn" data-c="1">👹 Oni</button><button class="btn" data-c="r">🎲 Zufall</button></div><div class="acts"><button class="btn small" id="cc-x">Abbrechen</button></div>');
+    var box = modal('<h2>Deine Seite</h2><p>Sente zieht zuerst.</p><div class="acts"><button class="btn" data-c="0">先 Sente</button><button class="btn" data-c="1">後 Gote</button><button class="btn" data-c="r">🎲 Zufall</button></div><div class="acts"><button class="btn small" id="cc-x">Abbrechen</button></div>');
     $$('[data-c]', box).forEach(function (b) { b.onclick = function () { closeModal(); var c = b.dataset.c === 'r' ? (Math.random() < .5 ? 0 : 1) : +b.dataset.c; cb(c); }; });
     $('#cc-x', box).onclick = closeModal;
   }
@@ -349,7 +349,7 @@
   }
   function askDuelRecord(scoreFor, hc, onlineCol) {
     if (!OWNER) return;
-    var box = modal('<h2>Gegen den Schachspieler werten?</h2><p>Dann zählt die Partie für deine Wertung und die Bilanz.</p><div class="acts" style="flex-direction:column">' + (onlineCol != null ? '<button class="btn gold" data-c="' + onlineCol + '">Ja, war gegen ihn</button>' : '<button class="btn gold" data-c="0">Ich war 🦊 Kitsune (unten)</button><button class="btn gold" data-c="1">Ich war 👹 Oni (oben)</button>') + '<button class="btn small" data-c="x">Nicht werten</button></div>');
+    var box = modal('<h2>Gegen den Schachspieler werten?</h2><p>Dann zählt die Partie für deine Wertung und die Bilanz.</p><div class="acts" style="flex-direction:column">' + (onlineCol != null ? '<button class="btn gold" data-c="' + onlineCol + '">Ja, war gegen ihn</button>' : '<button class="btn gold" data-c="0">Ich war Sente 先手 (unten)</button><button class="btn gold" data-c="1">Ich war Gote 後手 (oben)</button>') + '<button class="btn small" data-c="x">Nicht werten</button></div>');
     $$('[data-c]', box).forEach(function (b) { b.onclick = function () { closeModal(); if (b.dataset.c === 'x') return; var col = +b.dataset.c, res = recordDuel(scoreFor(col), col, hc); toast('Gewertet: ' + res.line.replace(/<[^>]+>/g, ''), 4000); }; });
   }
 
