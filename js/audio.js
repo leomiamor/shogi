@@ -6,9 +6,16 @@ var Sfx = (function () {
   function ramp(g, v) { var t = ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(v, t, 0.04); }
   function masterLevel() { return vol.mute || document.hidden ? 0 : 1; }
   // Tab im Hintergrund oder Handy gesperrt: Ton aus
-  document.addEventListener('visibilitychange', function () { if (ctx) ramp(master, masterLevel()); });
+  // Akku: stumm, alles auf 0 oder versteckt → Audio-Kontext ganz schlafen legen (nach dem Ausblenden), sonst wieder wecken
+  function silent() { return vol.mute || document.hidden || (vol.sfx <= 0 && vol.music <= 0); }
+  function sleepCheck() {
+    if (!ctx) return;
+    if (!silent()) { if (ctx.state === 'suspended') ctx.resume(); return; }
+    clearTimeout(sleepCheck._t); sleepCheck._t = setTimeout(function () { if (ctx.state === 'running' && silent()) ctx.suspend(); }, 300);
+  }
+  document.addEventListener('visibilitychange', function () { if (ctx) { ramp(master, masterLevel()); sleepCheck(); } });
   function ensure() {
-    if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return true; }
+    if (ctx) { if (ctx.state === 'suspended' && !silent()) ctx.resume(); return true; }
     var AC = window.AudioContext || window.webkitAudioContext; if (!AC) return false;
     ctx = new AC();
     master = ctx.createGain(); master.gain.value = masterLevel();
@@ -27,7 +34,7 @@ var Sfx = (function () {
     busRev = ctx.createGain(); busRev.gain.value = 0.15; busF.connect(busRev); busRev.connect(reverb);
     far = ctx.createBiquadFilter(); far.type = 'lowpass'; far.frequency.value = 900; var fg = ctx.createGain(); fg.gain.value = 0.7; far.connect(fg); fg.connect(sfxGain); var fr = ctx.createGain(); fr.gain.value = 0.9; far.connect(fr); fr.connect(reverb);
     ambBus = ctx.createGain(); ambBus.gain.value = 0.5; ambBus.connect(sfxGain);
-    loadSamples(); ambTick();
+    loadSamples(); ambTick(); sleepCheck();
     return true;
   }
   var reverb, revGain, busF, busRev, bus, far, ambBus;
@@ -162,7 +169,8 @@ var Sfx = (function () {
     }
   }
   function ambTick() {
-    setTimeout(ambTick, 500);
+    // Akku: nur das 3D-Feld braucht den schnellen Takt (Umgebungsklänge), sonst reicht alle 2 s
+    var r0 = board(); setTimeout(ambTick, r0 && r0.look === 'feld' && !document.hidden ? 500 : 2000);
     curEd = edition(); if (mus && mus.edId !== curEd) { musStop(); if (wantMusic && vol.music > 0) musStart(); }
     var r = board(), live = !vol.mute && vol.sfx > 0 && !document.hidden, on = !!(live && r && r.look === 'feld' && r.settings && r.settings.army), W = (on && r.wx) || {}, t = ctx.currentTime;
     var base = on ? MOOD[moodKey(r)] || null : null, rain = W.rain || 0;
@@ -410,7 +418,7 @@ var Sfx = (function () {
     setVolume: function (sfx, music, mute) {
       var wasOn = vol.music > 0; vol.sfx = sfx; vol.music = music; vol.mute = !!mute;
       if (!ctx) return;
-      ramp(sfxGain, sfx); ramp(musicGain, music); ramp(master, masterLevel());
+      ramp(sfxGain, sfx); ramp(musicGain, music); ramp(master, masterLevel()); sleepCheck();
       if (wantMusic && wasOn !== music > 0) this.music(true); // Musik von 0 hochgezogen oder auf 0 gestellt
     }
   };

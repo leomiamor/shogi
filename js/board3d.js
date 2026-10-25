@@ -133,7 +133,7 @@ function Board3D(root, theme, settings) {
     if (self.paused) { self._loopOff = true; return; } // pausiert (z. B. Armee-Modus beim Planen): keine Bilder, kein Akku
     requestAnimationFrame(loop);
     // Handy: 30 fps bei Bewegung (Züge, Kampf, Kamera), 20 fps in Ruhe; PC ungedeckelt
-    if (mob) { if (self.tweens.length || now - (self.lastInput || 0) < 400 || Math.abs(self.orbit.theta - self.orbit.thetaGoal) > 1e-3) calm = now; if (now - last < (now - calm > 1500 ? 50 : 33.3) - 2) return; }
+    if (mob) { if (self.tweens.length || now - (self.lastInput || 0) < 400 || self._foc && Math.abs(self._foc.f - (self._foc.on ? 1 : 0)) > 0.01 || Math.abs(self.orbit.theta - self.orbit.thetaGoal) > 1e-3) calm = now; if (now - last < (now - calm > 1500 ? 50 : 33.3) - 2) return; }
     var dt = Math.min(50, now - last); last = now;
     self.update(now, dt);
     r.render(scene, cam);
@@ -1091,7 +1091,12 @@ Board3D.kanjiRect = function () { var k = 0.66 / 256; return { x: Board3D.KANJI_
 // und lange Tiere (Grundgröße 0,6 Körpertiefe); gemessen mit test/kanjicov.js → KCOV_NEED() (T = Tier). Nur wer selbst darunter muss, wird einzeln kleiner.
 Board3D.FIG_ED_SCALE = { feudal: { mensch: 0.74, tier: 0.6 }, mecha: { mensch: 0.54, tier: 0.6 }, fantasy: { mensch: 0.77, tier: 0.57 }, hunde: { mensch: 0.6, tier: 0.6 } }; // Ausreißer 19.10.: Mecha 11 (Ritter-Mech, Arme mit Klingen weit gespreizt) 44 %, Feudal-Drache 70 %
 Board3D.RIM_IN = [[0, -0.405], [0.303, -0.223], [0.37, 0.405], [-0.37, 0.405], [-0.303, -0.223]]; // Innenkante des Goldrands (Stein-Raum x/z)
-Board3D.placeFig = function (m, edF) {
+// ohne Kanji auf dem Stein (Standard seit 25.10., Einstellung „Zeichen auf Steinen“): Figur mittig (Schwerpunkt der Innenkante z 0,057), größer,
+// nur Regeln (a) und (b). Größe je Edition wie oben, gemessen mit test/kanjicov.js → KCOV_NEED(true)
+Board3D.FIG_CENTER_Z = 0.057;
+// höchstens 1,0 (sonst verdecken die Figuren die Reihe dahinter); einzeln kleiner (25.10. gemessen): Feudal 12 0,82; Mecha 3 0,67, 7 0,70T, 14 0,82T; Fantasy 8 0,82, 11 0,70T, 14 0,67T
+Board3D.FIG_ED_SCALE_NK = { feudal: { mensch: 1, tier: 1 }, mecha: { mensch: 0.9, tier: 1 }, fantasy: { mensch: 0.9, tier: 1 }, hunde: { mensch: 1, tier: 1 } };
+Board3D.placeFig = function (m, edF, nk) {
   var F = Board3D.FIG_FIT, P = Board3D.RIM_IN, KR = Board3D.kanjiRect(), v = new THREE.Vector3(), pts = [];
   m.updateMatrixWorld(true); var x0 = m.position.x, y0 = m.position.y, z0 = m.position.z, s0 = m.scale.x;
   m.traverse(function (o) {
@@ -1112,7 +1117,7 @@ Board3D.placeFig = function (m, edF) {
       var x = x0 + dx + pts[i] * sc, h = pts[i + 1] * sc, z = z0 + dz + pts[i + 2] * sc;
       if (h < F.low) { for (var e = 0; e < 5; e++) { var d = E[e][0] * x + E[e][1] * z + E[e][2]; if (d < F.margin) { if ((++bad > lim || d < 0) && !score) return false; if (d < 0) bad += 4; break; } } } // Ausreißer nur im Abstandsstreifen, nie über den Rand
       else if (h < F.high) { for (e = 0; e < 5; e++) if (E[e][0] * x + E[e][1] * z + E[e][2] < F.over) { if (++ov > lov && !score) return false; break; } } // Umhang, Schwanz, Flügelspitzen: nicht über den Goldrand (dünne Speere dürfen)
-      if (h < 0.007) continue;
+      if (nk || h < 0.007) continue;
       var cx = Math.floor((x + KR.x) / (2 * KR.x) * N); if (cx < 0 || cx >= N) continue;
       var a = Math.floor((z - KR.z0) / (KR.z1 - KR.z0) * N), c = Math.floor((z - (y0 + h - 0.225) * tn - KR.z0) / (KR.z1 - KR.z0) * N);
       if (a >= 0 && a < N && !top[cx * N + a]) { top[cx * N + a] = 1; if (++nt > lt && !score) return false; }
@@ -1120,9 +1125,10 @@ Board3D.placeFig = function (m, edF) {
     }
     return score ? Math.max(0, bad - lim) * 0.5 + Math.max(0, ov - lov) * 0.05 + Math.max(0, nt - lt) + 2 * Math.max(0, no - lo) : true;
   }
+  var dzHi = nk ? 0.3 : 0.12, dzLo = nk ? -0.3 : -0.5; // ohne Kanji: um die Mitte suchen
   for (var k = 0, sc = base; sc >= base * F.minS - 1e-6; k++, sc = base * Math.pow(0.95, k)) {
     var best = null;
-    for (var dz = 0.12; dz >= -0.5; dz -= 0.02) for (var dx = -0.09; dx <= 0.091; dx += 0.03) {
+    for (var dz = dzHi; dz >= dzLo - 1e-6; dz -= 0.02) for (var dx = -0.09; dx <= 0.091; dx += 0.03) {
       var cost = Math.abs(dz) + 2 * Math.abs(dx); if (best && cost >= best[2]) continue;
       if (fits(sc, dx, dz)) best = [dx, dz, cost];
     }
@@ -1130,12 +1136,12 @@ Board3D.placeFig = function (m, edF) {
   }
   // nichts passt ganz: kleinste Größe, Lage mit den wenigsten Überschreitungen
   var sm = base * F.minS, bs = null;
-  for (dz = 0.12; dz >= -0.5; dz -= 0.02) for (dx = -0.09; dx <= 0.091; dx += 0.03) { var sco = fits(sm, dx, dz, true) + Math.abs(dz) * 0.1; if (!bs || sco < bs[2]) bs = [dx, dz, sco]; }
+  for (dz = dzHi; dz >= dzLo - 1e-6; dz -= 0.02) for (dx = -0.09; dx <= 0.091; dx += 0.03) { var sco = fits(sm, dx, dz, true) + Math.abs(dz) * 0.1; if (!bs || sco < bs[2]) bs = [dx, dz, sco]; }
   m.scale.setScalar(sm); m.position.x = x0 + bs[0]; m.position.z = z0 + bs[1]; m.userData.beast = beast; return F.minS * (edF || 1);
 };
 Board3D.prototype.attachGlb = function (g, src, col) {
   if (!src.userData.env) { var env = Models.envMap(this.renderer); src.traverse(function (o) { if (o.isMesh) { o.material.envMap = env; o.material.envMapIntensity = 0.8; o.material.needsUpdate = true; } }); src.userData.env = true; }
-  var m = Models.fit(src, 1.15, this.settings.figSet === 'statue' ? 2.2 : 0.95), self = this; m.position.set(0, 0.223, this.settings.figSet === 'statue' ? Board3D.FIG_KANJI.fz : 0); // Statuen: alle gleich hoch (Grundfläche nur gegen Ausreißer); y = Oberkante Sockel (0,22, Rand 0,222)
+  var nk = !!g.userData.noKan, m = Models.fit(src, 1.15, this.settings.figSet === 'statue' ? 2.2 : 0.95), self = this; m.position.set(0, 0.223, this.settings.figSet === 'statue' ? (nk ? Board3D.FIG_CENTER_Z : Board3D.FIG_KANJI.fz) : 0); // Statuen: alle gleich hoch (Grundfläche nur gegen Ausreißer); y = Oberkante Sockel (0,22, Rand 0,222)
   var rim = this.settings.figSet === 'statue' && Math.abs(g.userData.p || 0) >= 9 && this.settings.promoStyle === 'glanz';
   if (this.settings.figSet === 'statue') m.traverse(function (o) { if (o.isMesh) o.material = self.statueMat(col, o.material.normalMap, rim); });
   if (this.settings.figSet === 'statue' && Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0))) m.scale.multiplyScalar(1.1);
@@ -1145,9 +1151,9 @@ Board3D.prototype.attachGlb = function (g, src, col) {
   m.userData.ry0 = (this.settings.figSet === 'statue' ? Math.PI : 0) + yaw; m.rotation.y = m.userData.ry0;
   // Platz auf dem Stein suchen (innerhalb des Goldrands, Kanji frei, Größe nur wenn nötig); Ergebnis je Modell gemerkt
   if (this.settings.figSet === 'statue') {
-    var fp = src.userData.figPlace || (src.userData.figPlace = {}), fk = (Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0)) ? 'p' : 'n') + Board3D.FIG_FIT.v + ':' + this.theme.id + ':' + JSON.stringify(Board3D.FIG_ED_SCALE[this.theme.id] || 1) + ':' + Board3D.KANJI_PX;
+    var fp = src.userData.figPlace || (src.userData.figPlace = {}), fk = (Board3D.promoOnBase(this.theme.id, Math.abs(g.userData.p || 0)) ? 'p' : 'n') + Board3D.FIG_FIT.v + ':' + this.theme.id + ':' + JSON.stringify((nk ? Board3D.FIG_ED_SCALE_NK : Board3D.FIG_ED_SCALE)[this.theme.id] || 1) + ':' + (nk ? 'nk' : Board3D.KANJI_PX);
     if (fp[fk]) { m.scale.multiplyScalar(fp[fk][0]); m.position.x += fp[fk][1]; m.position.z += fp[fk][2]; }
-    else { var s0 = m.scale.x, x0 = m.position.x, z0 = m.position.z, need = Board3D.placeFig(m, Board3D.FIG_ED_SCALE[this.theme.id]); fp[fk] = [m.scale.x / s0, m.position.x - x0, m.position.z - z0, need, m.userData.beast]; }
+    else { var s0 = m.scale.x, x0 = m.position.x, z0 = m.position.z, need = Board3D.placeFig(m, (nk ? Board3D.FIG_ED_SCALE_NK : Board3D.FIG_ED_SCALE)[this.theme.id], nk); fp[fk] = [m.scale.x / s0, m.position.x - x0, m.position.z - z0, need, m.userData.beast]; }
   }
   g.add(m); g.userData.glb = m;
 };
@@ -2534,8 +2540,10 @@ Board3D.prototype.makePiece = function (p, cap) {
     var hero = Board3D.armyHero(t), ban = this.armyBanner(t, col); ban.position.set(hero ? 0.3 : 0.06, 0, hero ? 0.22 : 0.42); ban.userData.home0 = ban.position.clone(); if (col === 1) ban.rotation.y = Math.PI; g.add(ban); g.userData.banner = ban;
     var hb = new T.Mesh(this._hitGeo || (this._hitGeo = new T.BoxGeometry(0.9, 0.5, 0.9)), this._hitMat || (this._hitMat = new T.MeshBasicMaterial())); hb.visible = false; hb.position.y = 0.25; g.add(hb);
   }
+  // Figuren-Ansicht: Kanji auf dem Stein standardmäßig aus, Figur steht dann größer in der Mitte (Einstellung figKanji)
+  var noKan = statue && !army && this.settings.models !== false && this.quality === 'high' && this.settings.figKanji !== true && !!this.figUrl(t, col); if (noKan) g.userData.noKan = true;
   var face = new T.Mesh(new T.PlaneGeometry(0.66, 0.66), new T.MeshStandardMaterial({ map: this.faceTexture(t, col), transparent: true, roughness: statue ? 0.35 : 0.5, metalness: statue && ks === 'stein' ? 0.8 : 0, emissive: 0xffffff, emissiveMap: this.faceTexture(t, col), emissiveIntensity: kanjiStyle ? 0 : statue ? (ks === 'stein' ? 0.18 : 0) : 0.35, depthWrite: false }));
-  face.rotation.x = -Math.PI / 2; face.position.set(0, 0.225, 0.04); if (!army) g.add(face);
+  face.rotation.x = -Math.PI / 2; face.position.set(0, 0.225, 0.04); if (!army && !noKan) g.add(face);
   if (statue && ks === 'stein' && !army) g.add(this.komaRim());
   if (!kanjiStyle && !statue) {
     var glow = new T.Mesh(new T.RingGeometry(0.4, 0.5, 5, 1, Math.PI / 2), new T.MeshBasicMaterial({ color: new T.Color(f.color), transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false }));
@@ -2598,9 +2606,23 @@ Board3D.prototype.sync = function (state) {
   // Kameraflug nur zu Spielbeginn (noch kein Zug), höchstens alle 30 s (Neuaufbau beim Umstellen der Einstellungen)
   if (!this._introDone) { this._introDone = true; if (state.moves && !state.moves.length && (!Board3D._introT || performance.now() - Board3D._introT > 30000)) { Board3D._introT = performance.now(); this.armyIntro(); } }
 };
+// Figuren-Ansicht: Kamera rückt an die ausgewählte Figur (Wunsch 25.10.), Zugziele bleiben im Bild. Wird in update() über die normale
+// Kamera gelegt (Anteil f), so arbeiten Kampf-Kamerafahrten weiter mit der normalen Ansicht.
+Board3D.prototype.camFocus = function (sq, h) {
+  var F = this._foc || (this._foc = { on: false, f: 0, x: 0, z: 0, r: 0, sq: null });
+  if (sq == null || sq < 0 || this.look === 'feld' || this.settings.models === false) { F.on = false; F.sq = null; return; }
+  if (F.on && F.sq === sq) return;
+  var p = this.sqPos(sq), ts = (h.targets || []).concat(h.captures || []), mx = 0, mz = 0, ext = 1.6;
+  ts.forEach(function (q) { var t = this.sqPos(q); mx += t.x; mz += t.z; ext = Math.max(ext, Math.hypot(t.x - p.x, t.z - p.z) * 0.6 + 1); }, this);
+  if (ts.length) { mx /= ts.length; mz /= ts.length; } else { mx = p.x; mz = p.z; }
+  F.x = p.x + (mx - p.x) * 0.3; F.z = p.z + (mz - p.z) * 0.3; F.sq = sq; F.on = true;
+  F.r = Math.max(this.orbit.fit * 0.5, Math.min(this.orbit.fit * 0.85, this.orbit.fit * 0.3 * ext));
+  this.lastInput = performance.now();
+};
 Board3D.prototype.setHighlights = function (h) {
   this.hl = h || {}; h = this.hl;
   if (this.figSelect) this.figSelect(h.selected);
+  this.camFocus(h.selected, h);
   if (this.look === 'feld') this.showTag(this.hoverSq != null ? this.hoverSq : h.selected);
   var col = new Array(81).fill(null), dots = new Array(81).fill(0);
   function set(sq, c) { if (sq >= 0 && sq < 81) col[sq] = c; }
@@ -2609,7 +2631,7 @@ Board3D.prototype.setHighlights = function (h) {
   if (h.last) { set(h.last.from, 0xffd24a); set(h.last.to, 0xffd24a); }
   if (h.hint) { set(h.hint.from, 0x40ff90); set(h.hint.to, 0x40ff90); }
   (h.marks || []).forEach(function (s) { set(s, 0x40c8ff); });
-  set(h.selected, 0x46d7ff);
+  set(h.selected, h.peek ? 0xf4f0e8 : 0x46d7ff); // Vorschau einer Figur, die gerade nicht ziehen kann: weiß
   (h.targets || []).forEach(function (s) { dots[s] = 1; });
   (h.captures || []).forEach(function (s) { dots[s] = 2; });
   for (var q = 0; q < 81; q++) {
@@ -2711,10 +2733,15 @@ Board3D.prototype.update = function (now, dt) {
   // sanft zum Ziel drehen
   var d = o.thetaGoal - o.theta; o.theta += d * Math.min(1, dt * 0.006);
   var shake = this.shakeAmt || 0; this.shakeAmt = Math.max(0, shake - dt * 0.002);
-  var c = this.camera, s = Math.sin(o.phi);
-  c.position.set(o.target.x + o.radius * s * Math.sin(o.theta) + (Math.random() - .5) * shake, o.target.y + o.radius * Math.cos(o.phi) + (Math.random() - .5) * shake, o.target.z + o.radius * s * Math.cos(o.theta));
-  c.lookAt(o.target);
-  if (this.camLight) { this.camLight.position.copy(c.position).add(new THREE.Vector3(0, 3, 0)); this.camLight.target.position.copy(o.target); }
+  var c = this.camera, F = this._foc, tg = this._tg || (this._tg = new THREE.Vector3()), rr = o.radius, ph = o.phi; tg.copy(o.target);
+  if (F && (F.on || F.f > 0)) { // Fokus auf die ausgewählte Figur, weich ein- und ausgeblendet; steiler von oben, sonst verdeckt die Figur das Feld vor ihr
+    F.f += ((F.on ? 1 : 0) - F.f) * Math.min(1, dt * 0.006); if (!F.on && F.f < 0.002) F.f = 0;
+    var fe = F.f * F.f * (3 - 2 * F.f); tg.x += (F.x - tg.x) * fe; tg.z += (F.z - tg.z) * fe; tg.y += (this.BT - tg.y) * fe; rr += (F.r - rr) * fe; ph += (Math.min(ph, 0.5) - ph) * fe;
+  }
+  var s = Math.sin(ph);
+  c.position.set(tg.x + rr * s * Math.sin(o.theta) + (Math.random() - .5) * shake, tg.y + rr * Math.cos(ph) + (Math.random() - .5) * shake, tg.z + rr * s * Math.cos(o.theta));
+  c.lookAt(tg);
+  if (this.camLight) { this.camLight.position.copy(c.position).add(new THREE.Vector3(0, 3, 0)); this.camLight.target.position.copy(tg); }
   if (this.fieldU) { this.fieldTick(now, dt); if (this._vw && this.viewShift !== this._vsApplied) { this._vsApplied = this.viewShift; c.setViewOffset(this._vw[0], this._vw[1], 0, -this._vw[1] * this.viewShift, this._vw[0], this._vw[1]); c.updateProjectionMatrix(); } }
   if (this.hallSides) this.hallSides.forEach(function (h) { h.g.visible = c.position[h.axis] * h.sign < h.R - 0.6; });
   this.lanterns.forEach(function (l, i) { l.intensity = (l.userData.base || 1.6) + Math.sin(now / 90 + i * 3) * 0.15 + Math.random() * 0.2; });
@@ -2802,6 +2829,7 @@ Board3D.prototype.updatePetals = function (dt, now) {
 
 // ---------- Zug-Animation ----------
 Board3D.prototype.animate = function (info) {
+  if (this._foc) this._foc.on = false; // Fokus auf die Auswahl löst sich, Zug und Kampf nutzen die normale Kamera
   var self = this, T = THREE, after = info.state, to = this.sqPos(info.to), f = this.theme.factions[info.col];
   var mover, from;
   var capG = this.pieces[info.to];

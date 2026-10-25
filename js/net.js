@@ -14,7 +14,8 @@ var Net = (function () {
   function len(s) { return s && s.moves ? s.moves.length : -1; }
   // neuerer Stand: höhere Revanche-Nummer, sonst mehr Züge
   // bei gleich vielen, aber anderen Zügen entscheidet der spätere Zeitstempel (auf allen Geräten gleich)
-  function newer(a, b) { if (!b) return true; if ((a.reset || 0) !== (b.reset || 0)) return (a.reset || 0) > (b.reset || 0); if (len(a) !== len(b)) return len(a) > len(b); if (seats(a) !== seats(b)) return seats(a) > seats(b); return (a.t || 0) > (b.t || 0) && JSON.stringify(a.moves) !== JSON.stringify(b.moves); }
+  // u = angenommene Zugrücknahmen (kürzere Zugliste gewinnt dann), ev = Anfrage/Antwort zur Rücknahme bei gleicher Zugliste
+  function newer(a, b) { if (!b) return true; if ((a.reset || 0) !== (b.reset || 0)) return (a.reset || 0) > (b.reset || 0); if ((a.u || 0) !== (b.u || 0)) return (a.u || 0) > (b.u || 0); if (len(a) !== len(b)) return len(a) > len(b); if ((a.ev || 0) !== (b.ev || 0)) return (a.ev || 0) > (b.ev || 0); if (seats(a) !== seats(b)) return seats(a) > seats(b); return (a.t || 0) > (b.t || 0) && JSON.stringify(a.moves) !== JSON.stringify(b.moves); }
   function connect(r, cbState, cbPeer, cbStatus) {
     leave(); room = r; onState = cbState; onPeer = cbPeer; statusCb = cbStatus;
     if (typeof mqtt === 'undefined') { if (statusCb) statusCb('offline'); return; }

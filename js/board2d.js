@@ -22,7 +22,9 @@ function Board2D(root, theme, settings) {
   });
   this.resize();
   this._ro = new ResizeObserver(function () { self.resize(); }); this._ro.observe(root);
-  requestAnimationFrame(function loop() { if (!self.alive) return; self.tickFx(); requestAnimationFrame(loop); });
+  // Akku: die Effekt-Schleife läuft nur, solange Partikel leben (wake() bei neuen)
+  this._loop = function loop() { if (!self.alive) { self._run = false; return; } self.tickFx(); if (self.particles.length || !self._clean) requestAnimationFrame(loop); else self._run = false; };
+  this.wake();
 }
 function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 
@@ -86,6 +88,7 @@ Board2D.prototype.setHighlights = function (h) {
   (h.targets || []).forEach(function (s) { add(s, 'target'); });
   (h.captures || []).forEach(function (s) { add(s, 'capt'); });
   add(h.selected, 'sel'); add(h.checkSq, 'check');
+  if (h.peek) { add(h.selected, 'peek'); (h.targets || []).concat(h.captures || []).forEach(function (s) { add(s, 'peek'); }); } // Vorschau einer Figur, die gerade nicht ziehen kann
   for (var q = 0; q < 81; q++) {
     var dp = this.disp(q), cell = this.cells[dp.r * 9 + dp.c];
     cell.className = 'b2-cell' + cls[q];
@@ -145,17 +148,18 @@ Board2D.prototype.burst = function (x, y, color, n, speed, dust) {
   var fr = this.gridEl.getBoundingClientRect(), rr = this.root.getBoundingClientRect(); x -= fr.left - rr.left; y -= fr.top - rr.top;
   for (var i = 0; i < n; i++) {
     var a = Math.random() * Math.PI * 2, v = (0.4 + Math.random()) * speed;
-    this.particles.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (dust ? 0.5 : 1), life: 1, decay: 0.015 + Math.random() * 0.03, size: dust ? 3 + Math.random() * 3 : 1.5 + Math.random() * 3, color: color, g: dust ? 0.02 : 0.12 });
+    this.wake(); this.particles.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (dust ? 0.5 : 1), life: 1, decay: 0.015 + Math.random() * 0.03, size: dust ? 3 + Math.random() * 3 : 1.5 + Math.random() * 3, color: color, g: dust ? 0.02 : 0.12 });
   }
 };
-Board2D.prototype.ring = function (x, y, color) { var fr = this.gridEl.getBoundingClientRect(), rr = this.root.getBoundingClientRect(); this.particles.push({ ring: true, x: x - (fr.left - rr.left), y: y - (fr.top - rr.top), r: 4, life: 1, decay: 0.04, color: color }); };
-Board2D.prototype.pillar = function (x, y) { var fr = this.gridEl.getBoundingClientRect(), rr = this.root.getBoundingClientRect(); this.particles.push({ pillar: true, x: x - (fr.left - rr.left), y: y - (fr.top - rr.top), life: 1, decay: 0.025 }); };
+Board2D.prototype.ring = function (x, y, color) { var fr = this.gridEl.getBoundingClientRect(), rr = this.root.getBoundingClientRect(); this.wake(); this.particles.push({ ring: true, x: x - (fr.left - rr.left), y: y - (fr.top - rr.top), r: 4, life: 1, decay: 0.04, color: color }); };
+Board2D.prototype.pillar = function (x, y) { var fr = this.gridEl.getBoundingClientRect(), rr = this.root.getBoundingClientRect(); this.wake(); this.particles.push({ pillar: true, x: x - (fr.left - rr.left), y: y - (fr.top - rr.top), life: 1, decay: 0.025 }); };
 Board2D.prototype.fx = function (name, sq) {
   var p = this.screenPos(sq);
   if (name === 'check') { this.ring(p.x, p.y, '#ff3030'); this.ring(p.x, p.y, '#ff9090'); }
   if (name === 'mate') { for (var i = 0; i < 4; i++) this.burst(p.x, p.y, ['#ffd76a', '#ff5a4e', '#fff', '#46d7ff'][i], 40, 7); this.ring(p.x, p.y, '#ffd76a'); }
   if (name === 'sparkle') this.burst(p.x, p.y, '#ffd76a', 20, 3);
 };
+Board2D.prototype.wake = function () { if (!this._run && this.alive) { this._run = true; requestAnimationFrame(this._loop); } };
 Board2D.prototype.tickFx = function () {
   // Akku: ohne Partikel nichts zeichnen (nur einmal leeren, dann Ruhe)
   if (!this.particles.length && this._clean) return;

@@ -9,7 +9,7 @@
   function cyrb(str) { var h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (var i = 0; i < str.length; i++) { var ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (h2 >>> 0).toString(16) + (h1 >>> 0).toString(16); }
 
   // ---------- Profil ----------
-  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, fights: 'voll', army: false, armyLook: 'farbe', armySashi: true, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
+  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, fights: 'voll', figKanji: false, army: false, armyLook: 'farbe', armySashi: true, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
   var P = load();
   function load() {
     var d = null; try { d = JSON.parse(localStorage.getItem(STORE)); } catch (e) { }
@@ -99,11 +99,11 @@
   }
 
   // ---------- Bildschirme ----------
-  var current = 'title';
+  var current = 'title', bgWake = function () { };
   function go(name) {
     if (name !== 'game' && G) G.stop();
     $$('.screen').forEach(function (s) { s.classList.remove('active'); });
-    $('#scr-' + name).classList.add('active'); current = name;
+    $('#scr-' + name).classList.add('active'); current = name; bgWake();
     if (name === 'title') renderTitle();
     if (name === 'map') renderMap();
     if (name === 'puzzles') renderPuzzles();
@@ -145,13 +145,17 @@
     var c = $('#bgfx'), g = c.getContext('2d'), parts = [];
     function size() { c.width = innerWidth; c.height = innerHeight; } size(); addEventListener('resize', size);
     for (var i = 0; i < 40; i++) parts.push({ x: Math.random() * innerWidth, y: Math.random() * innerHeight, s: 1 + Math.random() * 2.5, v: 0.2 + Math.random() * 0.5, p: Math.random() * 6 });
-    (function loop(t) {
-      requestAnimationFrame(loop);
-      if (current === 'game') { g.clearRect(0, 0, c.width, c.height); return; }
+    // Akku: im Spiel und bei verstecktem Tab schläft die Schleife ganz (einmal leeren); go() weckt sie wieder
+    var running = false;
+    function loop(t) {
       g.clearRect(0, 0, c.width, c.height);
+      if (current === 'game' || document.hidden) { running = false; return; }
+      running = true; requestAnimationFrame(loop);
       parts.forEach(function (p) { p.y -= p.v; p.x += Math.sin(t / 1000 + p.p) * 0.4; if (p.y < -10) { p.y = c.height + 10; p.x = Math.random() * c.width; } g.globalAlpha = 0.4 + Math.sin(t / 400 + p.p) * 0.3; g.fillStyle = p.p > 3 ? '#ffd76a' : '#ffb6cf'; g.beginPath(); g.arc(p.x, p.y, p.s, 0, 7); g.fill(); });
       g.globalAlpha = 1;
-    })(0);
+    }
+    bgWake = function () { if (!running && current !== 'game') { running = true; requestAnimationFrame(loop); } };
+    document.addEventListener('visibilitychange', bgWake); bgWake();
   })();
 
   function toast(msg, ms) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(function () { t.classList.remove('show'); }, ms || 2600); }
@@ -461,6 +465,7 @@
     var v3 = h('div', 'set stack'); v3.innerHTML = '<div class="l"><b>3D-Ansicht</b><small></small></div>' + view3dSeg();
     v3.querySelectorAll('[data-v3]').forEach(function (b) { b.onclick = function () { setView3d(b.dataset.v3); save(); Sfx.play('ui'); renderSettings(); }; });
     grp.appendChild(v3);
+    if (view3d() === 'figuren') seg('figKanji', 'Zeichen auf Steinen', 'An: Kanji unter den Figuren, die Figuren stehen dann kleiner', [[false, 'Aus'], [true, 'An']]);
     seg('fights', 'Kämpfe', 'Figuren kämpfen, bevor eine geschlagen wird', [['voll', 'Voll'], ['kurz', 'Kurz'], ['aus', 'Aus']]);
     if (S.army) { var AFs = armyFields(TH.id); if (AFs) { S[fieldKey(TH.id)] = fieldOf(TH.id); seg(fieldKey(TH.id), 'Schlachtfeld', 'Gelände, Tageszeit und Wetter im Armee-Modus', AFs); } seg('fieldWeather', 'Wetter', 'Wechselnd: zieht im Lauf der Partie auf und wieder ab', [['wechsel', 'Wechselnd'], ['klar', 'Klar'], ['regen', 'Regen'], ['gewitter', 'Gewitter'], ['nebel', 'Nebel']]); }
     sec('Ton');
@@ -481,6 +486,9 @@
   //                               SPIEL
   // =====================================================================
   var G = null;
+  // Einblendungen im Spiel (Schlagen, Beförderung): nur die echten Shogi-Namen, keine Namen der Edition (Wunsch 25.10.)
+  var SHOGI_NAME = { 1: '歩 Fu', 2: '香 Kyōsha', 3: '桂 Keima', 4: '銀 Ginshō', 5: '金 Kinshō', 6: '角 Kakugyō', 7: '飛 Hisha', 8: '王 Ōshō', 9: 'と Tokin', 10: '杏 Narikyō', 11: '圭 Narikei', 12: '全 Narigin', 13: '馬 Ryūma', 14: '龍 Ryūō' };
+  function shogiName(t) { return SHOGI_NAME[t] || ''; }
   function Game(cfg) {
     this.cfg = cfg; this.mode = cfg.mode; this.busy = false; this.sel = null; this.alive = true;
     this.state = Shogi.fromSFEN(cfg.sfen || Shogi.START);
@@ -561,6 +569,9 @@
     if (this.sel) {
       hl.selected = this.sel.from != null ? this.sel.from : -1;
       if (S.dots || this.mode === 'mission') { hl.targets = []; hl.captures = []; var self = this; this.selTargets().forEach(function (q) { (st.board[q] ? hl.captures : hl.targets).push(q); }); }
+    } else if (this.peek && st.board[this.peek.from]) {
+      hl.selected = this.peek.from; hl.peek = true; hl.targets = []; hl.captures = [];
+      this.peek.to.forEach(function (q) { (st.board[q] ? hl.captures : hl.targets).push(q); });
     }
     if (Shogi.inCheck(st, st.turn)) hl.checkSq = st.king[st.turn];
     if (this.assist.threats && this.isHuman(st.turn) && !this.over) { var th = threatInfo(st, this.human); hl.threats = th.hanging; hl.dropDanger = th.drops; }
@@ -629,7 +640,7 @@
     if (this.assist.hint) this.hintBtn = btn(this.boss ? '🦊' + P.charges : '💡', this.boss ? 'Fuchsgeist (kostet 1 Ladung)' : 'Hinweis', function () { self.hint(); });
     if (this.assist.undo) btn('↶', 'Zug zurück', function () { self.undo(); });
     if (OWNER && (this.mode === 'battle' || this.mode === 'lessonBattle')) btn('👁', 'Gefahren-Sicht', function (b) { self.assist.threats = !self.assist.threats; S.threats = self.assist.threats; save(); b.classList.toggle('on', self.assist.threats); self.highlights(); }, this.assist.threats);
-    btn('⟲', 'Brett drehen', function () { self.flip = !self.flip; self.r.setFlip(self.flip); self.updateAll(); });
+    if (this.mode === 'hotseat' || this.mode === 'online') btn('↶', 'Zug zurücknehmen (Gegner muss zustimmen)', function () { self.askTakeback(); }); // ersetzt „Brett drehen“ (Wunsch 25.10.)
     if (HAS3D) btn(S.render === '3d' ? '2D' : '3D', 'Grafik wechseln', function (b) { S.render = S.render === '3d' ? '2d' : '3d'; save(); $('#board-wrap').classList.toggle('mode3d', S.render === '3d'); self.makeRenderer(); self.r.setFlip(self.flip); self.r.sync(self.state); self.updateAll(); b.textContent = S.render === '3d' ? '2D' : '3D'; });
     if (HAS3D) btn('🗺', 'Stil & Welt', function () { styleWorld(function () { self.rerender(); }); });
     if (this.mode === 'online') btn('🔗', 'Link teilen', function () { shareLink(self.online.code); });
@@ -648,21 +659,32 @@
 
   // ---------- Eingabe ----------
   Game.prototype.onSquare = function (sq) {
-    if (this.busy || this.over || !this.isHuman(this.state.turn)) { if (this.mode === 'online' && !this.over && !this.busy) toast('Warte auf den Zug deines Gegners.'); return; }
-    var st = this.state, sgn = st.turn === 0 ? 1 : -1, p = st.board[sq] * sgn;
-    if (this.sel) {
+    if (this.busy) return;
+    var st = this.state, myTurn = !this.over && this.isHuman(st.turn), sgn = st.turn === 0 ? 1 : -1, p = st.board[sq] * sgn;
+    if (myTurn && this.sel) {
       var self = this, cand = this.legal.filter(function (m) { var d = Shogi.decode(m); return d.to === sq && (self.sel.drop ? d.drop === self.sel.drop : d.from === self.sel.from); });
       if (cand.length) {
         if (cand.length === 2) { this.askPromote(cand); return; }
         this.playHuman(cand[0]); return;
       }
       if (p > 0 && this.sel.from !== sq) { this.select(sq); return; }
-      this.sel = null; this.updateAll(); return;
+      this.sel = null; if (p >= 0) { this.updateAll(); return; }
     }
-    if (p > 0) this.select(sq);
+    if (myTurn && p > 0) { this.select(sq); return; }
+    // jede andere Figur (Gegner oder nicht am Zug): Vorschau ihrer Züge, nochmal tippen schließt sie (Wunsch 25.10.)
+    if (st.board[sq] && !(this.peek && this.peek.from === sq)) { this.peek = { from: sq, to: this.peekTargets(sq) }; this.updateAll(); return; }
+    if (this.peek) { this.peek = null; this.updateAll(); return; }
+    if (this.mode === 'online' && !this.over && !myTurn) toast('Warte auf den Zug deines Gegners.');
+  };
+  // Zugziele einer beliebigen Figur, auch wenn ihre Seite gerade nicht am Zug ist
+  Game.prototype.peekTargets = function (sq) {
+    var st = this.state, col = st.board[sq] > 0 ? 0 : 1, c = Shogi.clone(st), out = [];
+    if (c.turn !== col) Shogi.passTurn(c);
+    Shogi.legalMoves(c).forEach(function (m) { var d = Shogi.decode(m); if (d.from === sq && out.indexOf(d.to) < 0) out.push(d.to); });
+    return out;
   };
   Game.prototype.select = function (sq) {
-    this.sel = { from: sq }; this.hintMove = null;
+    this.sel = { from: sq }; this.hintMove = null; this.peek = null;
     if (!this.selTargets().length) { Sfx.play('error'); this.pop(sq, 'Kein Zug möglich', '#ff9a8a'); }
     else Sfx.play('select');
     this.updateAll();
@@ -670,7 +692,7 @@
   Game.prototype.onHand = function (col, t) {
     if (this.busy || this.over || !this.isHuman(this.state.turn) || col !== this.state.turn) return;
     if (this.sel && this.sel.drop === t) { this.sel = null; this.updateAll(); return; }
-    this.sel = { drop: t }; this.hintMove = null; Sfx.play('select');
+    this.sel = { drop: t }; this.hintMove = null; this.peek = null; Sfx.play('select');
     if (!this.selTargets().length) toast('Diese Figur kann gerade nirgends hin.');
     this.updateAll();
   };
@@ -692,7 +714,7 @@
   Game.prototype.doMove = function (m) {
     var self = this, st = this.state, d = Shogi.decode(m), col = st.turn, cap = d.from >= 0 ? st.board[d.to] : 0;
     this.busy = true;
-    var info = { from: d.from, to: d.to, drop: d.drop, col: col, cap: cap, promo: d.promo };
+    var info = { from: d.from, to: d.to, drop: d.drop, col: col, cap: cap, promo: d.promo }; this.peek = null;
     Shogi.play(st, m); info.state = st;
     if (d.drop) { if (this.isHuman(col)) this.drops++; Sfx.play('drop'); } else Sfx.play('tok');
     if (!this.isHuman(col)) this.aiMoves++;
@@ -702,11 +724,11 @@
     info.onHit = function () { if (hitDone || !cap) return; hitDone = true; hitFx(); };
     // Animation mit Notbremse: hängt sie (Tab im Hintergrund), geht das Spiel trotzdem weiter
     var anim = Promise.race([this.r.animate(info), new Promise(function (r) { setTimeout(r, info.usesHit ? 8000 : 2500); })]);
-    function hitFx() { Sfx.play('capture', Math.abs(cap) >= 6); var u = TH.units[Shogi.BASE[Math.abs(cap)]]; self.pop(d.to, '⚔ ' + TH.units[Math.abs(cap)].name + ' gefangen!', TH.factions[col].color); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }
+    function hitFx() { Sfx.play('capture', Math.abs(cap) >= 6); self.pop(d.to, '⚔ ' + shogiName(Math.abs(cap)) + ' gefangen!', TH.factions[col].color); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }
     if (cap && !info.usesHit) setTimeout(info.onHit, S.render === '3d' ? 250 : 230);
     return anim.then(function () {
       if (!self.alive) return;
-      if (d.promo) { Sfx.play('promote'); self.pop(d.to, '⬆ ' + TH.units[Math.abs(st.board[d.to])].name + '!', '#ffd76a'); }
+      if (d.promo) { Sfx.play('promote'); self.pop(d.to, '⬆ ' + shogiName(Math.abs(st.board[d.to])) + '!', '#ffd76a'); }
       self.legal = [];
       self.busy = false;
       var status = Shogi.status(st);
@@ -888,6 +910,56 @@
     var me = this.human, s0 = this.startTurn; this.aiMoves = st.moves.filter(function (_, i) { return (s0 + i) % 2 !== me; }).length;
     this.undos++; this.sel = null; this.hintMove = null; this.lastStatus = null; $('#coach').classList.add('hidden');
     Sfx.play('drop'); this.r.sync(st); this.goalbar(); this.nextTurn();
+  };
+  // ---------- Zug zurücknehmen mit Zustimmung des Gegners (Duell zu zweit und online) ----------
+  // Wer fragt, nimmt seinen letzten Zug zurück; hat der Gegner schon geantwortet, dessen Antwort mit (wie bei lichess).
+  Game.prototype.takebackPlies = function (col) {
+    var st = this.state, n = st.moves.length;
+    if (!n) return 0;
+    if (st.turn !== col) return 1;           // eigener Zug war der letzte
+    return n >= 2 ? 2 : 0;                    // Gegner hat schon geantwortet: beide Züge zurück
+  };
+  Game.prototype.askTakeback = function () {
+    if (this.busy || this.over) return;
+    var self = this, st = this.state;
+    if (this.mode === 'hotseat') {
+      if (!st.moves.length) { toast('Es wurde noch nicht gezogen.'); return; }
+      var mover = 1 - st.turn, other = st.turn;
+      var box = modal('<h2>Zug zurücknehmen?</h2><p><b>' + this.sideInfo(mover).name + '</b> möchte den letzten Zug zurücknehmen.</p><p>' + this.sideInfo(other).name + ', bist du einverstanden?</p><div class="acts"><button class="btn" id="tb-no">Ablehnen</button><button class="btn" id="tb-yes">Zustimmen</button></div>');
+      $('#tb-no', box).onclick = function () { closeModal(); toast('Abgelehnt, der Zug bleibt.'); };
+      $('#tb-yes', box).onclick = function () { closeModal(); self.takeback(1); };
+      return;
+    }
+    if (this.mode !== 'online' || !this.online || !this.online.ready || this.human < 0) { toast('Erst wenn dein Gegner da ist.'); return; }
+    var n = this.takebackPlies(this.human);
+    if (!n) { toast('Du hast noch keinen Zug, den du zurücknehmen kannst.'); return; }
+    if (this.online.req && this.online.req.at === st.moves.length) { toast('Anfrage läuft schon, warte auf die Antwort.'); return; }
+    this.online.ev = (this.online.ev || 0) + 1;
+    this.online.req = { by: Net.me(), n: n, at: st.moves.length };
+    this.sendOnline();
+    toast('Anfrage gesendet, warte auf deinen Gegner …', 3500);
+  };
+  // Gegner fragt online: zustimmen oder ablehnen
+  Game.prototype.takebackPrompt = function (req) {
+    var self = this, n = req.n;
+    var box = modal('<h2>Zug zurücknehmen?</h2><p>Dein Gegner möchte ' + (n === 2 ? 'seinen letzten Zug (und deine Antwort darauf)' : 'seinen letzten Zug') + ' zurücknehmen.</p><div class="acts"><button class="btn" id="tb-no">Ablehnen</button><button class="btn" id="tb-yes">Zustimmen</button></div>');
+    function answer(ok) {
+      closeModal();
+      var o = self.online; if (!self.alive || !o.req || o.req.at !== self.state.moves.length) return; // inzwischen überholt
+      o.ev = (o.ev || 0) + 1; o.ans = { to: req.by, ok: ok, ev: o.ev }; o.req = null;
+      if (ok) { o.u = (o.u || 0) + 1; self.takeback(n, true); }
+      self.sendOnline();
+    }
+    $('#tb-no', box).onclick = function () { answer(false); };
+    $('#tb-yes', box).onclick = function () { answer(true); };
+  };
+  Game.prototype.takeback = function (n, quiet) {
+    var st = this.state;
+    for (var i = 0; i < n && st.moves.length; i++) Shogi.undo(st);
+    this.sel = null; this.peek = null; this.hintMove = null; this.lastStatus = null; this.legal = [];
+    Sfx.play('drop'); this.r.sync(st); this.updateAll();
+    if (!quiet) toast('Zug zurückgenommen.');
+    this.nextTurn();
   };
   Game.prototype.resign = function () { this.gameOver({ over: true, winner: this.mode === 'hotseat' ? 1 - this.state.turn : 1 - this.human, reason: 'resign' }); };
 
@@ -1242,7 +1314,7 @@
       applyNet(d).then(done, function (e) { console.warn('Netz-Stand', e); done(); });
     }
     function rebuild(start, list) {
-      g.state = Shogi.fromSFEN(start); g.over = false;
+      g.state = Shogi.fromSFEN(start); g.over = false; g.peek = null; g.sel = null;
       for (var i = 0; i < list.length; i++) { if (Shogi.legalMoves(g.state).indexOf(list[i]) < 0) { console.warn('Zug ungültig, Abbruch bei', i, list[i]); break; } Shogi.play(g.state, list[i]); }
       g.r.sync(g.state);
     }
@@ -1264,8 +1336,14 @@
       var chain = Promise.resolve(), changed = !g.online.shown || g.online.ready !== g.online.wasReady;
       g.online.shown = true; g.online.wasReady = g.online.ready;
       // nur der neueste Stand zählt (ältere/gleiche Echos von einem Broker ignorieren)
+      var takeReq = null, takeAns = null;
       if (d === Net.last()) {
         changed = true;
+        // Rücknahme: Zähler übernehmen, offene Anfrage des Gegners bzw. Antwort auf die eigene merken
+        var o = g.online; o.u = d.u || 0; o.ev = Math.max(o.ev || 0, d.ev || 0); o.ans = d.ans || null;
+        o.req = d.req && d.req.at === net.length ? d.req : null;
+        if (o.req && o.req.by !== me && o.seenReq !== d.ev) { o.seenReq = d.ev; takeReq = o.req; }
+        if (d.ans && d.ans.to === me && o.seenAns !== d.ans.ev) { o.seenAns = d.ans.ev; takeAns = d.ans; }
         if (start !== g.online.startSfen || g.online.reset !== (d.reset || 0)) { g.online.startSfen = start; g.online.reset = d.reset || 0; rebuild(start, []); }
         var loc = g.state.moves.map(function (x) { return x.m; }), k = 0;
         while (k < net.length && k < loc.length && net[k] === loc[k]) k++;
@@ -1288,6 +1366,8 @@
         if (!g.online.ready) g.coachSay('Raum <b>' + code + '</b>: Warte auf deinen Gegner. Schick ihm den Link! <div class="code-big">' + code + '</div>', [{ t: '🔗 Link teilen', f: function () { shareLink(code); g.coachSay('Warte auf deinen Gegner …'); } }]);
         else { $('#coach').classList.add('hidden'); if (g.human >= 0 && g.state.turn === g.human && net.length) Sfx.play('select'); }
         g.updateAll(); g.nextTurn();
+        if (takeAns) toast(takeAns.ok ? 'Dein Gegner hat zugestimmt: Zug zurückgenommen.' : 'Dein Gegner hat abgelehnt, der Zug bleibt.', 3500);
+        if (takeReq && !g.over && g.human >= 0) g.takebackPrompt(takeReq);
       });
     }
     Net.connect(code, onNet, function (peer) { if (!g.online.peerSeen) { g.online.peerSeen = true; g.updateAll(); } }, function (s) {
@@ -1304,14 +1384,16 @@
     g.sendOnline = function () {
       var me = Net.me(), seats = {}; seats[g.human] = me;
       var last = g._lastNet || {};
-      Net.publishState({ v: 1, start: g.online.startSfen, moves: g.state.moves.map(function (x) { return x.m; }), seats: g.online.seats || last.seats || seats, reset: g.online.reset, t: Date.now() });
+      var mv = g.state.moves.map(function (x) { return x.m; }), o = g.online;
+      // u = angenommene Rücknahmen, ev = Zähler für Anfrage/Antwort (net.js: neuerer Stand), req nur solange niemand weitergezogen hat
+      Net.publishState({ v: 1, start: o.startSfen, moves: mv, seats: o.seats || last.seats || seats, reset: o.reset, u: o.u || 0, ev: o.ev || 0, req: o.req && o.req.at === mv.length ? o.req : null, ans: o.ans || null, t: Date.now() });
     };
     // Sitze merken für sendOnline
     var wrapCb = Net.publishState;
     g.onlineRematch = function () { g.online.reset++; g.over = false; g.state = Shogi.fromSFEN(g.online.startSfen); g.r.sync(g.state); g.sendOnline(); };
     // Sitzplätze aus eingehenden Nachrichten übernehmen
     var oldOnState = null;
-    setInterval(function () { if (g.alive) Net.ping(); }, 20000);
+    var pingT = setInterval(function () { if (g.alive) Net.ping(); else clearInterval(pingT); }, 20000);
   }
   // Sitzplätze in sendOnline: aus letztem Netzzustand
   var _pub = Net.publishState;
