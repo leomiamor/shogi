@@ -82,6 +82,8 @@ button { font: inherit; color: inherit; cursor: pointer; }
 /* Reserve, Info */
 .tray { display: flex; gap: 6px; flex-wrap: wrap; min-height: 48px; padding: 6px; background: var(--ink2); border: 1px dashed #3a3023; border-radius: 10px; margin: 8px 0; }
 .chip { display: flex; align-items: center; gap: 6px; background: var(--panel); border: 2px solid #3a3023; border-radius: 10px; padding: 4px 8px 4px 4px; font-size: .85em; font-weight: 700; }
+.chip small { display: block; font-weight: 400; opacity: .75; } .chip.s0 { border-color: var(--p0); } .chip.s1 { border-color: var(--p1); } .chip.wait { opacity: .55; }
+.tray.hand { min-height: 0; border-style: solid; }
 .chip.sel { border-color: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, .5); }
 .chip i { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, var(--wood), var(--wood2)); border-radius: 6px; }
 .chip svg { width: 20px; height: 20px; color: #2a1a0c; }
@@ -124,6 +126,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
     <div class="stage" id="stage"></div>
     <div class="meta" id="meta"></div>
     <div id="boardWrap"><div id="board"></div><div id="units"></div><div id="fx"></div></div>
+    <div class="tray hand hidden" id="hand"></div>
     <div id="setup">
       <div class="tray" id="tray"></div>
       <div class="ctrl">
@@ -134,15 +137,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
       </div>
     </div>
     <div id="info" class="info hidden"></div>
-    <div class="ctrl"><button class="btn small hidden" id="b-retreat">⚑ Rückzug</button></div>
+    <div class="ctrl"><button class="btn small hidden" id="b-retreat">⚑ Rückzug</button><button class="btn small hidden" id="b-take">Verteidiger übernimmt live</button></div>
     <div class="log" id="log"></div>
     <div style="height:30px"></div>
   </section>
 </div>
 <div id="modal" class="modal hidden"><div class="box" id="modalBox"></div></div>
-<script src="js/shovian/rules.js?v=202610260032"></script>
-<script src="js/shovian/battle.js?v=202610260032"></script>
-<script src="js/shovian/ai.js?v=202610260032"></script>
-<script src="js/shovian/ui.js?v=202610260032"></script>
+<script src="js/shovian/rules.js?v=202610260129"></script>
+<script src="js/shovian/battle.js?v=202610260129"></script>
+<script src="js/shovian/ai.js?v=202610260129"></script>
+<script src="js/shovian/ui.js?v=202610260129"></script>
 </body>
 </html>

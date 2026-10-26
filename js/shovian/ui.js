@@ -29,6 +29,7 @@
     { id: 'abenteuer', name: 'Abenteuer: Held gegen Wölfe', sub: 'Nur dein Held (1 Figur) gegen 2 Wölfe und 4 Ratten', cfg: { att: { tribe: 'rom', squads: [{ key: 'hero', n: 1 }] }, def: { tribe: 'nat', squads: [{ key: 'wolf', n: 2 }, { key: 'rat', n: 4 }] } } },
     { id: 'oase', name: 'Oase räumen', sub: 'Held, 20 Legionäre, 6 Equites Imperatoris gegen Wildschweine, Wölfe, Spinnen', cfg: { att: { tribe: 'rom', squads: [{ key: 'hero', n: 1 }, { key: 'legion', n: 20 }, { key: 'eimp', n: 6 }] }, def: { tribe: 'nat', squads: [{ key: 'boar', n: 8 }, { key: 'wolf', n: 5 }, { key: 'spider', n: 10 }] } } },
     { id: 'dorf', name: 'Angriff auf ein Gallier-Dorf', sub: 'Römer mit Rammen und Katapulten gegen Palisade Stufe 5', cfg: { att: { tribe: 'rom', squads: [{ key: 'legion', n: 20 }, { key: 'imper', n: 10 }, { key: 'eimp', n: 6 }, { key: 'ram', n: 6 }, { key: 'cata', n: 2 }] }, def: { tribe: 'gal', wall: 5, squads: [{ key: 'phal', n: 25 }, { key: 'sword', n: 8 }, { key: 'druid', n: 4 }] } } },
+    { id: 'entsatz', name: 'Entsatz: Verstärkung im Anmarsch', sub: 'Germanen gegen Römer im Feld, beide Seiten bekommen während des Gefechts Verstärkung (Drop aus der Hand)', cfg: { att: { tribe: 'teu', squads: [{ key: 'club', n: 30 }, { key: 'axe', n: 12 }, { key: 'tk', n: 2 }, { key: 'tk', n: 3, late: 4 }] }, def: { tribe: 'rom', squads: [{ key: 'legion', n: 15 }, { key: 'praet', n: 12 }, { key: 'imper', n: 6 }, { key: 'praet', n: 8, late: 3 }] } } },
     { id: 'mauer', name: 'Sturm auf die Stadtmauer', sub: 'Germanen gegen Römer hinter Mauer Stufe 12 (nur eine Lücke)', cfg: { att: { tribe: 'teu', squads: [{ key: 'club', n: 30 }, { key: 'axe', n: 15 }, { key: 'tk', n: 6 }, { key: 'ram', n: 20 }, { key: 'cata', n: 4 }] }, def: { tribe: 'rom', wall: 12, squads: [{ key: 'legion', n: 20 }, { key: 'praet', n: 20 }, { key: 'ecaes', n: 3 }, { key: 'cata', n: 1 }] } } }
   ];
   var SIDE = ['Angreifer', 'Verteidiger'];
@@ -71,7 +72,7 @@
     modal(h);
     [].forEach.call(document.querySelectorAll('#modalBox [data-st]'), function (b) {
       b.onclick = function () {
-        var st = S.st, pcs = st.pcs.filter(function (p) { return p.side === 1 && p.n > 0; }).map(function (p) { return { id: p.id, key: p.key, tribe: p.tribe, n: p.n, x: p.x, y: p.y }; });
+        var st = S.st, pcs = st.pcs.filter(function (p) { return p.side === 1 && p.n > 0; }).map(function (p) { return { id: p.id, key: p.key, tribe: p.tribe, n: p.n, x: p.x, y: p.y, late: p.hand ? p.late : null }; });
         var ok = saveDef(S.cfg, { stance: b.dataset.st, pcs: pcs, t: Date.now() });
         modal('<h2>' + (ok ? 'Verteidigung steht' : 'Speichern ging nicht') + '</h2><p class="note">' + (ok ? 'Haltung ' + HALTUNG[b.dataset.st][0] + '. Greift jemand an, kämpft deine KI so, und du bekommst die Wiederholung.' : 'Der Browser erlaubt keinen Speicher (privates Fenster?).') + '</p><div class="ctrl"><button class="btn" id="d-menu">Menü</button><button class="btn go" id="d-att">Jetzt dagegen angreifen</button></div>');
         $('d-menu').onclick = function () { closeModal(); menu(); };
@@ -82,7 +83,7 @@
   // gespeicherte Verteidigung aufs Brett (Ids passen, weil create bei gleicher Konfiguration gleich nummeriert)
   function applyDef(st, d) {
     st.pcs = st.pcs.filter(function (p) { return p.side !== 1; });
-    d.pcs.forEach(function (q) { st.pcs.push({ id: q.id, side: 1, tribe: q.tribe, key: q.key, n: q.n, n0: q.n, x: q.x, y: q.y, pro: false }); });
+    d.pcs.forEach(function (q) { var p = { id: q.id, side: 1, tribe: q.tribe, key: q.key, n: q.n, n0: q.n, x: q.x, y: q.y, pro: false }; if (q.late != null) { p.hand = true; p.late = q.late; p.x = p.y = -1; } st.pcs.push(p); });
     st.val0 = [B.value(st, 0), B.value(st, 1)];
   }
   function show(id) { ['scr-menu', 'scr-custom', 'scr-battle'].forEach(function (s) { $(s).classList.toggle('hidden', s !== id); }); window.scrollTo(0, 0); }
@@ -125,6 +126,7 @@
     show('scr-battle'); $('b-title').textContent = title; $('log').innerHTML = '';
     buildBoard();
     var st = S.st;
+    if (st.ramPre) log(null, 'Rammstoß vor dem Kampf (wie Travian): ' + R.TRIBES[st.tribe[1]].wallName + ' fällt von Stufe ' + st.wallLvl + ' auf ' + lvl(B.wallLevel(st)) + '.');
     if (o.prep === 'att') {
       var d = loadDef(cfg);
       if (d) applyDef(st, d); else B.autoPlace(st, 1);
@@ -202,8 +204,8 @@
     B.moves(st, p).forEach(function (m) {
       var c = cellEl(m.x, m.y);
       if (S.peek) { c.classList.add('peek'); return; }
-      c.classList.add(m.k === 'move' ? 'ok' : m.k === 'shoot' ? 'shoot' : 'atk');
-      if (m.k !== 'move') { var t = preview(p, m); if (t) c.appendChild(el('div', 'pv', t)); }
+      c.classList.add(m.k === 'move' || m.k === 'drop' ? 'ok' : m.k === 'shoot' ? 'shoot' : 'atk');
+      if (m.k !== 'move' && m.k !== 'drop') { var t = preview(p, m); if (t) c.appendChild(el('div', 'pv', t)); }
     });
   }
   // Vorschau: was der Angriff bewirkt (Verluste Ziel / Gegenschlag)
@@ -228,12 +230,14 @@
     var ql = B.quietLeft(st), calm = !sp && !st.over && st.quiet >= B.QUIET / 2 ? ' · <b class="warn">Entscheidungsschlacht in ' + ql + ' Zügen ohne Treffer</b>' : '';
     $('meta').innerHTML = '<span><b class="s0">' + R.TRIBES[st.tribe[0]].name + '</b></span><span>' + (sp ? '' : 'Zug ' + (st.moves[0] + st.moves[1] + 1)) + calm + (wall ? ' · ' + wall : '') + '</span><span><b class="s1">' + R.TRIBES[st.tribe[1]].name + '</b></span>';
     $('b-retreat').classList.toggle('hidden', sp || st.over || S.replay || !S.human[0] || st.turn !== 0);
+    $('b-take').classList.toggle('hidden', sp || st.over || S.replay || S.prep !== 'att' || S.human[1]);
     if (sp) tray();
+    handTray();
     drawUnits(); highlights(); info();
   }
   function tray() {
     var t = $('tray'); t.innerHTML = '';
-    var res = S.st.pcs.filter(function (p) { return p.side === S.setupSide && p.n > 0 && p.x < 0; });
+    var res = S.st.pcs.filter(function (p) { return p.side === S.setupSide && p.n > 0 && p.x < 0 && !p.hand; });
     if (!res.length) t.appendChild(el('span', 'note', 'Reserve leer: alle Trupps stehen.'));
     res.forEach(function (p) {
       var c = el('div', 'chip' + (S.chip === p.id ? ' sel' : ''), '<i>' + svg(B.U(p).ico) + '</i>' + B.U(p).n + ' ×' + cnt(p));
@@ -242,6 +246,19 @@
     var sel = S.sel && B.byId(S.st, S.sel);
     $('s-split').disabled = !(sel && sel.n >= 2) && !(S.chip && B.byId(S.st, S.chip).n >= 2);
     $('s-back').disabled = !sel;
+  }
+  // Hand: Verstärkung, die während des Gefechts ankommt (Drop wie im Shogi, auf ein freies Feld der eigenen Startzone)
+  function handTray() {
+    var st = S.st, h = $('hand'), list = st.pcs.filter(function (p) { return p.hand && p.n > 0; });
+    h.classList.toggle('hidden', S.phase !== 'battle' || !list.length); h.innerHTML = '';
+    if (S.phase !== 'battle') return;
+    list.forEach(function (p) {
+      var ok = B.canDrop(st, p), left = p.late - st.moves[p.side];
+      var c = el('div', 'chip s' + p.side + (S.sel === p.id ? ' sel' : '') + (ok ? '' : ' wait'), '<i>' + svg(B.U(p).ico) + '</i>' + B.U(p).n + ' ×' + cnt(p) + '<small>' + (ok ? 'bereit' : 'in ' + left + (left > 1 ? ' Zügen' : ' Zug')) + '</small>');
+      c.title = SIDE[p.side] + ': Verstärkung';
+      c.onclick = function () { if (S.busy || st.over || !ok || p.side !== st.turn || !S.human[st.turn]) return; S.sel = S.sel === p.id ? null : p.id; S.peek = null; refresh(); };
+      h.appendChild(c);
+    });
   }
   function info() {
     var p = S.sel ? B.byId(S.st, S.sel) : S.peek ? B.byId(S.st, S.peek) : S.chip ? B.byId(S.st, S.chip) : null, box = $('info');
@@ -356,6 +373,7 @@
         drawUnits(); await sleep(420);
       } else if (e.t === 'final') { st.final = e; banner('Entscheidungsschlacht! ' + num(e.A) + ' gegen ' + num(e.D)); txt += ' · Entscheidungsschlacht: Angriff ' + num(e.A) + ' gegen Verteidigung ' + num(e.D); drawUnits(); await sleep(1600); }
       else if (e.t === 'wallDown') { banner('Mauer geschleift! Kein Verteidigungsbonus mehr'); await sleep(900); }
+      else if (e.t === 'drop') { drawUnits(); floatTxt(e.x, e.y, 'Verstärkung', 'gold'); txt = ' kommt als Verstärkung aufs Feld'; await sleep(450); }
       else if (e.t === 'promo') { var d = unitEl(p); d.classList.add('glow'); setTimeout(function () { d.classList.remove('glow'); }, 1300); floatTxt(p.x, p.y, '⬆ befördert', 'gold'); txt += ', befördert'; await sleep(500); }
     }
     }
@@ -406,15 +424,23 @@
     $('rt-no').onclick = function () { $('modal').classList.add('hidden'); };
     $('rt-yes').onclick = function () { $('modal').classList.add('hidden'); if (st.over || S.st !== st) return; B.retreat(st); if (S.rec) S.rec.moves.push({ k: 'retreat' }); log(0, 'Angreifer tritt den Rückzug an'); nextTurn(); };
   };
+  // Live-Übernahme: ist der Verteidiger online, während angegriffen wird, spielt er ab seinem nächsten Zug selbst (Prototyp: Hot-Seat)
+  $('b-take').onclick = function () {
+    var st = S.st; if (!st || st.over || S.prep !== 'att') return;
+    S.human[1] = true; if (S.rec) S.rec.take = st.moves[0] + st.moves[1];
+    log(1, 'Verteidiger übernimmt live von der KI'); refresh();
+    if (st.turn === 1 && !S.busy) nextTurn();
+  };
   $('b-menu').onclick = function () { S.st = null; S.phase = 'menu'; menu(); };
   $('b-help').onclick = function () {
     modal('<h2>So geht das Gefecht</h2><ul>' +
       '<li><b>Jede Figur ist ein Trupp</b> mit Anzahl. Sie zieht wie die Shogi-Figur in der Ecke (歩 金 銀 桂 香 角 飛 王).</li>' +
       '<li><b>Zug auf einen Gegner = Kampf.</b> Gewinnst du, fällt der Gegner und du rückst nach. Verlierst du, fällt dein Trupp. Rote Zahl über dem Ziel: sein Verlust (✝ = fällt), ↩ = dein Verlust.</li>' +
-      '<li><b>Unterstützung:</b> Alle Trupps beider Seiten, die an das umkämpfte Feld grenzen, kämpfen mit und teilen das Ergebnis. Zusammenbleiben lohnt sich, einzelne Trupps sind leichte Beute.</li>' +
+      '<li><b>Unterstützung:</b> Alle Trupps beider Seiten bis 2 Felder um das umkämpfte Feld kämpfen mit und teilen das Ergebnis. Zusammenbleiben lohnt sich, einzelne Trupps sind leichte Beute.</li>' +
+      '<li><b>Verstärkung in der Hand:</b> Trupps, die erst während des Gefechts ankommen, liegen unter dem Brett. Sind sie da („bereit“), setzt du sie wie im Shogi auf ein freies Feld deiner Startzone. Das kostet den Zug.</li>' +
       '<li><b>Beförderung:</b> In den gegnerischen Startreihen wird ein Trupp befördert (+25 % Angriff, zieht wie Gold), nur für dieses Gefecht.</li>' +
       '<li><b>Kampf wie Travian:</b> Angreifer zählen mit Angriff, Verteidiger mit Verteidigung (gegen Infanterie bzw. Kavallerie), egal wer zieht. Der Schwächere fällt ganz, der Stärkere verliert (schwach/stark)<sup>1,5</sup>. Die Vorschau zeigt es vorher.</li>' +
-      '<li><b>Mauer:</b> Bonus wie Travian (Römer 1,03<sup>Stufe</sup>, Gallier 1,025, Germanen 1,02), nur für Verteidiger hinter der Mauer. Rammen senken die Stufe (je Ramme 1 Mauerpunkt, Stufe 5 hat 9, Stufe 10 hat 25), Katapulte halb so stark aus der Ferne. Mit der Stufe stürzen Steine ein.</li>' +
+      '<li><b>Mauer:</b> Bonus wie Travian (Römer 1,03<sup>Stufe</sup>, Gallier 1,025, Germanen 1,02), nur für Verteidiger hinter der Mauer. Wie in Travian wirken die Rammen schon vor dem Kampf (Rammstoß: je Ramme 1 Mauerpunkt, Stufe 5 hat 9, Stufe 10 hat 25). Auf dem Brett schleifen Rammen und Katapulte (halb so stark, aus der Ferne) den Rest. Mit der Stufe stürzen Steine ein.</li>' +
       '<li><b>Ende:</b> Kein Zuglimit. Wer keine Truppen mehr hat, verliert. Der Angreifer kann jederzeit den <b>Rückzug</b> antreten. Gibt es ' + B.QUIET / 2 + ' Züge je Seite keinen Treffer, prallen alle Truppen in einer <b>Entscheidungsschlacht</b> aufeinander (ein Travian-Kampf).</li>' +
       '<li>Gegnerische Figur antippen zeigt ihre Züge (weiß).</li></ul><div class="ctrl"><button class="btn" onclick="document.getElementById(\'modal\').classList.add(\'hidden\')">OK</button></div>');
   };

@@ -2,6 +2,7 @@
 var SVA = (function () {
   var B = typeof SVB !== 'undefined' ? SVB : require('./battle.js');
 
+  var COH = typeof process !== 'undefined' && process.env && process.env.SV_COH != null ? +process.env.SV_COH : 40; // Tests: SV_COH=0 schaltet ab
   // Bewertung aus Sicht von side
   function evalSt(st, side) {
     if (st.over) return st.winner === side ? 1e7 : -1e7;
@@ -14,6 +15,7 @@ var SVA = (function () {
     var stance = (st.stance && st.stance[1]) || 'kontern', dGo = stance === 'ausfallen' ? 6 : stance === 'kontern' && !st.stones.length ? 2 : 0;
     var foes = [st.pcs.filter(function (q) { return q.side === 1 && q.n > 0 && q.x >= 0; }).concat(st.stones), dGo ? st.pcs.filter(function (q) { return q.side === 0 && q.n > 0 && q.x >= 0; }) : []];
     st.pcs.forEach(function (p) {
+      if (p.hand && B.canDrop(st, p)) { s -= (p.side === side ? 1 : -1) * (p.side === 0 ? (st.H + 2) * 5 : 20); return; } // angekommene Verstärkung soll aufs Brett
       if (p.n <= 0 || p.x < 0) return;
       var sg = p.side === side ? 1 : -1, u = B.U(p);
       var fs = foes[p.side];
@@ -22,6 +24,8 @@ var SVA = (function () {
         s -= sg * d * (p.side === 1 ? dGo : u.hero ? 2 : 5);
       }
       if (p.side === 1 && stance === 'halten' && !B.inZone(st, 1, p.y)) s -= sg * 30;
+      // Zusammenhalt: Verteidiger decken sich gegenseitig (Unterstützung), sonst pickt ein guter Angreifer sie einzeln heraus
+      if (p.side === 1 && COH && !u.ranged) s += sg * COH * Math.min(2, B.helpers(st, 1, p.x, p.y, p).length);
       if (p.pro) s += sg * 20;
     });
     // Kein Zuglimit, aber Stillstand = Verteidiger hält: Ruhe drückt auf den Angreifer, damit er angreift statt zu warten
@@ -31,6 +35,14 @@ var SVA = (function () {
     return s;
   }
   function order(st, list) {
+    // Drops: je Trupp nur die 3 Felder, die dem Gegner am nächsten sind (sonst zu viele Züge für die Suche)
+    var drops = list.filter(function (m) { return m.k === 'drop'; });
+    if (drops.length) {
+      var en = st.pcs.filter(function (q) { return q.side !== st.turn && q.n > 0 && q.x >= 0; }).concat(st.turn === 0 ? st.stones : []);
+      var dist = function (m) { var d = 99; en.forEach(function (q) { d = Math.min(d, Math.max(Math.abs(q.x - m.x), Math.abs(q.y - m.y))); }); return d + Math.abs(m.x - (st.W - 1) / 2) * 0.01; };
+      var keep = {}; drops.sort(function (a, b) { return dist(a) - dist(b); }).forEach(function (m) { keep[m.id] = keep[m.id] || []; if (keep[m.id].length < 3) keep[m.id].push(m); });
+      list = list.filter(function (m) { return m.k !== 'drop' || keep[m.id].indexOf(m) >= 0; });
+    }
     // Angriffe zuerst (größter Zielwert), dann Rest
     return list.map(function (m) {
       var t = B.at(st, m.x, m.y), sc = m.k === 'attack' || m.k === 'shoot' ? (t ? t.n * B.U(t).cost : 0) + 1e6 : m.k === 'wall' ? 5e5 : 0;
