@@ -1,7 +1,9 @@
 // Bedienklänge synthetisch (WebAudio), Kampf und Musik aus Aufnahmen (snd/, CC0).
 var Sfx = (function () {
   var ctx = null, master, sfxGain, musicGain, noiseBuf, intensity = 0;
-  var vol = { sfx: 0.8, music: 0.35, mute: false }, wantMusic = false;
+  // Test-Browser (Claude-Browser-Pane, headless, Automatisierung) immer stumm, außer mit ?ton in der URL
+  var TESTMUTE = (window.AK_MUTE || navigator.webdriver || /Claude\/|HeadlessChrome/.test(navigator.userAgent)) && !/[?&]ton\b/.test(location.search);
+  var vol = { sfx: 0.8, music: 0.35, mute: TESTMUTE }, wantMusic = false;
   // weich nachregeln statt springen (kein Knacksen beim Ziehen)
   function ramp(g, v) { var t = ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(v, t, 0.04); }
   function masterLevel() { return vol.mute || document.hidden ? 0 : 1; }
@@ -416,7 +418,7 @@ var Sfx = (function () {
     },
     setIntensity: function (x) { intensity = Math.max(0, Math.min(1, x)); musMix(); },
     setVolume: function (sfx, music, mute) {
-      var wasOn = vol.music > 0; vol.sfx = sfx; vol.music = music; vol.mute = !!mute;
+      var wasOn = vol.music > 0; vol.sfx = sfx; vol.music = music; vol.mute = !!mute || TESTMUTE;
       if (!ctx) return;
       ramp(sfxGain, sfx); ramp(musicGain, music); ramp(master, masterLevel()); sleepCheck();
       if (wantMusic && wasOn !== music > 0) this.music(true); // Musik von 0 hochgezogen oder auf 0 gestellt
