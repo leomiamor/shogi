@@ -152,6 +152,13 @@ var THEMES = {
 var KOMA_MASK = { '歩': 'FU', '香': 'KY', '桂': 'KE', '銀': 'GI', '金': 'KI', '角': 'KA', '飛': 'HI', '王': 'OU', '玉': 'GY', 'と': 'TO', '杏': 'NY', '圭': 'NK', '全': 'NG', '馬': 'UM', '龍': 'RY', '竜': 'RY' };
 // url() in einer CSS-Variable löst relativ zur style.css auf (css/), daher ../
 function komaKanjiHTML(kan) { var m = KOMA_MASK[kan]; return m ? '<div class="koma-kanji km" role="img" aria-label="' + kan + '" style="--km:url(../img/koma/' + m + '.svg)"></div>' : '<div class="koma-kanji big">' + kan + '</div>'; }
+// Alle Zeichen-Masken beim Start einmal winzig außerhalb des Bilds zeichnen, damit keine erst während der
+// Beförderungs-Animation nachlädt (am Handy blieb ein frisch beförderter Stein ohne Zeichen)
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', function () {
+  var w = document.createElement('div'); w.setAttribute('aria-hidden', 'true');
+  w.style.cssText = 'position:fixed;left:-20px;top:0;width:4px;height:4px;overflow:hidden;opacity:.01;pointer-events:none';
+  w.innerHTML = Object.keys(KOMA_MASK).map(komaKanjiHTML).join(''); document.body.appendChild(w);
+});
 function komaInk(t, col) { return t >= 9 ? (col === 0 ? '#ff6b5c' : '#c41e1e') : col === 0 ? '#ecd08a' : '#1b1b1b'; }
 function unitSVG(theme, t, col, opts) {
   opts = opts || {};

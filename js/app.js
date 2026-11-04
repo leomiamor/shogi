@@ -683,7 +683,6 @@
     // jede andere Figur (Gegner oder nicht am Zug): Vorschau ihrer Züge, nochmal tippen schließt sie (Wunsch 25.10.)
     if (st.board[sq] && !(this.peek && this.peek.from === sq)) { this.peek = { from: sq, to: this.peekTargets(sq) }; this.updateAll(); return; }
     if (this.peek) { this.peek = null; this.updateAll(); return; }
-    if (this.mode === 'online' && !this.over && !myTurn) toast('Warte auf den Zug deines Gegners.');
   };
   // Zugziele einer beliebigen Figur, auch wenn ihre Seite gerade nicht am Zug ist
   Game.prototype.peekTargets = function (sq) {
@@ -694,7 +693,7 @@
   };
   Game.prototype.select = function (sq) {
     this.sel = { from: sq }; this.hintMove = null; this.peek = null;
-    if (!this.selTargets().length) { Sfx.play('error'); this.pop(sq, 'Kein Zug möglich', '#ff9a8a'); }
+    if (!this.selTargets().length) Sfx.play('error');
     else Sfx.play('select');
     this.updateAll();
   };
@@ -702,7 +701,6 @@
     if (this.busy || this.over || !this.isHuman(this.state.turn) || col !== this.state.turn) return;
     if (this.sel && this.sel.drop === t) { this.sel = null; this.updateAll(); return; }
     this.sel = { drop: t }; this.hintMove = null; this.peek = null; Sfx.play('select');
-    if (!this.selTargets().length) toast('Diese Figur kann gerade nirgends hin.');
     this.updateAll();
   };
   Game.prototype.askPromote = function (cand) {
@@ -733,7 +731,7 @@
     info.onHit = function () { if (hitDone || !cap) return; hitDone = true; hitFx(); };
     // Animation mit Notbremse: hängt sie (Tab im Hintergrund), geht das Spiel trotzdem weiter
     var anim = Promise.race([this.r.animate(info), new Promise(function (r) { setTimeout(r, info.usesHit ? 8000 : 2500); })]);
-    function hitFx() { Sfx.play('capture', Math.abs(cap) >= 6); self.pop(d.to, '⚔ ' + shogiName(Math.abs(cap)) + ' gefangen!', TH.factions[col].color); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }
+    function hitFx() { Sfx.play('capture', Math.abs(cap) >= 6); if (S.render === '2d') { var w = $('#board-wrap'); w.classList.remove('shake'); void w.offsetWidth; w.classList.add('shake'); } }
     if (cap && !info.usesHit) setTimeout(info.onHit, S.render === '3d' ? 250 : 230);
     return anim.then(function () {
       if (!self.alive) return;
@@ -741,7 +739,7 @@
       self.legal = [];
       self.busy = false;
       var status = Shogi.status(st);
-      if (status.check && !status.over) { Sfx.play('check'); self.banner('SCHACH!', 'check'); self.r.fx('check', st.king[st.turn]); }
+      if (status.check && !status.over) { Sfx.play('check'); self.r.fx('check', st.king[st.turn]); }
       if (self.L && !status.over) { if (col !== self.human) self.taunt(status.check ? 'check' : cap ? 'capture' : d.drop ? 'drop' : null); else if (cap && Shogi.VALUE[Math.abs(cap)] >= Shogi.VALUE[5]) self.taunt('hurt'); }
       // Musik-Spannung: Boss, Schach, Spieldauer und Endspiel (viele Steine in der Hand); hoch = Taiko
       var inHand = 0; for (var hc = 0; hc < 2; hc++) for (var ht = 1; ht < 8; ht++) inHand += st.hands[hc][ht] || 0;
@@ -819,9 +817,9 @@
   }
   Game.prototype.ruleChecks = function () {
     var L = this.L, st = this.state, me = this.human, self = this;
-    if (!this.flags.mino && minoOk(st, me, false)) { this.flags.mino = true; this.pop(st.king[me], '🏯 Mino-Burg!', '#ffd76a'); Sfx.play('star', 2); }
+    if (!this.flags.mino && minoOk(st, me, false)) { this.flags.mino = true; Sfx.play('star', 2); }
     if (!this.flags.castle && minoOk(st, me, true)) this.flags.castle = true;
-    if (!this.flags.promote2) { var hasR = false, hasB = false, sg = me === 0 ? 1 : -1; for (var q = 0; q < 81; q++) { if (st.board[q] * sg === 14) hasR = true; if (st.board[q] * sg === 13) hasB = true; } if (hasR && hasB) { this.flags.promote2 = true; this.pop(st.king[me], '⬆⬆ Doppel-Aufstieg!', '#ffd76a'); } }
+    if (!this.flags.promote2) { var hasR = false, hasB = false, sg = me === 0 ? 1 : -1; for (var q = 0; q < 81; q++) { if (st.board[q] * sg === 14) hasR = true; if (st.board[q] * sg === 13) hasB = true; } if (hasR && hasB) { this.flags.promote2 = true; } }
     if (L.castleBy && !this.flags.castle && this.moveCount >= L.castleBy) { this.gameOver({ over: true, winner: 1 - me, reason: 'castle' }); return true; }
     if (L.maxMoves && this.moveCount >= L.maxMoves) { this.gameOver({ over: true, winner: 1 - me, reason: 'moves' }); return true; }
     return false;
@@ -830,11 +828,11 @@
     var L = this.L; if (!L) return;
     var k = this.aiMoves + 1, st = this.state, ai = 1 - this.human, self = this, changed = false;
     this.applied = this.applied || {}; if (this.applied[k]) return; this.applied[k] = 1;
-    (L.reinforce || []).forEach(function (x) { if (x.at === k) { st.hands[ai][x.t]++; changed = true; self.banner('VERSTÄRKUNG!', 'check'); self.taunt('phase', TH.units[x.t].name + ' in der Hand!'); Sfx.play('drop'); } });
+    (L.reinforce || []).forEach(function (x) { if (x.at === k) { st.hands[ai][x.t]++; changed = true; self.taunt('phase', TH.units[x.t].name + ' in der Hand!'); Sfx.play('drop'); } });
     if (L.phase && L.phase.at === k) {
       this.cfg.opp.opts = Object.assign({}, this.cfg.opp.opts, { style: Object.assign({}, this.cfg.opp.opts.style || {}, L.phase.style || {}) });
       (L.phase.give || []).forEach(function (t) { st.hands[ai][t]++; changed = true; });
-      this.banner('PHASE 2', 'mate'); this.taunt('phase', null, true); Sfx.play('levelup'); Sfx.setIntensity(0.9); this.flags.phase = true;
+      this.taunt('phase', null, true); Sfx.play('levelup'); Sfx.setIntensity(0.9); this.flags.phase = true;
       $('#board-wrap').classList.add('rage');
     }
     if (changed) { Shogi.rehash(st); this.updateAll(); }
@@ -866,7 +864,6 @@
   var GRADES = ['Patzer!!', 'Fehler', 'Ungenau', 'Okay', 'Gut', 'Bester Zug!'];
   Game.prototype.showGrade = function (g, m, pre, post, before) {
     var self = this, st = this.state, d = Shogi.decode(m), col = this.human;
-    this.pop(d.to, GRADES[g], ['#ff3a6a', '#ff5a4e', '#ffb347', '#d8e070', '#58e08a', '#46d7ff'][g]);
     Sfx.play('grade', g);
     if (g >= 5) { var r = addXP(3); if (r >= 0) this.pendingRank = r; }
     if (g >= 2) return this.nextTurn();
@@ -977,7 +974,7 @@
     if (this.over) return; this.over = true;
     var self = this, st = this.state, win = status.winner === this.human, draw = status.winner < 0;
     var reasonTxt = { mate: 'Schachmatt', nomoves: 'Keine Züge mehr', resign: 'Aufgabe', perpetual: 'Dauerschach (verboten)', repetition: 'Stellungswiederholung', king: 'König geschlagen' }[status.reason] || '';
-    if (status.reason === 'mate' && st.king[st.turn] >= 0) { this.r.fx('mate', st.king[st.turn]); this.banner('MATT!', 'mate'); }
+    if (status.reason === 'mate' && st.king[st.turn] >= 0) { this.r.fx('mate', st.king[st.turn]); }
     if (!draw && this.r.armyEnd) this.r.armyEnd(status.winner); // Armee: Verlierer fliehen, Sieger jubeln
     Sfx.setIntensity(0);
     if (this.mode === 'online') { this.sendOnline(); }
@@ -1083,7 +1080,7 @@
     var xp = first ? 25 + stars * 10 : Math.max(0, stars - prev) * 10;
     var rk = addXP(xp); save();
     var lastSq = Shogi.decode(this.state.moves[this.state.moves.length - 1].m).to;
-    this.r.fx('mate', lastSq); this.banner('GESCHAFFT!', 'mate'); Sfx.play('win');
+    this.r.fx('mate', lastSq); Sfx.play('win');
     var idx = LESSONS.indexOf(L), next = LESSONS[idx + 1];
     setTimeout(function () {
       self.resultModal('Mission erfüllt!', L.title, stars, xp, [
@@ -1130,13 +1127,12 @@
   };
   Game.prototype.puzzleSolved = function (txt) {
     var self = this, c = this.cfg; this.over = true;
-    this.banner(txt || 'GELÖST!', 'mate'); Sfx.play('win');
+    Sfx.play('win');
     var lastSq = Shogi.decode(this.state.moves[this.state.moves.length - 1].m).to; this.r.fx('mate', lastSq);
     if (c.onSolved) return setTimeout(function () { c.onSolved(self.hints === 0); }, 1100);
   };
   Game.prototype.puzzleFail = function (before) {
     var self = this, c = this.cfg; this.over = true; Sfx.play('error');
-    this.pop(Shogi.decode(this.state.moves[this.state.moves.length - 1].m).to, '✗ Nicht ganz', '#ff5a4e');
     if (c.onFail) return setTimeout(function () { c.onFail(); }, 900);
   };
 
