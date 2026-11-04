@@ -377,49 +377,37 @@ select:focus, input:focus { outline: none; border-color: var(--au); }
   #scr-game .goalbar.hidden { display: none; }
 }
 
-/* ---------- Kompakte Spielansicht und Vollbild (Wunsch 04.11.: am fast quadratischen Flip-Außendisplay war das Brett winzig,
-   Namen, leere Reserven und Knopfleiste übereinander fraßen 2/3 der Höhe) ----------
-   Fast quadratisch (Hochformat bis 5:8): Name und Reserve in einer Zeile, Knopfleiste als Spalte rechts.
-   Vollbild (#scr-game.full, Knopf in der Spielleiste, dazu Fullscreen API): nur Porträt + Reserve als schmale Leisten. */
-.toolbar .btn.fs-btn svg { width: 20px; height: 20px; fill: none; stroke: var(--ivory); stroke-width: 2.2; stroke-linecap: square; }
-.toolbar .btn.fs-btn:hover svg, .toolbar .btn.fs-btn.on svg { stroke: var(--au-hi); }
+/* ---------- Spielansicht immer kompakt (Wunsch 04.11.: am Flip-Außendisplay war das Brett winzig; danach „das Spiel ist das Spiel“:
+   keine Namen/Sente/Gote, kleine Porträts, immer Vollbild, kein Knopf dafür) ----------
+   Porträt (Goldrahmen = am Zug) + Reserve als schmale Leiste, Gegner oben, eigene unten. Uhren bleiben.
+   Fast quadratisch (Hochformat bis 5:8): Knopfleiste als Spalte rechts. */
+#scr-game .hud .grow { display: none; }
+#scr-game .hud { min-height: 0; gap: 6px; }
+#scr-game .hud .portrait { width: 30px; height: 30px; }
+#scr-game .hud .clock { font-size: 14px; padding: 2px 6px; }
+@media (max-aspect-ratio: 5/4) {
+  #scr-game .g-side { flex-direction: row; align-items: center; gap: 6px; padding: 3px 4px; }
+  #scr-game .g-side .hud { order: 0; flex: none; }
+  #scr-game .g-side .hand { order: 1; flex: 1 1 0; min-width: 0; min-height: 42px; padding: 2px 4px 4px; }
+  #scr-game .g-side .hand-slot { flex: 0 1 36px; min-width: 26px; height: 36px; }
+  #scr-game .board-wrap { padding: 0 2px; }
+  #scr-game .toolbar { padding: 4px 4px calc(4px + var(--safe-b)); gap: 5px; }
+  #scr-game .toolbar .btn { min-width: 42px; min-height: 40px; padding: 6px; }
+}
 @media (max-aspect-ratio: 5/4) and (min-aspect-ratio: 5/8) {
   #scr-game.active { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr) auto; }
   #scr-game .g-top { grid-column: 1; grid-row: 1; }
   #scr-game .goalbar { grid-column: 1; grid-row: 2; }
   #scr-game .board-wrap { grid-column: 1; grid-row: 3; }
   #scr-game .g-bot { grid-column: 1; grid-row: 4; }
-  #scr-game .toolbar { grid-column: 2; grid-row: 1 / 5; flex-direction: column; flex-wrap: nowrap; justify-content: center; gap: 5px; padding: 4px 4px calc(4px + var(--safe-b)) 0; background: none; overflow-y: auto; }
-  #scr-game .toolbar .btn { min-width: 42px; min-height: 42px; padding: 6px; }
-  #scr-game .g-side { flex-direction: row; align-items: center; gap: 8px; padding: 4px 6px; }
-  #scr-game .g-side .hud { order: 0; flex: 0 1 auto; min-width: 0; max-width: 42%; gap: 8px; }
-  #scr-game .g-side .hand { order: 1; flex: 1 1 0; min-width: 0; }
-  #scr-game .g-side .hand-slot { flex: 0 1 38px; min-width: 26px; height: 40px; }
-  #scr-game .hud .portrait { width: 36px; height: 36px; }
-  #scr-game .hud .nm, #scr-game .hud .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #scr-game .toolbar { grid-column: 2; grid-row: 1 / 5; flex-direction: column; flex-wrap: nowrap; justify-content: center; padding: 2px 2px calc(2px + var(--safe-b)) 0; background: none; overflow-y: auto; }
 }
-/* Vollbild im Hochformat: Porträt (zeigt per Goldrahmen, wer dran ist) + Reserve in einer schmalen Zeile, Namen weg */
-@media (max-aspect-ratio: 5/4) {
-  #scr-game.full .g-side { flex-direction: row; align-items: center; gap: 6px; padding: 3px 4px; }
-  #scr-game.full .g-side .hud { order: 0; flex: none; min-height: 0; gap: 6px; }
-  #scr-game.full .g-side .hand { order: 1; flex: 1 1 0; min-width: 0; min-height: 42px; padding: 2px 4px 4px; }
-  #scr-game.full .g-side .hand-slot { flex: 0 1 36px; min-width: 26px; height: 36px; }
-  #scr-game.full .hud .grow { display: none; }
-  #scr-game.full .hud .portrait { width: 30px; height: 30px; }
-  #scr-game.full .hud .clock { font-size: 14px; padding: 2px 6px; }
-  #scr-game.full .board-wrap { padding: 0 2px; }
-  #scr-game.full .toolbar { padding: 4px 4px calc(4px + var(--safe-b)); gap: 5px; }
-  #scr-game.full .toolbar .btn { min-width: 42px; min-height: 40px; padding: 6px; }
-}
-@media (max-aspect-ratio: 5/4) and (min-aspect-ratio: 5/8) {
-  #scr-game.full .toolbar { padding: 2px 2px calc(2px + var(--safe-b)) 0; }
-}
-/* Vollbild im Querformat: weniger Rand */
+/* Querformat: weniger Rand */
 @media (min-aspect-ratio: 5/4) {
-  #scr-game.full .g-top, #scr-game.full .g-bot { padding: 6px 8px; }
-  #scr-game.full .toolbar { padding: 6px 8px 0; }
-  #scr-game.full .board-wrap { width: min(calc(100vh - 2px) / 1.08, 64vw); width: min(calc(100dvh - 2px) / 1.08, 64vw); padding: 1px 2px; }
-  #scr-game.full .board-wrap.mode3d { width: min(66vw, calc(100vw - 380px)); padding: 0; }
+  #scr-game .g-top, #scr-game .g-bot { padding: 6px 8px; }
+  #scr-game .toolbar { padding: 6px 8px 0; }
+  #scr-game .board-wrap { width: min(calc(100vh - 2px) / 1.08, 64vw); width: min(calc(100dvh - 2px) / 1.08, 64vw); padding: 1px 2px; }
+  #scr-game .board-wrap.mode3d { width: min(66vw, calc(100vw - 380px)); padding: 0; }
 }
 .cards { grid-auto-rows: max-content; }
 

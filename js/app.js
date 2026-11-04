@@ -9,7 +9,7 @@
   function cyrb(str) { var h1 = 0xdeadbeef, h2 = 0x41c6ce57; for (var i = 0; i < str.length; i++) { var ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); } h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909); h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909); return (h2 >>> 0).toString(16) + (h1 >>> 0).toString(16); }
 
   // ---------- Profil ----------
-  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, fights: 'voll', figKanji: false, army: false, armyLook: 'farbe', armySashi: true, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend', gameFull: false };
+  var DEFAULTS = { render: '2d', quality: 'high', pieceStyle: 'both', sfx: 0.8, music: 0.35, mute: false, fights: 'voll', figKanji: false, army: false, armyLook: 'farbe', armySashi: true, threats: true, coach: true, dots: true, autoFlip: true, models: true, theme: 'feudal', figSet: 'statue', statueMats: ['gold', 'silber'], komaStyle: 'stein', boardTone: 'urushi', scene: 'buehne', name: 'Du', skin: 'classic', palette: 'abend' };
   var P = load();
   function load() {
     var d = null; try { d = JSON.parse(localStorage.getItem(STORE)); } catch (e) { }
@@ -513,7 +513,7 @@
     this.makeRenderer();
     this.flip = this.mode === 'hotseat' ? (S.autoFlip && this.state.turn === 1) : this.human === 1;
     this.r.setFlip(this.flip); this.r.sync(this.state);
-    setFull(!!S.gameFull, true); // Start kommt vom Tipp auf „Starten“, darf also Vollbild anfordern
+    fullscreen(); // Spiel läuft immer im Vollbild (Wunsch 04.11.); der Start kommt vom Tipp auf „Starten“, darf es also anfordern
     this.buildToolbar(); this.updateAll();
     $('#coach').classList.add('hidden');
     this.goalbar();
@@ -547,6 +547,7 @@
     [['top', top], ['bot', bottom]].forEach(function (x) {
       var col = x[1], inf = self.sideInfo(col), hud = $('#hud-' + x[0]);
       hud.className = 'hud' + (st.turn === col ? ' turn' : '');
+      hud.title = inf.name + ' · ' + inf.sub; // Name/Seite sind im Spiel ausgeblendet (Wunsch 04.11.), nur noch als Tooltip
       hud.innerHTML = portraitHTML(inf.p) + '<div class="grow"><div class="nm' + (self.thinking && st.turn === col ? ' thinking' : '') + '">' + inf.name + '</div><div class="sub">' + inf.sub + '</div></div>' + (x[0] === 'bot' && self.mode === 'rush' ? '<div class="clock" id="rush-clock"></div>' : '') + (self.L && self.L.moveTime && col === self.human ? '<div class="clock" id="move-clock">' + self.L.moveTime + '</div>' : '') + (self.cfg.series && col !== self.human ? '<div class="clock">' + self.cfg.series.w + ':' + self.cfg.series.l + '</div>' : '');
       var hand = $('#hand-' + x[0]); hand.innerHTML = '';
       if (self.L && self.L.fog && col !== self.human && !self.over) { var cnt = 0; for (var tt = 1; tt < 8; tt++) cnt += st.hands[col][tt]; if (cnt) hand.innerHTML = '<div class="hand-slot fog">🌫<div class="cnt">' + cnt + '</div></div>'; return; }
@@ -645,23 +646,14 @@
     if (HAS3D) btn(S.render === '3d' ? '2D' : '3D', 'Grafik wechseln', function (b) { S.render = S.render === '3d' ? '2d' : '3d'; save(); $('#board-wrap').classList.toggle('mode3d', S.render === '3d'); self.makeRenderer(); self.r.setFlip(self.flip); self.r.sync(self.state); self.updateAll(); b.textContent = S.render === '3d' ? '2D' : '3D'; });
     if (HAS3D) btn('🗺', 'Stil & Welt', function () { styleWorld(function () { self.rerender(); }); });
     if (this.mode === 'online') btn('🔗', 'Link teilen', function () { shareLink(self.online.code); });
-    btn(FS_ICON[S.gameFull ? 1 : 0], 'Vollbild', function () { setFull(!S.gameFull, true); }, S.gameFull).classList.add('fs-btn');
   };
-  // Vollbild (Wunsch 04.11.): kompakte Spielansicht (#scr-game.full, Brett so groß wie möglich, beide Reserven als schmale Leisten)
-  // plus echtes Vollbild über die Fullscreen API. Lehnt der Browser ab (iPhone, kein Tipp), bleibt es bei der kompakten Ansicht.
-  var FS_ICON = ['<svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>', '<svg viewBox="0 0 24 24"><path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/></svg>'], fsReal = false;
-  function fsEl() { return document.fullscreenElement || document.webkitFullscreenElement; }
-  function quiet(fn, ctx, arg) { try { var p = fn && fn.call(ctx, arg); if (p && p.catch) p.catch(function () { }); } catch (e) { } }
-  function setFull(on, real) {
-    if (S.gameFull !== on) { S.gameFull = on; save(); }
-    $('#scr-game').classList.toggle('full', on);
-    var b = $('#toolbar .fs-btn'); if (b) { b.classList.toggle('on', on); b.innerHTML = FS_ICON[on ? 1 : 0]; }
-    var de = document.documentElement;
-    if (on && real && !fsEl()) quiet(de.requestFullscreen || de.webkitRequestFullscreen, de, { navigationUI: 'hide' });
-    if (!on && fsEl()) quiet(document.exitFullscreen || document.webkitExitFullscreen, document);
+  // Echtes Vollbild über die Fullscreen API. Lehnt der Browser ab (iPhone, kein Tipp), bleibt die Seite wie sie ist;
+  // das Spiel-Layout ist ohnehin kompakt (style.css „Spielansicht immer kompakt“). Verlassen nur per Zurück-Geste.
+  function fullscreen() {
+    var de = document.documentElement, rq = de.requestFullscreen || de.webkitRequestFullscreen;
+    if (!rq || document.fullscreenElement || document.webkitFullscreenElement) return;
+    try { var p = rq.call(de, { navigationUI: 'hide' }); if (p && p.catch) p.catch(function () { }); } catch (e) { }
   }
-  // Vollbild per Zurück-Geste verlassen: dann auch die kompakte Ansicht beenden
-  ['fullscreenchange', 'webkitfullscreenchange'].forEach(function (ev) { document.addEventListener(ev, function () { if (fsEl()) fsReal = true; else if (fsReal) { fsReal = false; if (S.gameFull) setFull(false); } }); });
   // Renderer neu bauen (z. B. nach Wechsel von Welt oder 2D/3D)
   Game.prototype.rerender = function () { $('#board-wrap').classList.toggle('mode3d', S.render === '3d'); this.makeRenderer(); this.r.setFlip(this.flip); this.r.sync(this.state); this.updateAll(); this.buildToolbar(); };
   Game.prototype.menu = function () {
